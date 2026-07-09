@@ -39,11 +39,11 @@ This is the central limitation. Rabby is EVM-only. Bitcoin and Solana aren't sup
 
 Rabby holds a 3.0 rating on the App Store as of 2026. That's worth taking seriously. It doesn't mean the product is broken, but it does reflect friction that users encounter often enough to report it consistently.
 
-### No Reproducible Build, No Secure Enclave Key Generation
+### No Reproducible Build, No iOS-First Wallet Model
 
 Rabby's mobile app does not ship a reproducible build. You cannot independently verify that the binary you download from the App Store matches the source code. For a wallet handling private keys, that gap matters. If you can't verify the build, you're trusting a process you can't inspect.
 
-Rabby also does not use Apple's Secure Enclave for key generation. Your private keys are not isolated in dedicated hardware on the device.
+Rabby is not built as an iOS-only wallet with local-first app storage and Apple platform integration.
 
 ---
 
@@ -53,9 +53,9 @@ Rabby also does not use Apple's Secure Enclave for key generation. Your private 
 
 The architecture is built around one principle: your keys never leave your device.
 
-### Secure Enclave Key Generation
+### Local-First Key Storage
 
-When you create a wallet in Aperture, your private keys are generated and encrypted exclusively in Apple's Secure Enclave hardware. They are never transmitted to any server. Aperture holds no copy at any point. This isn't a software-level encryption claim. The Secure Enclave is a dedicated security coprocessor, physically isolated from the main application processor. No other major multi-chain mobile wallet currently occupies this position.
+When you create a wallet in Aperture, the wallet secret is generated on the device, encrypted locally, and stored in Aperture's GRDB database. It is never transmitted to an Aperture server. This is local encrypted storage, not a Secure Enclave isolation claim.
 
 ### Reproducible Builds and Full Open-Source Code
 
@@ -65,9 +65,9 @@ No major multi-chain mobile competitor offers both a fully open-source codebase 
 
 ### Zero Accounts, Zero Data Transmitted
 
-Aperture requires no account creation. No email, no username, no onboarding form. You download the app, generate keys, and your wallet exists. No user data is sent to any server at any point. Your seed phrase is shown once, client-side only, and is never stored or transmitted.
+Aperture requires no account creation. No email, no username, no onboarding form. You download the app, generate keys, and your wallet exists. Recovery phrases and private keys are encrypted locally so the app can export and sign when the user authorizes it; they are not sent to Aperture servers.
 
-Every wallet action is protected by Face ID biometric authentication backed by on-device hardware encryption.
+Wallet access can be protected by the app PIN and available device biometrics.
 
 ### 48 Networks, One Interface
 
@@ -83,7 +83,7 @@ Where Rabby stops at EVM, Aperture covers 48 networks. Bitcoin and Solana sit al
 | Solana support | No | Yes |
 | EVM chain support | Yes (multi-chain EVM) | Yes |
 | Total networks | EVM-only | 48 |
-| Secure Enclave key generation | No | Yes |
+| Local encrypted wallet storage | Limited | Yes |
 | Reproducible build | No | Yes |
 | Fully open-source | Partially | Yes |
 | Account required | No | No |
@@ -113,22 +113,22 @@ The self-custody principle doesn't change based on which chain your assets live 
 ## FAQs
 
 **Can Aperture fully replace Rabby for EVM users?**
-Yes. Aperture supports EVM chains alongside Bitcoin, Solana, and 43 additional networks. EVM users get full chain coverage plus Secure Enclave key isolation and a reproducible build that Rabby doesn't offer.
+Yes. Aperture supports EVM chains alongside Bitcoin, Solana, and 43 additional networks. EVM users get broader chain coverage, local encrypted wallet storage, and a reproducible build that Rabby doesn't offer.
 
 **Does Aperture support the same DeFi interactions as Rabby?**
 Aperture connects to DeFi protocols across its supported networks. It does not currently replicate Rabby's pre-transaction simulation feature, but your keys never leave your device and every action requires Face ID authentication.
 
 **Is Aperture safe to use without an account?**
-Account creation is architecturally unnecessary. Your private keys are generated in Apple's Secure Enclave hardware on your device — no server ever receives them. The codebase is fully open-source and the App Store binary is reproducible from source, so you can verify this independently.
+Account creation is architecturally unnecessary. Your wallet secret is generated on your device and encrypted locally; no Aperture server receives it. The codebase is fully open-source and the App Store binary is reproducible from source, so you can verify this independently.
 
 **What happens if I lose my iPhone?**
-Your seed phrase is the recovery mechanism. It's shown once during setup, client-side only, and never stored or transmitted by Aperture. Back it up securely and you can restore your wallet on a new device.
+Your seed phrase is the recovery mechanism. Aperture stores it encrypted locally so it can be revealed/exported after user authorization, and it is not transmitted to Aperture servers. Back it up securely and you can restore your wallet on a new device.
 
 **Does Aperture charge transaction fees?**
 Aperture does not add its own fee on top of normal network costs. The only required fee is the blockchain fee paid to the network processing your transaction.
 
 **Is Aperture available on Android?**
-No. Aperture is iOS-only. The Secure Enclave architecture is specific to Apple hardware, and the product is built around that foundation.
+No. Aperture is iOS-only. The product is built around Apple platform APIs and a local-first wallet database.
 
 **How do I verify the Aperture build yourself?**
 The full codebase is public at devdasx/aperture on GitHub. The repository includes reproducible build instructions. Compile the source and confirm the output matches the App Store binary byte-for-byte.
@@ -137,6 +137,6 @@ The full codebase is public at devdasx/aperture on GitHub. The repository includ
 
 Rabby is a focused tool for a focused use case. If your needs have grown beyond EVM, the same architecture that made it useful in that context becomes the thing holding you back.
 
-Aperture covers 48 networks, generates keys in Secure Enclave hardware, ships a reproducible build, and requires no account. Your keys never leave your device.
+Aperture covers 48 networks, keeps wallet secrets encrypted locally, ships a reproducible build, and requires no account. Your keys are not sent to Aperture servers.
 
 [Download Aperture on the App Store at aperturex.io](https://aperturex.io/) — no sign-up required.

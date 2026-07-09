@@ -3,7 +3,7 @@ import GRDB
 import OSLog
 
 enum FactoryReset {
-    enum Stage: CaseIterable, Sendable {
+    enum Stage: CaseIterable, Sendable, Equatable {
         case wallets
         case privateData
         case keys
@@ -54,12 +54,14 @@ enum FactoryReset {
             try db.execute(sql: "DELETE FROM sync_statuses WHERE scope_id != ?", arguments: [SyncDomain.globalScope])
             try LocalSecureBlobStore.ensureSecurityKeys(db: db)
             try restorePreservedPreferences(preservedPreferences, db: db)
-            try AppPreferenceStore.upsert(.bool(false), forKey: PinCodePreference.pinEnabledKey, db: db)
-            try AppPreferenceStore.upsert(.bool(false), forKey: PinCodePreference.biometricEnabledKey, db: db)
-            try AppPreferenceStore.upsert(.bool(true), forKey: PinCodePreference.requireBiometricForSendKey, db: db)
-            try AppPreferenceStore.upsert(.bool(false), forKey: "eraseDataAfterFailedAttempts", db: db)
-            try AppPreferenceStore.upsert(.bool(false), forKey: "hasUnbackedupWallet", db: db)
-            try AppPreferenceStore.upsert(.string(""), forKey: "settingsDeepLink", db: db)
+            try AppPreferenceStore.upsertAndMirror(.bool(false), forKey: PinCodePreference.pinEnabledKey, db: db)
+            try AppPreferenceStore.upsertAndMirror(.bool(false), forKey: PinCodePreference.biometricEnabledKey, db: db)
+            try AppPreferenceStore.upsertAndMirror(.bool(true), forKey: PinCodePreference.requireBiometricForSendKey, db: db)
+            try AppPreferenceStore.upsertAndMirror(.bool(false), forKey: PinCodePreference.forgotPasscodeResetEnabledKey, db: db)
+            try AppPreferenceStore.upsertAndMirror(.bool(false), forKey: PinCodePreference.forgotPasscodeResetEducationSeenKey, db: db)
+            try AppPreferenceStore.upsertAndMirror(.bool(false), forKey: "eraseDataAfterFailedAttempts", db: db)
+            try AppPreferenceStore.upsertAndMirror(.bool(false), forKey: "hasUnbackedupWallet", db: db)
+            try AppPreferenceStore.upsertAndMirror(.string(""), forKey: "settingsDeepLink", db: db)
             try ActiveWalletPointer.mirrorSelection(nil, db: db)
             try db.execute(
                 sql: """
@@ -82,6 +84,7 @@ enum FactoryReset {
 
         URLCache.shared.removeAllCachedResponses()
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+        await onStageComplete(.networkCache)
 
         SettingsStore.shared.start(database: database)
         ActiveWalletPointer.set(nil)
@@ -150,7 +153,7 @@ enum FactoryReset {
 
     private static func restorePreservedPreferences(_ snapshot: [String: StoredPreferenceValue], db: Database) throws {
         for (key, value) in snapshot {
-            try AppPreferenceStore.upsert(value, forKey: key, db: db)
+            try AppPreferenceStore.upsertAndMirror(value, forKey: key, db: db)
         }
     }
 }

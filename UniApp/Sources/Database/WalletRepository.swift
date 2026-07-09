@@ -158,10 +158,36 @@ final class WalletRepository {
         }
     }
 
-    func backfillAvatarDefaults() throws {}
-    func backfillAddressWalletIds() throws {}
-    func repairMnemonicAddressRowsFromStoredSecrets() async throws {}
-    func backfillEncryptedChainKeysFromStoredSecrets() throws {}
+    func backfillEncryptedChainKeysFromStoredSecrets() throws {
+        let candidates = try encryptedChainKeyBackfillCandidates()
+        for candidate in candidates {
+            let blobs = encryptedChainKeyBlobs(for: candidate)
+            guard !blobs.isEmpty else { continue }
+            try database.write { db in
+                let now = Date.databaseMilliseconds
+                for (chain, blob) in blobs {
+                    try db.execute(
+                        sql: """
+                        UPDATE chain_states
+                        SET encrypted_private_key = ?,
+                            key_encryption_scheme = ?,
+                            last_synced_at_ms = COALESCE(last_synced_at_ms, ?)
+                        WHERE wallet_id = ?
+                          AND chain_raw = ?
+                          AND encrypted_private_key IS NULL
+                        """,
+                        arguments: [
+                            blob,
+                            ChainKeyVault.scheme,
+                            now,
+                            candidate.wallet.id.uuidString,
+                            chain.rawValue
+                        ]
+                    )
+                }
+            }
+        }
+    }
 
     @discardableResult
     func renameWallet(id: UUID, to newName: String) throws -> Bool {
@@ -250,6 +276,100 @@ final class WalletRepository {
             try ActiveWalletPointer.mirrorSelection(nil, db: db)
         }
         ActiveWalletPointer.set(nil)
+    }
+
+    private struct ChainKeyBackfillCandidate {
+        let wallet: WalletDescriptor
+        let chainAddresses: [SupportedChain: String]
+    }
+
+    private struct MutableChainKeyBackfillCandidate {
+        let kind: WalletKind
+        let hasPassphrase: Bool
+        var chainAddresses: [SupportedChain: String]
+    }
+
+    private func encryptedChainKeyBackfillCandidates() throws -> [ChainKeyBackfillCandidate] {
+        try database.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT w.id, w.kind_raw, w.has_passphrase, cs.chain_raw, cs.address
+                FROM wallets w
+                JOIN chain_states cs ON cs.wallet_id = w.id
+                WHERE cs.encrypted_private_key IS NULL
+                  AND w.kind_raw != ?
+                ORDER BY w.id, cs.chain_raw
+                """,
+                arguments: [WalletKind.watchOnly.rawValue]
+            )
+
+            var grouped: [UUID: MutableChainKeyBackfillCandidate] = [:]
+            for row in rows {
+                guard
+                    let walletID = UUID(uuidString: row["id"]),
+                    let kind = WalletKind(rawValue: row["kind_raw"]),
+                    let chain = SupportedChain(rawValue: row["chain_raw"])
+                else { continue }
+
+                var candidate = grouped[walletID] ?? MutableChainKeyBackfillCandidate(
+                    kind: kind,
+                    hasPassphrase: (row["has_passphrase"] as Int) != 0,
+                    chainAddresses: [:]
+                )
+                let address: String = row["address"]
+                if !address.isEmpty {
+                    candidate.chainAddresses[chain] = address
+                }
+                grouped[walletID] = candidate
+            }
+
+            return grouped.compactMap { walletID, candidate in
+                guard !candidate.chainAddresses.isEmpty else { return nil }
+                return ChainKeyBackfillCandidate(
+                    wallet: WalletDescriptor(
+                        id: walletID,
+                        kind: candidate.kind,
+                        hasPassphrase: candidate.hasPassphrase
+                    ),
+                    chainAddresses: candidate.chainAddresses
+                )
+            }
+        }
+    }
+
+    private func encryptedChainKeyBlobs(for candidate: ChainKeyBackfillCandidate) -> [SupportedChain: Data] {
+        do {
+            switch candidate.wallet.kind {
+            case .created, .importedMnemonic:
+                let words = try WalletSecretPersistence.loadMnemonic(for: candidate.wallet.id, database: database)
+                return SigningKeyProvider.encryptedKeyBlobs(
+                    wallet: candidate.wallet,
+                    chainAddresses: candidate.chainAddresses,
+                    mnemonicWords: words
+                )
+            case .importedKey:
+                let privateKey = try WalletSecretPersistence.loadPrivateKey(for: candidate.wallet.id, database: database)
+                return SigningKeyProvider.encryptedKeyBlobs(
+                    wallet: candidate.wallet,
+                    chainAddresses: candidate.chainAddresses,
+                    privateKeyString: privateKey
+                )
+            case .watchOnly:
+                return [:]
+            }
+        } catch {
+            DiagnosticsLogStore.shared.record(
+                .warning,
+                category: "wallet",
+                message: "Encrypted chain-key backfill skipped wallet",
+                metadata: [
+                    "walletId": candidate.wallet.id.uuidString,
+                    "error": String(describing: error)
+                ]
+            )
+            return [:]
+        }
     }
 }
 

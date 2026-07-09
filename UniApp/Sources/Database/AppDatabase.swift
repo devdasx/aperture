@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import Darwin
 import OSLog
 
 final class AppDatabase: @unchecked Sendable {
@@ -7,40 +8,39 @@ final class AppDatabase: @unchecked Sendable {
 
     let pool: DatabasePool
     let storeURL: URL
-    let isInMemoryFallback = false
+    let isInMemoryFallback: Bool
 
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "database")
     private static let transitionWipeMarkerFileName = ".aperture-grdb-transition-v1"
 
     private init() {
-        do {
-            let url = try Self.defaultStoreURL()
-            storeURL = url
-            try Self.prepareDirectory(for: url)
-            try Self.runFreshGRDBTransitionWipeIfNeeded(storeURL: url)
-            pool = try Self.openPool(at: url)
-            try Self.migrator.migrate(pool)
-            try pool.write { db in
-                try Self.ensureSingletonRows(db)
-            }
-            WalletSecretCrypto.configure(database: self)
-            ChainKeyVault.configure(database: self)
-            DiagnosticsLogStore.shared.configure(database: self)
-            try Self.validateIntegrity(pool)
-            try Self.markExcludedFromBackup(url)
+        let opened = Self.openBestEffortStore()
+        storeURL = opened.url
+        pool = opened.pool
+        isInMemoryFallback = opened.isFallback
+
+        WalletSecretCrypto.configure(database: self)
+        ChainKeyVault.configure(database: self)
+        DiagnosticsLogStore.shared.configure(database: self)
+        if let recoveryReason = opened.recoveryReason {
             DiagnosticsLogStore.shared.record(
-                .info,
+                .warning,
                 category: "database",
-                message: "GRDB database opened",
-                metadata: ["store": url.path]
+                message: "GRDB database recovered",
+                metadata: ["store": opened.url.path, "reason": recoveryReason]
             )
-        } catch {
-            fatalError("GRDB database unavailable: \(error)")
         }
+        DiagnosticsLogStore.shared.record(
+            .info,
+            category: "database",
+            message: "GRDB database opened",
+            metadata: ["store": opened.url.path, "fallback": opened.isFallback ? "true" : "false"]
+        )
     }
 
     init(testStoreURL url: URL, seedSingletonRows: Bool = true) throws {
         storeURL = url
+        isInMemoryFallback = false
         try Self.prepareDirectory(for: url)
         try Self.deleteSQLiteFiles(at: url)
         pool = try Self.openPool(at: url)
@@ -146,6 +146,92 @@ final class AppDatabase: @unchecked Sendable {
         return try DatabasePool(path: url.path, configuration: configuration)
     }
 
+    private struct OpenedStore {
+        let url: URL
+        let pool: DatabasePool
+        let isFallback: Bool
+        let recoveryReason: String?
+    }
+
+    private static func openBestEffortStore() -> OpenedStore {
+        do {
+            let url = try defaultStoreURL()
+            try prepareDirectory(for: url)
+            try runFreshGRDBTransitionWipeIfNeeded(storeURL: url)
+            do {
+                let pool = try bootstrapPool(at: url)
+                return OpenedStore(url: url, pool: pool, isFallback: false, recoveryReason: nil)
+            } catch {
+                let reason = String(describing: error)
+                try? quarantineSQLiteFiles(at: url, reason: reason)
+                FreshInstallGuard.purgeAllKnownKeychainServicesForDatabaseReplacement()
+                let pool = try bootstrapPool(at: url)
+                return OpenedStore(url: url, pool: pool, isFallback: false, recoveryReason: reason)
+            }
+        } catch {
+            let fallbackReason = String(describing: error)
+            let fallbackURL = fallbackStoreURL()
+            do {
+                try prepareDirectory(for: fallbackURL)
+                let pool = try bootstrapPool(at: fallbackURL)
+                return OpenedStore(url: fallbackURL, pool: pool, isFallback: true, recoveryReason: fallbackReason)
+            } catch {
+                let lastResortURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("aperture-last-resort-\(UUID().uuidString).sqlite", isDirectory: false)
+                try? prepareDirectory(for: lastResortURL)
+                if let pool = try? bootstrapPool(at: lastResortURL) {
+                    return OpenedStore(
+                        url: lastResortURL,
+                        pool: pool,
+                        isFallback: true,
+                        recoveryReason: "\(fallbackReason); fallback failed: \(String(describing: error))"
+                    )
+                }
+                Darwin.exit(EXIT_FAILURE)
+            }
+        }
+    }
+
+    private static func bootstrapPool(at url: URL) throws -> DatabasePool {
+        let pool = try openPool(at: url)
+        try migrator.migrate(pool)
+        try pool.write { db in
+            try ensureSingletonRows(db)
+        }
+        try validateIntegrity(pool)
+        try markExcludedFromBackup(url)
+        return pool
+    }
+
+    private static func fallbackStoreURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("Aperture", isDirectory: true)
+            .appendingPathComponent("aperture-recovered-\(UUID().uuidString).sqlite", isDirectory: false)
+    }
+
+    private static func quarantineSQLiteFiles(at url: URL, reason: String) throws {
+        let fm = FileManager.default
+        let directory = url.deletingLastPathComponent()
+        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let quarantineDirectory = directory.appendingPathComponent("CorruptStore-\(timestamp)", isDirectory: true)
+        try fm.createDirectory(at: quarantineDirectory, withIntermediateDirectories: true)
+
+        let paths = sqliteFileURLs(at: url, includeSidecars: true)
+        var movedAnyFile = false
+        for source in paths where fm.fileExists(atPath: source.path) {
+            let destination = quarantineDirectory.appendingPathComponent(source.lastPathComponent, isDirectory: false)
+            try fm.moveItem(at: source, to: destination)
+            movedAnyFile = true
+        }
+
+        if movedAnyFile {
+            let reasonURL = quarantineDirectory.appendingPathComponent("reason.txt", isDirectory: false)
+            try reason.write(to: reasonURL, atomically: true, encoding: .utf8)
+        } else {
+            try? fm.removeItem(at: quarantineDirectory)
+        }
+    }
+
     private static func validateIntegrity(_ pool: DatabasePool) throws {
         try pool.read { db in
             guard let result = try String.fetchOne(db, sql: "PRAGMA quick_check"), result == "ok" else {
@@ -194,22 +280,28 @@ final class AppDatabase: @unchecked Sendable {
 
     private static func deleteSQLiteFiles(at url: URL) throws {
         let fm = FileManager.default
-        let paths = [
-            url.path,
-            url.path + "-wal",
-            url.path + "-shm",
-            url.path + "-journal"
-        ]
-        for path in paths where fm.fileExists(atPath: path) {
-            try fm.removeItem(atPath: path)
+        for fileURL in sqliteFileURLs(at: url, includeSidecars: true) where fm.fileExists(atPath: fileURL.path) {
+            try fm.removeItem(at: fileURL)
         }
+    }
+
+    private static func sqliteFileURLs(at url: URL, includeSidecars: Bool) -> [URL] {
+        var urls = [
+            url,
+            URL(fileURLWithPath: url.path + "-wal"),
+            URL(fileURLWithPath: url.path + "-shm"),
+            URL(fileURLWithPath: url.path + "-journal")
+        ]
+        guard includeSidecars else { return urls }
+        let fm = FileManager.default
         let directory = url.deletingLastPathComponent()
         let base = url.lastPathComponent
         if let sidecars = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
             for sidecar in sidecars where sidecar.lastPathComponent.hasPrefix(base + "-") {
-                try fm.removeItem(at: sidecar)
+                urls.append(sidecar)
             }
         }
+        return Array(Set(urls))
     }
 
     private static func transitionWipeMarkerURL(for storeURL: URL) -> URL {

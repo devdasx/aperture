@@ -115,7 +115,7 @@ struct MainTabView: View {
     @State private var isShowingImport: Bool = false
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
-    @AppStorage(WalletCompletionNoticeCenter.storageKey) private var walletCompletionNoticeRaw: String = ""
+    @GRDBStorage(WalletCompletionNoticeCenter.storageKey) private var walletCompletionNoticeRaw: String = ""
     @State private var walletCompletionNotice: WalletCompletionNoticeKind?
     @State private var walletCompletionNoticeTask: Task<Void, Never>?
 
@@ -618,7 +618,7 @@ enum WalletCompletionNoticeCenter {
     static let storageKey = "pendingWalletCompletionNotice"
 
     static func enqueue(_ notice: WalletCompletionNoticeKind) {
-        UserDefaults.standard.set(notice.rawValue, forKey: storageKey)
+        AppPreferenceStore.shared.set(notice.rawValue, forKey: storageKey)
     }
 }
 

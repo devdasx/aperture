@@ -208,8 +208,8 @@ struct BroadcastService: Sendable {
             (data, response) = try await URLSession.shared.apertureData(
                 for: request,
                 family: "broadcast",
-                operation: "Solana sendTransaction",
-                metadata: ["chain": "solana", "source": "BroadcastService"]
+                operation: "BCH Blockchair push transaction",
+                metadata: ["chain": "bitcoinCash", "source": "BroadcastService"]
             )
         } catch {
             // Transport-level failure (the request left the device but no

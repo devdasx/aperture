@@ -172,7 +172,7 @@ final class AppPreferenceStore: @unchecked Sendable {
         do {
             try database.write { db in
                 try Self.upsert(value.encodedPreference(), forKey: key, db: db)
-                try mirrorAppSettingsPreference(key: key, stored: value.encodedPreference(), db: db)
+                try Self.mirrorAppSettingsPreference(key: key, stored: value.encodedPreference(), db: db)
             }
             postChange(forKey: key)
         } catch {
@@ -190,7 +190,7 @@ final class AppPreferenceStore: @unchecked Sendable {
         do {
             try database.write { db in
                 try db.execute(sql: "DELETE FROM app_preferences WHERE key = ?", arguments: [key])
-                try clearMirroredAppSettingsPreference(key: key, db: db)
+                try Self.clearMirroredAppSettingsPreference(key: key, db: db)
             }
             postChange(forKey: key)
         } catch {
@@ -229,6 +229,11 @@ final class AppPreferenceStore: @unchecked Sendable {
                 Date.databaseMilliseconds
             ]
         )
+    }
+
+    static func upsertAndMirror(_ stored: StoredPreferenceValue, forKey key: String, db: Database) throws {
+        try upsert(stored, forKey: key, db: db)
+        try mirrorAppSettingsPreference(key: key, stored: stored, db: db)
     }
 
     static func delete(_ key: String, db: Database) throws {
@@ -281,11 +286,11 @@ final class AppPreferenceStore: @unchecked Sendable {
                 boolValue: row["bool_value"] as Int?,
                 dataValue: row["data_value"] as Data?
             )
-            try mirrorAppSettingsPreference(key: key, stored: stored, db: db)
+            try Self.mirrorAppSettingsPreference(key: key, stored: stored, db: db)
         }
     }
 
-    private func mirrorAppSettingsPreference(key: String, stored: StoredPreferenceValue, db: Database) throws {
+    private static func mirrorAppSettingsPreference(key: String, stored: StoredPreferenceValue, db: Database) throws {
         let now = Date.databaseMilliseconds
         switch key {
         case "themePreference":
@@ -339,8 +344,6 @@ final class AppPreferenceStore: @unchecked Sendable {
             try updateSetting("transaction_amount_display", value: stored.boolValue ?? 1, now: now, db: db)
         case "CoinMarketCapAPIKey":
             try updateSetting("coin_market_cap_api_key", value: stored.stringValue ?? "", now: now, db: db)
-        case ScreenRestoration.PreferenceKey.leftAppAt:
-            try updateSetting("restoration_left_app_at", value: stored.doubleValue as Double?, now: now, db: db)
         case ScreenRestoration.PreferenceKey.settingsPath:
             try updateSetting("restoration_settings_path", value: stored.dataValue as Data?, now: now, db: db)
         case ScreenRestoration.PreferenceKey.walletHomePath:
@@ -350,7 +353,7 @@ final class AppPreferenceStore: @unchecked Sendable {
         }
     }
 
-    private func clearMirroredAppSettingsPreference(key: String, db: Database) throws {
+    private static func clearMirroredAppSettingsPreference(key: String, db: Database) throws {
         let fallback = Self.defaultPreferences[key]
         if let fallback {
             try mirrorAppSettingsPreference(key: key, stored: fallback, db: db)
@@ -361,7 +364,7 @@ final class AppPreferenceStore: @unchecked Sendable {
         }
     }
 
-    private func updateSetting(_ column: String, value: DatabaseValueConvertible?, now: Int64, db: Database) throws {
+    private static func updateSetting(_ column: String, value: DatabaseValueConvertible?, now: Int64, db: Database) throws {
         let sql = "UPDATE app_settings SET \(column) = ?, updated_at_ms = ? WHERE id = 'app-settings-singleton'"
         try db.execute(sql: sql, arguments: StatementArguments([value, now]))
     }
@@ -393,6 +396,8 @@ final class AppPreferenceStore: @unchecked Sendable {
         PinCodePreference.pinEnabledKey: .bool(PinCodePreference.defaultValue),
         PinCodePreference.biometricEnabledKey: .bool(PinCodePreference.defaultValue),
         PinCodePreference.requireBiometricForSendKey: .bool(true),
+        PinCodePreference.forgotPasscodeResetEnabledKey: .bool(false),
+        PinCodePreference.forgotPasscodeResetEducationSeenKey: .bool(false),
         "eraseDataAfterFailedAttempts": .bool(false),
         AutoLockPreference.storageKey: .int(AutoLockPreference.defaultValue),
         CurrencyPreference.storageKey: .string(CurrencyPreference.defaultForCurrentRegion()),
@@ -439,7 +444,7 @@ final class AppPreferenceStore: @unchecked Sendable {
         AllSupportedFilterPreferences.assetTypeKey: .string(AllSupportedFilterPreferences.defaultAssetType.rawValue),
         AllSupportedFilterPreferences.selectedNetworksKey: .string(AllSupportedFilterPreferences.defaultSelectedNetworksJSON),
         AllSupportedFilterPreferences.onlyWithBalanceKey: .bool(AllSupportedFilterPreferences.defaultOnlyWithBalance),
-        ScreenRestoration.PreferenceKey.leftAppAt: .double(0),
+        "pendingWalletCompletionNotice": .string(""),
         ScreenRestoration.PreferenceKey.settingsPath: .data(Data()),
         ScreenRestoration.PreferenceKey.walletHomePath: .data(Data())
     ]

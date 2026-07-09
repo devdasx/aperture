@@ -471,6 +471,146 @@ import Testing
         ) == 1)
     }
 
+    @Test("staged reset reports every stage in order")
+    func stagedResetReportsEveryStageInOrder() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertCreatedWalletWithData(database)
+        try seedResetRows(walletID: walletID, database: database)
+
+        var stages: [FactoryReset.Stage] = []
+        try await FactoryReset.performStagedWipe(database: database) { stage in
+            stages.append(stage)
+        }
+
+        #expect(stages == FactoryReset.Stage.allCases)
+    }
+
+    @Test("full reset keeps preference projections consistent")
+    func resetPreferenceProjectionConsistency() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertCreatedWalletWithData(database)
+        ActiveWalletPointer.configure(database: database)
+
+        AppPreferenceStore.shared.set("dark", forKey: "themePreference")
+        AppPreferenceStore.shared.set("EUR", forKey: CurrencyPreference.storageKey)
+        AppPreferenceStore.shared.set(false, forKey: HapticPreference.storageKey)
+        AppPreferenceStore.shared.set(false, forKey: "backgroundBalanceRefresh")
+        AppPreferenceStore.shared.set(true, forKey: PinCodePreference.pinEnabledKey)
+        AppPreferenceStore.shared.set(true, forKey: PinCodePreference.biometricEnabledKey)
+        AppPreferenceStore.shared.set(false, forKey: PinCodePreference.requireBiometricForSendKey)
+        AppPreferenceStore.shared.set(true, forKey: PinCodePreference.forgotPasscodeResetEnabledKey)
+        AppPreferenceStore.shared.set(true, forKey: PinCodePreference.forgotPasscodeResetEducationSeenKey)
+        AppPreferenceStore.shared.set(true, forKey: "eraseDataAfterFailedAttempts")
+        AppPreferenceStore.shared.set(true, forKey: "hasUnbackedupWallet")
+        AppPreferenceStore.shared.set("wallets", forKey: "settingsDeepLink")
+        ActiveWalletPointer.set(walletID)
+
+        try await FactoryReset.performFullWipe(database: database)
+
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT string_value FROM app_preferences WHERE key = ?",
+            arguments: ["themePreference"],
+            database: database
+        ) == "dark")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT string_value FROM app_preferences WHERE key = ?",
+            arguments: [CurrencyPreference.storageKey],
+            database: database
+        ) == "EUR")
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT bool_value FROM app_preferences WHERE key = ?",
+            arguments: [HapticPreference.storageKey],
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT bool_value FROM app_preferences WHERE key = ?",
+            arguments: ["backgroundBalanceRefresh"],
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT bool_value FROM app_preferences WHERE key = ?",
+            arguments: [PinCodePreference.pinEnabledKey],
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT bool_value FROM app_preferences WHERE key = ?",
+            arguments: [PinCodePreference.biometricEnabledKey],
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT bool_value FROM app_preferences WHERE key = ?",
+            arguments: [PinCodePreference.requireBiometricForSendKey],
+            database: database
+        ) == 1)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT bool_value FROM app_preferences WHERE key = ?",
+            arguments: [PinCodePreference.forgotPasscodeResetEnabledKey],
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT bool_value FROM app_preferences WHERE key = ?",
+            arguments: [PinCodePreference.forgotPasscodeResetEducationSeenKey],
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT string_value FROM app_preferences WHERE key = ?",
+            arguments: ["settingsDeepLink"],
+            database: database
+        ) == "")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT string_value FROM app_preferences WHERE key = ?",
+            arguments: [ActiveWalletPointer.storageKey],
+            database: database
+        ) == "")
+
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT theme_preference FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == "dark")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT currency_preference FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == "EUR")
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT haptic_feedback_enabled FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT background_balance_refresh FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT pin_enabled FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT biometric_enabled FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT require_biometric_for_send FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == 1)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT erase_data_after_failed_attempts FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == 0)
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT settings_deep_link FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == "")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT active_wallet_id FROM app_settings WHERE id = 'app-settings-singleton'",
+            database: database
+        ) == "")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT wallet_id FROM active_wallet WHERE id = 'active-wallet-singleton'",
+            database: database
+        ) == nil)
+    }
+
     @Test("large wallet home and activity projections are bounded SQL reads")
     func largeWalletProjectionsPageInSQL() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()

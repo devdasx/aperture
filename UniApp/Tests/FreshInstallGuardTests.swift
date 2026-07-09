@@ -5,8 +5,8 @@ import Security
 
 /// Smoke tests for `FreshInstallGuard`. The contract:
 ///
-/// 1. First call (marker absent) → wipe runs, marker set, returns `true`.
-/// 2. Second call (marker present) → wipe SKIPPED, returns `false`.
+/// 1. First call after test reset → wipe runs, install markers are recreated, returns `true`.
+/// 2. Second call with markers present → wipe SKIPPED, returns `false`.
 /// 3. After explicit `_resetMarkerForTesting()` → next call wipes again.
 ///
 /// These do not (and cannot) assert that Keychain is empty afterward
@@ -18,9 +18,9 @@ import Security
 /// already validated for two decades).
 struct FreshInstallGuardTests {
 
-    /// Each test starts with the marker reset so the FIRST call inside
-    /// the test sees a "fresh install" state regardless of how the
-    /// host process left things.
+    /// Each test starts with install markers reset so the FIRST call
+    /// inside the test sees a "fresh install" state regardless of how
+    /// the host process left things.
     init() {
         FreshInstallGuard._resetMarkerForTesting()
     }

@@ -2,35 +2,30 @@ import Foundation
 import Security
 import os.log
 
-/// Wipes every Keychain item this app owns on the **first launch after
-/// an install**.
+/// Wipes Aperture-owned legacy Keychain items on the **first launch after
+/// a true app reinstall**.
 ///
 /// **The problem this solves.** iOS Keychain items survive app
 /// deletion by default. A user who deletes Aperture and re-installs
 /// it from TestFlight / App Store / Xcode sees their previously
-/// stored wallet, PIN hash, biometric state, and seed manifest come
-/// back — because the SQLite database in the app sandbox got wiped
-/// (correct iOS behavior) but the Keychain entries that hold the
-/// encryption keys + manifest survived (also correct iOS behavior).
-/// Aperture's own contract per Rule #16 §A.5 — *"no servers, no
-/// accounts, your wallet only lives on this iPhone"* — is broken when
-/// "delete and re-install" doesn't actually reset the wallet.
+/// stored wallet/PIN from old Keychain-backed builds come back because
+/// the app sandbox got wiped while Keychain entries survived.
 ///
-/// **The fix.** The local GRDB store lives in the app sandbox and is
-/// deleted with the app. On launch, a missing local SQLite store means
-/// this process is the first launch of a fresh install, so we delete
-/// every Keychain item under our known service identifiers before any
-/// vault opens. Subsequent launches see the GRDB store and no-op.
+/// **The fix.** The current wallet store is GRDB in the app sandbox.
+/// The guard keeps a non-secret install marker in both the sandbox and
+/// Keychain. On normal upgrades both markers remain. On delete/reinstall
+/// the sandbox marker disappears while the Keychain marker survives, so
+/// we purge legacy Aperture Keychain services and reset any restored
+/// SQLite sidecars before GRDB opens. First launch of a pre-marker build
+/// with an existing database is adopted, not wiped.
 ///
 /// **Why this is safe.** The Keychain items we delete are all
 /// owned by Aperture (`com.thuglife.aperture.*` services). We do NOT
 /// touch Keychain items belonging to other apps; that's structurally
 /// impossible because iOS scopes Keychain by app entitlement. We do
-/// NOT touch iCloud-synced items because none of Aperture's writes
-/// use the `kSecAttrSynchronizable: true` attribute (verified in
-/// `SeedVault`, `MnemonicVault`, `PinCodeStorage`, and
-/// `WalletManifestStore` — all use the default per-device
-/// scoping).
+/// NOT touch iCloud-synced items because the purge only targets
+/// generic-password items in this app's access group with Aperture-owned
+/// service names.
 ///
 /// **Where this runs.** Synchronously from `UniAppApp.init()` BEFORE
 /// any other subsystem touches Keychain — before
@@ -44,27 +39,23 @@ enum FreshInstallGuard {
     nonisolated(unsafe) private static var ignoresExistingStoreForTesting = false
     #endif
 
+    private static let installMarkerFileName = ".aperture-install-marker-v1"
+    private static let installMarkerService = "com.thuglife.aperture.install-state"
+    private static let installMarkerAccount = "current-install"
+    private static let ownedServicePrefixes = [
+        "com.thuglife.aperture.",
+        "com.aperture."
+    ]
+
     /// Every Keychain `kSecAttrService` identifier Aperture writes
     /// under. Adding a new vault later requires adding its service
     /// string here so the fresh-install wipe covers it — a service
     /// missing from this list means wallets RESURRECT after a delete
     /// + reinstall, breaking the user's zero-data contract.
     ///
-    /// **Test-facing inventory (audited 2026-06-13).** Each entry
-    /// below mirrors the `static let` service constant in the file
-    /// named in its comment — those constants are `private`, so the
-    /// literal is duplicated here by design and the pairing is pinned
-    /// two ways:
-    ///
-    /// 1. `ResetCompletenessTests.freshInstallGuardCoversEveryKnownKeychainService`
-    ///    compares `knownServicesForAudit` against the expected set —
-    ///    a new vault that forgets this list fails the suite.
-    /// 2. The grep audit:
-    ///    `grep -rnE 'kSecAttrService as String:|com\.thuglife\.aperture\.' UniApp/Sources/`
-    ///    — every service literal in the codebase must appear here.
-    ///    As of 2026-06-13 the only files touching Keychain are
-    ///    `SeedVault`, `MnemonicVault`, `WalletManifestStore`,
-    ///    `PinCodeStorage`, and this guard.
+    /// Legacy service inventory. Current wallet/PIN material is stored
+    /// in GRDB, but these names are kept so delete/reinstall cannot
+    /// resurrect data from older Keychain-backed builds.
     private static let knownServices: [String] = [
         "com.thuglife.aperture.seed.cipher",       // SeedVault.cipherService — encrypted BIP-39 seeds
         "com.thuglife.aperture.seed.key",          // SeedVault.keyService — AES-GCM keys
@@ -83,20 +74,25 @@ enum FreshInstallGuard {
     /// (`ResetCompletenessTests`). Never used by production code.
     static var knownServicesForAudit: [String] { knownServices }
 
-    /// One-time destructive transition used by the GRDB replacement build.
-    /// It intentionally clears every Aperture-owned Keychain service even
-    /// when the app is not a fresh install, because the old GRDB store is
-    /// discarded instead of migrated.
-    static func purgeAllKnownKeychainServicesForDatabaseReplacement() {
+    /// One-time destructive transition used by database replacement and
+    /// reinstall cleanup. The install marker is intentionally excluded so
+    /// a successful first launch can still mark this install after purge.
+    @discardableResult
+    static func purgeAllKnownKeychainServicesForDatabaseReplacement() -> Int {
+        var deletedCount = 0
         for serviceName in knownServices {
             for secClass in serviceScopedClasses {
                 let query: [String: Any] = [
                     kSecClass as String: secClass,
                     kSecAttrService as String: serviceName,
                 ]
-                SecItemDelete(query as CFDictionary)
+                if SecItemDelete(query as CFDictionary) == errSecSuccess {
+                    deletedCount += 1
+                }
             }
         }
+        deletedCount += purgeUnknownOwnedGenericPasswordServices()
+        return deletedCount
     }
 
     /// Password classes Aperture writes today. All current vaults use
@@ -115,8 +111,7 @@ enum FreshInstallGuard {
     )
 
     /// Idempotent. Call once from `UniAppApp.init()`. Returns `true`
-    /// iff a wipe actually ran (i.e. this WAS a fresh install) — so
-    /// callers can log + smoke-test if needed.
+    /// iff a destructive legacy-Keychain wipe actually ran.
     @discardableResult
     static func purgeKeychainIfFreshInstall() -> Bool {
         #if DEBUG
@@ -124,39 +119,25 @@ enum FreshInstallGuard {
         #else
         let shouldRespectExistingStore = true
         #endif
-        if shouldRespectExistingStore, hasExistingLocalStore() {
-            // An existing GRDB store means this is not a fresh install.
-            // Purging Keychain here would orphan encrypted WalletSecretRecord
-            // rows from the master key that opens them.
+        let hasStore = shouldRespectExistingStore && hasExistingLocalStore()
+        let hasContainerMarker = hasContainerInstallMarker()
+        let hasSurvivingKeychainMarker = hasKeychainInstallMarker()
+        let isReinstallAfterMarkedBuild = hasSurvivingKeychainMarker && !hasContainerMarker
+        let isFirstLaunchWithoutStore = !hasStore && !hasContainerMarker
+        let shouldWipe = isReinstallAfterMarkedBuild || isFirstLaunchWithoutStore
+
+        guard shouldWipe else {
+            ensureCurrentInstallMarkers()
             return false
         }
 
-        log.log("Fresh install detected — purging Keychain items for \(knownServices.count, privacy: .public) known services")
-
-        var deletedCount = 0
-
-        // 1) Password items — deleted PRECISELY, one query per (service, class).
-        //    Only password classes accept the `kSecAttrService` match attribute.
-        for serviceName in knownServices {
-            for secClass in serviceScopedClasses {
-                let query: [String: Any] = [
-                    kSecClass as String: secClass,
-                    kSecAttrService as String: serviceName,
-                ]
-                let status = SecItemDelete(query as CFDictionary)
-                switch status {
-                case errSecSuccess:
-                    deletedCount += 1
-                    log.log("Deleted Keychain items for service \(serviceName, privacy: .public)")
-                case errSecItemNotFound:
-                    // Nothing stored for this (service, class) — fine.
-                    break
-                default:
-                    // Best-effort: a single failure shouldn't block the rest.
-                    log.error("SecItemDelete failed for service \(serviceName, privacy: .public): OSStatus \(status, privacy: .public)")
-                }
-            }
+        if isReinstallAfterMarkedBuild {
+            try? AppDatabase.resetStoreFiles()
         }
+
+        log.log("Fresh install detected — purging Aperture-owned Keychain items")
+        let deletedCount = purgeAllKnownKeychainServicesForDatabaseReplacement()
+        ensureCurrentInstallMarkers()
 
         #if DEBUG
         ignoresExistingStoreForTesting = false
@@ -187,12 +168,115 @@ enum FreshInstallGuard {
             || fm.fileExists(atPath: store.path + "-shm")
     }
 
+    private static func hasContainerInstallMarker() -> Bool {
+        guard let marker = installMarkerURL(createDirectory: false) else { return false }
+        return FileManager.default.fileExists(atPath: marker.path)
+    }
+
+    private static func ensureCurrentInstallMarkers() {
+        if let marker = installMarkerURL(createDirectory: true) {
+            _ = FileManager.default.createFile(atPath: marker.path, contents: Data(), attributes: nil)
+        }
+        ensureKeychainInstallMarker()
+    }
+
+    private static func installMarkerURL(createDirectory: Bool) -> URL? {
+        let fm = FileManager.default
+        guard let appSupport = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: createDirectory
+        ) else { return nil }
+        let directory = appSupport.appendingPathComponent("Aperture", isDirectory: true)
+        if createDirectory {
+            try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        return directory.appendingPathComponent(installMarkerFileName, isDirectory: false)
+    }
+
+    private static func hasKeychainInstallMarker() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: installMarkerService,
+            kSecAttrAccount as String: installMarkerAccount,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
+    private static func ensureKeychainInstallMarker() {
+        guard !hasKeychainInstallMarker() else { return }
+        let payload = UUID().uuidString.data(using: .utf8) ?? Data()
+        let addQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: installMarkerService,
+            kSecAttrAccount as String: installMarkerAccount,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecValueData as String: payload
+        ]
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let match: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: installMarkerService,
+                kSecAttrAccount as String: installMarkerAccount
+            ]
+            let update: [String: Any] = [
+                kSecValueData as String: payload
+            ]
+            _ = SecItemUpdate(match as CFDictionary, update as CFDictionary)
+        } else if status != errSecSuccess {
+            log.error("Install marker Keychain write failed: OSStatus \(status, privacy: .public)")
+        }
+    }
+
+    private static func purgeUnknownOwnedGenericPasswordServices() -> Int {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let rows = result as? [[String: Any]] else {
+            return 0
+        }
+
+        var deletedServices = Set<String>()
+        for row in rows {
+            guard let service = row[kSecAttrService as String] as? String,
+                  service != installMarkerService,
+                  ownedServicePrefixes.contains(where: { service.hasPrefix($0) }),
+                  !deletedServices.contains(service)
+            else { continue }
+
+            let deleteQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service
+            ]
+            if SecItemDelete(deleteQuery as CFDictionary) == errSecSuccess {
+                deletedServices.insert(service)
+            }
+        }
+        return deletedServices.count
+    }
+
     /// Test-only. Resets the marker so a subsequent
     /// `purgeKeychainIfFreshInstall()` call performs the wipe. Used
     /// by the smoke test below in DEBUG builds.
     #if DEBUG
     static func _resetMarkerForTesting() {
         ignoresExistingStoreForTesting = true
+        if let marker = installMarkerURL(createDirectory: false) {
+            try? FileManager.default.removeItem(at: marker)
+        }
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: installMarkerService,
+            kSecAttrAccount as String: installMarkerAccount
+        ]
+        _ = SecItemDelete(deleteQuery as CFDictionary)
     }
     #endif
 }

@@ -105,6 +105,46 @@ struct GRDBWalletFlowPersistenceTests {
         #expect(snapshotWallets.map(\.id).contains(walletID))
     }
 
+    @Test("wallet repository backfills missing encrypted chain keys from stored mnemonic")
+    func encryptedChainKeyBackfillRestoresMissingBlobs() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { cleanup(database: database) }
+        ActiveWalletPointer.configure(database: database)
+
+        let state = ImportWalletState()
+        state.mnemonicWords = mnemonic
+        let walletID = try await state.persist(
+            result: .mnemonic,
+            into: WalletCommandRepository(database: database),
+            defaultName: "Backfill Wallet"
+        )
+
+        try database.write { db in
+            try db.execute(
+                sql: """
+                UPDATE chain_states
+                SET encrypted_private_key = NULL,
+                    key_encryption_scheme = NULL
+                WHERE wallet_id = ?
+                """,
+                arguments: [walletID.uuidString]
+            )
+        }
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT COUNT(*) FROM chain_states WHERE wallet_id = ? AND encrypted_private_key IS NOT NULL",
+            arguments: [walletID.uuidString],
+            database: database
+        ) == 0)
+
+        try WalletRepository(database: database).backfillEncryptedChainKeysFromStoredSecrets()
+
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT COUNT(*) FROM chain_states WHERE wallet_id = ? AND encrypted_private_key IS NOT NULL",
+            arguments: [walletID.uuidString],
+            database: database
+        ) > 0)
+    }
+
     @Test("watch-only import state persists address-only wallet without key material")
     func watchOnlyImportStatePersists() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
