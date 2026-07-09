@@ -40,6 +40,14 @@ struct CustomTokensListView: View {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
+    private var availableChains: [SupportedChain] {
+        guard let wallet = activeWallet else { return [] }
+        let walletChains = Set(wallet.addresses.compactMap { address in
+            SupportedChain(rawValue: address.chainRaw)
+        })
+        return SupportedChain.allCases.filter { walletChains.contains($0) }
+    }
+
     /// `(chainRaw)|(contract.lowercased())` → held token balance for the
     /// active wallet. Same case-insensitive key the home uses, so a custom
     /// token's pasted contract matches the scanned balance regardless of
@@ -101,6 +109,7 @@ struct CustomTokensListView: View {
         .sheet(isPresented: $isShowingAddSheet) {
             AddCustomTokenSheet(
                 initialChain: initialChainForAdd,
+                availableChains: availableChains,
                 onSaved: {}
             )
             .uniAppEnvironment()

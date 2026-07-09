@@ -2,10 +2,10 @@ import Foundation
 
 enum CustomTokenSupport {
     static let chains: [SupportedChain] = [
-        .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-        .polygon, .bnbChain, .opBNB, .avalanche, .celo,
         .solana,
         .tron,
+        .ethereum, .bnbChain, .base, .arbitrum, .polygon,
+        .optimism, .avalanche, .zkSync, .scroll, .celo, .opBNB,
     ]
 
     static func supports(_ chain: SupportedChain) -> Bool {
@@ -13,12 +13,9 @@ enum CustomTokenSupport {
     }
 
     static func preferredInitialChain(availableChains: [SupportedChain]) -> SupportedChain {
-        for chain in availableChains where chain.family == .evm {
-            return chain
-        }
         if availableChains.contains(.solana) { return .solana }
         if availableChains.contains(.tron) { return .tron }
-        return .ethereum
+        return orderedChains(availableChains: availableChains).first ?? .solana
     }
 
     static func hasSupportedChain(in availableChains: [SupportedChain]) -> Bool {
@@ -26,7 +23,13 @@ enum CustomTokenSupport {
     }
 
     static func normalizedInitialChain(_ chain: SupportedChain?) -> SupportedChain {
-        guard let chain, supports(chain) else { return .ethereum }
+        guard let chain, supports(chain) else { return .solana }
         return chain
+    }
+
+    static func orderedChains(availableChains: [SupportedChain]) -> [SupportedChain] {
+        let available = Set(availableChains)
+        guard !available.isEmpty else { return chains }
+        return chains.filter { available.contains($0) }
     }
 }

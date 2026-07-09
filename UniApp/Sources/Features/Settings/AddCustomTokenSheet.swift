@@ -15,8 +15,9 @@ import SwiftUI
 /// row, not a form.
 ///
 /// **Phases.**
-/// - `.entry` — chain Picker + contract `UniTextField`. Save disabled
-///   until the validator says `.valid`.
+/// - `.networkSelection` — Receive-style supported-network picker.
+/// - `.entry` — contract `UniTextField`. Save disabled until the
+///   validator says `.valid`.
 /// - `.fetching` — calm spinner + "Fetching token info…". Auto-fired
 ///   when the contract leaves `.valid` shape.
 /// - `.preview(...)` — `UniCard` with icon + symbol + name + contract
@@ -37,15 +38,18 @@ import SwiftUI
 /// hidden behind a disclosure.
 struct AddCustomTokenSheet: View {
     /// Chain pre-selected by the call site (e.g. wallet's currently
-    /// displayed chain on Receive). `nil` means the picker starts on
-    /// `.ethereum` — the safe default since most user-added tokens
-    /// are ERC-20.
+    /// displayed chain on Receive). The sheet still starts on the
+    /// network picker; this value only chooses the first contract-entry
+    /// network when a caller has a strong context.
     let initialChain: SupportedChain?
+    let availableChains: [SupportedChain]
     let onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedChain: SupportedChain
+    @State private var step: Step = .networkSelection
+    @State private var networkSearchText: String = ""
     @State private var contractInput: String = ""
     @State private var phase: Phase = .entry
     @State private var editedName: String = ""
@@ -53,48 +57,60 @@ struct AddCustomTokenSheet: View {
     @State private var validatedContract: String? = nil
     @State private var fetchTask: Task<Void, Never>? = nil
 
-    init(initialChain: SupportedChain? = nil, onSaved: @escaping () -> Void) {
+    init(
+        initialChain: SupportedChain? = nil,
+        availableChains: [SupportedChain] = [],
+        onSaved: @escaping () -> Void
+    ) {
         self.initialChain = initialChain
+        self.availableChains = availableChains
         self.onSaved = onSaved
-        _selectedChain = State(initialValue: CustomTokenSupport.normalizedInitialChain(initialChain))
+
+        let choices = CustomTokenSupport.orderedChains(availableChains: availableChains)
+        let normalizedInitial = CustomTokenSupport.normalizedInitialChain(initialChain)
+        let selected = choices.contains(normalizedInitial)
+            ? normalizedInitial
+            : (choices.first ?? normalizedInitial)
+        _selectedChain = State(initialValue: selected)
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: UniSpacing.l) {
-                    chainAndContractSection
-
-                    switch phase {
-                    case .entry:
-                        guidanceSection
-                    case .fetching:
-                        fetchingSection
-                    case .preview(let result):
-                        previewSection(result: result)
-                    case .failed(let reason):
-                        failedSection(reason: reason)
-                    }
-
-                    honestyFooter
+            Group {
+                switch step {
+                case .networkSelection:
+                    networkSelectionScreen
+                case .contractEntry:
+                    contractEntryScreen
                 }
-                .padding(.horizontal, UniSpacing.m)
-                .padding(.vertical, UniSpacing.l)
             }
-            .scrollContentBackground(.hidden)
             .background(UniColors.Background.primary)
-            .navigationTitle("Add custom token")
+            .navigationTitle(step.navigationTitle(selectedChain: selectedChain))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        fetchTask?.cancel()
-                        dismiss()
+                    switch step {
+                    case .networkSelection:
+                        Button("Cancel") {
+                            fetchTask?.cancel()
+                            dismiss()
+                        }
+                            .tint(UniColors.Button.text)
+                    case .contractEntry:
+                        Button {
+                            fetchTask?.cancel()
+                            phase = .entry
+                            validatedContract = nil
+                            step = .networkSelection
+                        } label: {
+                            Label("Networks", systemImage: "chevron.left")
+                                .labelStyle(.titleAndIcon)
+                        }
+                            .tint(UniColors.Button.text)
                     }
-                        .tint(UniColors.Button.text)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    if case .preview = phase {
+                    if step == .contractEntry, case .preview = phase {
                         Button("Save") { save() }.tint(UniColors.Button.text)
                             .fontWeight(.semibold)
                             .disabled(!canSave)
@@ -114,10 +130,93 @@ struct AddCustomTokenSheet: View {
     // MARK: - Sections
 
     @ViewBuilder
-    private var chainAndContractSection: some View {
+    private var networkSelectionScreen: some View {
+        List {
+            if filteredNetworkChoices.isEmpty {
+                Section {
+                    UniListEmptyState(
+                        title: networkEmptyTitle,
+                        detail: networkEmptyDetail,
+                        mark: .icon(systemName: "network.slash"),
+                        minHeight: 300
+                    )
+                }
+            } else {
+                Section {
+                    ForEach(filteredNetworkChoices, id: \.self) { chain in
+                        Button {
+                            selectNetwork(chain)
+                        } label: {
+                            AssetPickerNetworkRow(
+                                chain: chain,
+                                subtitle: networkSubtitle(for: chain),
+                                totals: AssetPickerHoldings.Totals(),
+                                currencyCode: CurrencyPreference.defaultCode
+                            )
+                        }
+                        .buttonStyle(.uniListRow)
+                        .listRowBackground(UniColors.List.rowBackground)
+                        .accessibilityLabel(Text(verbatim: chain.displayName))
+                        .accessibilityHint(Text("Add a custom token on \(chain.displayName)"))
+                    }
+                } footer: {
+                    UniFootnote(
+                        text: "Choose the network where the token contract exists. Aperture will ask for that network's contract or mint address next.",
+                        color: UniColors.Text.tertiary
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, UniSpacing.xs)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .searchable(text: $networkSearchText, prompt: Text("Search"))
+    }
+
+    private var networkEmptyTitle: LocalizedStringKey {
+        let query = networkSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty ? "No supported networks." : "No networks match your search."
+    }
+
+    private var networkEmptyDetail: LocalizedStringKey {
+        let query = networkSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return "This wallet does not have a Solana, TRON, or EVM receive address available for custom tokens."
+        }
+        return "Try Solana, TRON, Ethereum, Base, Arbitrum, or another supported EVM network."
+    }
+
+    @ViewBuilder
+    private var contractEntryScreen: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: UniSpacing.l) {
+                contractSection
+
+                switch phase {
+                case .entry:
+                    guidanceSection
+                case .fetching:
+                    fetchingSection
+                case .preview(let result):
+                    previewSection(result: result)
+                case .failed(let reason):
+                    failedSection(reason: reason)
+                }
+
+                honestyFooter
+            }
+            .padding(.horizontal, UniSpacing.m)
+            .padding(.vertical, UniSpacing.l)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    @ViewBuilder
+    private var contractSection: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
             UniCaption(text: "Network", color: UniColors.Text.tertiary)
-            chainPicker
+            selectedNetworkSummary
 
             UniCaption(
                 text: contractFieldLabel,
@@ -136,26 +235,22 @@ struct AddCustomTokenSheet: View {
     }
 
     @ViewBuilder
-    private var chainPicker: some View {
-        Menu {
-            ForEach(CustomTokenSupport.chains, id: \.self) { chain in
-                Button {
-                    selectedChain = chain
-                } label: {
-                    if chain == selectedChain {
-                        Label(chain.displayName, systemImage: "checkmark")
-                    } else {
-                        Text(chain.displayName)
-                    }
-                }
-            }
+    private var selectedNetworkSummary: some View {
+        Button {
+            fetchTask?.cancel()
+            phase = .entry
+            validatedContract = nil
+            step = .networkSelection
         } label: {
             HStack {
+                CoinMark(chain: selectedChain, tokenSymbol: selectedChain.ticker)
+                    .frame(width: 32, height: 32)
+                    .accessibilityHidden(true)
                 Text(verbatim: selectedChain.displayName)
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer()
-                Image(systemName: "chevron.up.chevron.down")
+                Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(UniColors.Icon.tertiary)
             }
@@ -341,7 +436,43 @@ struct AddCustomTokenSheet: View {
         }
     }
 
+    private var networkChoices: [SupportedChain] {
+        CustomTokenSupport.orderedChains(availableChains: availableChains)
+    }
+
+    private var filteredNetworkChoices: [SupportedChain] {
+        let query = networkSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return networkChoices }
+        return networkChoices.filter {
+            $0.displayName.localizedStandardContains(query) || $0.ticker.localizedStandardContains(query)
+        }
+    }
+
+    private func networkSubtitle(for chain: SupportedChain) -> LocalizedStringKey {
+        switch chain {
+        case .solana:
+            return "Add an SPL token"
+        case .tron:
+            return "Add a TRC-20 token"
+        default:
+            return "Add an ERC-20 token"
+        }
+    }
+
     // MARK: - Actions
+
+    private func selectNetwork(_ chain: SupportedChain) {
+        fetchTask?.cancel()
+        let changedNetwork = chain != selectedChain
+        selectedChain = chain
+        networkSearchText = ""
+        if changedNetwork {
+            contractInput = ""
+        }
+        phase = .entry
+        validatedContract = nil
+        step = .contractEntry
+    }
 
     private func scheduleFetch() {
         // Cancel any in-flight fetch — the user changed something.
@@ -517,6 +648,20 @@ struct AddCustomTokenSheet: View {
 // MARK: - Phase
 
 extension AddCustomTokenSheet {
+    enum Step: Equatable {
+        case networkSelection
+        case contractEntry
+
+        func navigationTitle(selectedChain: SupportedChain) -> LocalizedStringKey {
+            switch self {
+            case .networkSelection:
+                return "Choose network"
+            case .contractEntry:
+                return "Add on \(selectedChain.displayName)"
+            }
+        }
+    }
+
     enum Phase: Equatable {
         case entry
         case fetching

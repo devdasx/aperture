@@ -13,7 +13,17 @@ struct CustomTokenSupportTests {
         #expect(CustomTokenSupport.supports(.tron))
         #expect(!CustomTokenSupport.supports(.bitcoin))
         #expect(CustomTokenSupport.preferredInitialChain(availableChains: [.bitcoin, .tron]) == .tron)
-        #expect(CustomTokenSupport.preferredInitialChain(availableChains: [.tron, .ethereum]) == .ethereum)
+        #expect(CustomTokenSupport.preferredInitialChain(availableChains: [.tron, .ethereum]) == .tron)
+        #expect(CustomTokenSupport.preferredInitialChain(availableChains: [.ethereum, .solana]) == .solana)
+    }
+
+    @Test("Custom token support orders networks for the add-token picker")
+    func customTokenSupportOrdersNetworksForAddPicker() {
+        let scoped = CustomTokenSupport.orderedChains(availableChains: [
+            .polygon, .bitcoin, .tron, .ethereum, .solana, .base, .avalanche
+        ])
+        #expect(scoped == [.solana, .tron, .ethereum, .base, .polygon, .avalanche])
+        #expect(Array(CustomTokenSupport.chains.prefix(3)) == [.solana, .tron, .ethereum])
     }
 
     @Test("TRON contract validation accepts Base58Check and 41-prefixed hex")

@@ -140,6 +140,7 @@ struct ReceiveView: View {
             .sheet(isPresented: $isShowingAddCustomToken) {
                 AddCustomTokenSheet(
                     initialChain: firstSupportedCustomTokenChain,
+                    availableChains: availableChains,
                     onSaved: {}
                 )
                 .uniAppEnvironment()
