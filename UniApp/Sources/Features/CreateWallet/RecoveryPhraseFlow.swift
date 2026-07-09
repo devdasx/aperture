@@ -12,8 +12,8 @@ enum RecoveryPhraseDestination: Hashable, Codable {
     /// no longer used by the current flow. Kept so any cached
     /// `NavigationPath` from a prior session doesn't crash on decode.
     case biometric
-    /// Terminal success screen. Persists the generated wallet, then hands
-    /// the user back to the app.
+    /// Terminal persistence handoff. Persists the generated wallet, then
+    /// hands the user back to the app.
     case walletReady
 }
 
@@ -38,7 +38,7 @@ struct RecoveryPhraseFlow: View {
     @Binding var navigationPath: NavigationPath
 
     /// Fires when the user dismisses the entire flow — close button on the
-    /// root screen, or "Done" on `WalletReadyView`.
+    /// root screen, or successful persistence in `WalletReadyView`.
     let onDismiss: () -> Void
 
     /// Set after the user leaves the recovery phrase without completing a
@@ -85,6 +85,7 @@ struct RecoveryPhraseFlow: View {
                         requiresBackup: true,
                         manualBackup: false
                     ) {
+                        WalletCompletionNoticeCenter.enqueue(.created)
                         onUserContinuedWithoutVerifiedBackup()
                         ScreenRestoration.routeToMainScreenNow()
                         onDismiss()

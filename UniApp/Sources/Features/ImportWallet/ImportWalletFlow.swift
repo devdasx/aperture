@@ -14,10 +14,6 @@ enum ImportDestination: Hashable, Codable, Identifiable {
     case watchOnlyChainPicker
     case watchOnlyEntry(SupportedChain)
     case watchOnlyReview(SupportedChain)
-    /// Terminal success step — pushed after a successful commit, carrying
-    /// the persisted wallet id + what was imported so the success screen
-    /// can render the right variant and read the wallet's real networks.
-    case success(walletId: UUID, result: ImportResult)
 
     var id: Self { self }
 }
@@ -81,13 +77,11 @@ struct ImportWalletFlow: View {
                     )
                 case .iCloudRestore:
                     // Restore reuses the canonical mnemonic-import path
-                    // internally, then routes to the shared success screen.
+                    // internally, then dismisses to the main wallet shell.
                     ICloudRestoreView(
                         state: state,
-                        onImported: { walletId in
-                            navigationPath.append(
-                                ImportDestination.success(walletId: walletId, result: .mnemonic)
-                            )
+                        onImported: { _ in
+                            finishImport(.mnemonic)
                         }
                     )
                 case .keyChainPicker:
@@ -134,15 +128,6 @@ struct ImportWalletFlow: View {
                             persistThen(.watchOnly(chain))
                         }
                     )
-                case .success(let walletId, let result):
-                    ImportSuccessView(
-                        walletId: walletId,
-                        result: result,
-                        onContinue: {
-                            ScreenRestoration.routeToMainScreenNow()
-                            onCompleted(result)
-                        }
-                    )
                 }
             }
         }
@@ -169,17 +154,12 @@ struct ImportWalletFlow: View {
         Task { @MainActor in
             defer { isCommitting = false }
             do {
-                let walletId = try await state.persist(result: result, into: repository)
+                _ = try await state.persist(result: result, into: repository)
                 // Seed / key bytes are now encrypted in GRDB —
                 // the plaintext inputs have no reason to outlive the
                 // flow.
                 state.zeroSensitiveInput()
-                // Show the success screen as the terminal step instead of
-                // dismissing straight onto the wallet; its "Continue to
-                // wallet" CTA fires `onCompleted`, dismissing the cover.
-                navigationPath.append(
-                    ImportDestination.success(walletId: walletId, result: result)
-                )
+                finishImport(result)
             } catch {
                 Self.log.error(
                     "Wallet import persist failed: \(String(describing: error), privacy: .public)"
@@ -197,6 +177,12 @@ struct ImportWalletFlow: View {
                 )
             }
         }
+    }
+
+    private func finishImport(_ result: ImportResult) {
+        WalletCompletionNoticeCenter.enqueue(.imported)
+        ScreenRestoration.routeToMainScreenNow()
+        onCompleted(result)
     }
 }
 

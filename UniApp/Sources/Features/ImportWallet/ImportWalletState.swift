@@ -221,9 +221,9 @@ final class ImportWalletState {
         // The wallet is fully persisted — make it the active wallet
         // immediately. Same contract as `CreateWalletState.persist`:
         // anything that successfully runs through here becomes the
-        // active wallet so the user lands on it after the import
-        // success screen and the refresh coordinator starts pulling
-        // its balances. Read by every screen via the
+        // active wallet so the user lands on it after the import flow
+        // dismisses and the refresh coordinator starts pulling its
+        // balances. Read by every screen via the
         // `"activeWalletId"` `@GRDBStorage` key.
         ActiveWalletPointer.set(walletId)
         return walletId

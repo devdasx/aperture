@@ -32,11 +32,11 @@ struct RootGate: View {
     @StateObject private var walletList = WalletListObservation()
 
     /// Keeps onboarding mounted while a create/import flow's full-screen
-    /// cover is up — so the success screen (`WalletReadyView`), which now
-    /// persists the wallet on appear and thus flips `wallets` non-empty,
-    /// isn't torn down by this gate before the user taps Done (2026-06-20
-    /// fix). Session-only `@State`: a force-quit mid-flow resets it, so it
-    /// can never strand a real wallet on the onboarding slides.
+    /// cover is up — so `WalletReadyView`, which persists the wallet on
+    /// appear and thus flips `wallets` non-empty, isn't torn down by this
+    /// gate before the flow dismisses itself (2026-06-20 fix).
+    /// Session-only `@State`: a force-quit mid-flow resets it, so it can
+    /// never strand a real wallet on the onboarding slides.
     @State private var onboardingFlowActive = false
 
     var body: some View {

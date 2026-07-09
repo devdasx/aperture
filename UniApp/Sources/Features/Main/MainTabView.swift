@@ -115,6 +115,9 @@ struct MainTabView: View {
     @State private var isShowingImport: Bool = false
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
+    @AppStorage(WalletCompletionNoticeCenter.storageKey) private var walletCompletionNoticeRaw: String = ""
+    @State private var walletCompletionNotice: WalletCompletionNoticeKind?
+    @State private var walletCompletionNoticeTask: Task<Void, Never>?
 
     /// Computed binding that round-trips the persisted raw through
     /// the `MainTab` enum. Unknown rawValues (manual GRDB edits or
@@ -230,6 +233,37 @@ struct MainTabView: View {
                 .uniAppEnvironment()
                 .presentationBackground(UniColors.Background.primary)
             }
+            .sheet(item: $walletCompletionNotice) { notice in
+                WalletCompletionNoticeSheet(notice: notice) {
+                    walletCompletionNotice = nil
+                }
+                .uniAppEnvironment()
+                .intrinsicHeightSheet()
+                .presentationBackground(UniColors.Background.primary)
+            }
+            .onAppear {
+                scheduleWalletCompletionNoticeIfNeeded()
+            }
+            .onChange(of: walletCompletionNoticeRaw) { _, _ in
+                scheduleWalletCompletionNoticeIfNeeded()
+            }
+    }
+
+    private func scheduleWalletCompletionNoticeIfNeeded() {
+        walletCompletionNoticeTask?.cancel()
+        guard !walletCompletionNoticeRaw.isEmpty else { return }
+        walletCompletionNoticeTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            guard walletCompletionNotice == nil else { return }
+            guard let notice = WalletCompletionNoticeKind(rawValue: walletCompletionNoticeRaw) else {
+                walletCompletionNoticeRaw = ""
+                return
+            }
+            walletCompletionNoticeRaw = ""
+            walletCompletionNotice = notice
+            UniHapticEngine.shared.play(.successQuiet)
+        }
     }
 
     @ViewBuilder
@@ -553,6 +587,66 @@ enum MainTab: String, Hashable, CaseIterable {
         case .activity: return .orange
         case .markets:  return .green
         case .settings: return .gray
+        }
+    }
+}
+
+enum WalletCompletionNoticeKind: String, Identifiable {
+    case created
+    case imported
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .created:  return "Wallet created"
+        case .imported: return "Wallet imported"
+        }
+    }
+
+    var message: LocalizedStringKey {
+        switch self {
+        case .created:
+            return "Your wallet was created successfully and is ready to use."
+        case .imported:
+            return "Your wallet was imported successfully and is ready to use."
+        }
+    }
+}
+
+enum WalletCompletionNoticeCenter {
+    static let storageKey = "pendingWalletCompletionNotice"
+
+    static func enqueue(_ notice: WalletCompletionNoticeKind) {
+        UserDefaults.standard.set(notice.rawValue, forKey: storageKey)
+    }
+}
+
+private struct WalletCompletionNoticeSheet: View {
+    let notice: WalletCompletionNoticeKind
+    let onDone: () -> Void
+
+    var body: some View {
+        UniSheet(title: notice.title) {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 48, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(UniColors.Feedback.Success.foreground)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
+
+                UniBody(
+                    text: notice.message,
+                    alignment: .center,
+                    color: UniColors.Text.secondary
+                )
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, UniSpacing.s)
+        } actions: {
+            UniButton(title: "Done", variant: .primary, action: onDone)
         }
     }
 }

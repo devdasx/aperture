@@ -12,12 +12,12 @@ import UIKit
 /// so a restored wallet is indistinguishable from a freshly imported one.
 ///
 /// Reached from the Import Wallet chooser (and therefore from Onboarding +
-/// every add-wallet entry point). On success it pushes the shared
-/// `ImportSuccessView` via the parent's navigation.
+/// every add-wallet entry point). On success it hands control back to the
+/// parent flow, which dismisses to the main wallet shell.
 struct ICloudRestoreView: View {
     let state: ImportWalletState
     /// Called with the new wallet id after a successful import; the parent
-    /// routes to the success screen.
+    /// dismisses to the main wallet shell.
     let onImported: (UUID) -> Void
 
     @Environment(\.openURL) private var openURL

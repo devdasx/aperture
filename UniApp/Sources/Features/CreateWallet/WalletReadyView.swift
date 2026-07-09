@@ -1,19 +1,18 @@
 import SwiftUI
 import OSLog
 
-/// Terminal placeholder for the create-wallet flow, pushed onto the
-/// cover's `NavigationStack` after `BackupVerifyView` succeeds.
+/// Terminal persistence handoff for the create-wallet flow, pushed onto the
+/// cover's `NavigationStack` after the recovery phrase and security steps.
 ///
-/// **Intent (one sentence):** quietly acknowledge that the wallet exists
-/// and hand the user back to the app, without theatre.
+/// **Intent (one sentence):** save the wallet, then hand the user back to
+/// the app where the confirmation sheet is shown.
 ///
 /// **What changed 2026-06-06.** This screen is now also the moment the
 /// wallet is **persisted to the local database**. On appear, the view
 /// runs `state.persist(into:requiresBackup:)` which encrypts and stores
 /// the BIP-39 seed, mnemonic, and wallet rows via GRDB. The Done button is disabled until persistence
-/// resolves so the user cannot dismiss with an unpersisted wallet. On
-/// failure, the view surfaces an error footnote with a Retry button
-/// rather than silently swallowing.
+/// resolves before the cover is dismissed. On failure, the view surfaces
+/// an error footnote with a Retry button rather than silently swallowing.
 ///
 /// **No back navigation.** The verify step is final — once the user has
 /// proven the phrase, they should land on the next surface, not be
@@ -22,7 +21,7 @@ import OSLog
 struct WalletReadyView: View {
     /// Shared mnemonic + passphrase state — same instance the cover
     /// has been threading through every screen. Needed here to call
-    /// `state.persist(...)` once the user lands on the success screen.
+    /// `state.persist(...)` once the user lands on this handoff screen.
     let state: CreateWalletState
 
     /// Set when the user reached this screen via the skip-backup
@@ -39,8 +38,8 @@ struct WalletReadyView: View {
     /// backup or skip → manual not done).
     var manualBackup: Bool = false
 
-    /// Fires when the user taps Done. The caller dismisses the
-    /// `fullScreenCover` and clears the unbacked-up flag.
+    /// Fires after persistence succeeds. The caller dismisses the
+    /// `fullScreenCover` and lets the main shell show the completion sheet.
     let onDone: () -> Void
 
     private enum PersistState: Equatable {
@@ -51,6 +50,7 @@ struct WalletReadyView: View {
     }
     @State private var persistState: PersistState = .idle
     @State private var persistErrorReport: ApertureErrorReport?
+    @State private var didComplete: Bool = false
 
     /// The in-flight persist task. Stored so Retry can cancel any
     /// previous launch before spawning a new one — two concurrent
@@ -67,25 +67,22 @@ struct WalletReadyView: View {
             if case .failed(let message) = persistState {
                 failureView(message)
             } else {
-                // The SAME success screen as import (2026-06-20 user
-                // direction), shown immediately — the wallet persists silently
-                // in the background, so there is no "Saving your wallet…"
-                // state. The card fills in from the screen's own GRDB observation as
-                // the save lands; the CTA is gated until then so the user can
-                // never leave onto a not-yet-saved wallet. The seal animation +
-                // haptics are ImportSuccessView's, so create matches import.
-                ImportSuccessView(
-                    walletId: state.pendingWalletId,
-                    result: .mnemonic,
-                    onContinue: onDone,
-                    isCreated: true,
-                    isContinueEnabled: persistState == .persisted
-                )
+                savingView
             }
         }
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { persistIfNeeded() }
+    }
+
+    private var savingView: some View {
+        ZStack {
+            UniColors.Background.primary.ignoresSafeArea()
+            ProgressView()
+                .controlSize(.large)
+                .tint(UniColors.Text.primary)
+                .accessibilityLabel(Text("Saving wallet"))
+        }
     }
 
     /// Honest failure surface — shown ONLY if the background persist actually
@@ -156,10 +153,9 @@ struct WalletReadyView: View {
                 )
                 persistState = .persisted
                 // The seed + encrypted mnemonic are in GRDB — wipe the
-                // plaintext secrets before the user moves on. (The success
-                // seal + its haptic are ImportSuccessView's, fired on appear,
-                // so create matches import exactly.)
+                // plaintext secrets before the user moves on.
                 state.zeroSensitiveState()
+                finishIfNeeded()
             } catch {
                 Self.log.error(
                     "Create-wallet persist failed: \(String(describing: error), privacy: .public)"
@@ -180,6 +176,12 @@ struct WalletReadyView: View {
                 persistState = .failed(message)
             }
         }
+    }
+
+    private func finishIfNeeded() {
+        guard !didComplete else { return }
+        didComplete = true
+        onDone()
     }
 
     /// Turn the real persist error into an honest, diagnosable message.

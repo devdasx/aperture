@@ -106,9 +106,9 @@ struct OnboardingView: View {
     let phase: AppPhase
     /// Owned by `RootGate` — mirrors "a create/import flow is presented" so
     /// the gate keeps onboarding mounted through the flow (the wallet is
-    /// persisted on the success screen, which would otherwise flip the gate
-    /// to the main tabs and tear the cover down mid-flow). Kept in sync with
-    /// `activeFlow` (2026-06-20 fix).
+    /// persisted in the final handoff step, which would otherwise flip the
+    /// gate to the main tabs and tear the cover down mid-flow). Kept in sync
+    /// with `activeFlow` (2026-06-20 fix).
     @Binding var flowActive: Bool
 
     /// `true` once the splash has begun dissolving — drives the fade-in
@@ -253,9 +253,9 @@ struct OnboardingView: View {
         }
         // Mirror "a flow is presented" up to `RootGate` so it keeps
         // onboarding mounted until the flow finishes — otherwise persisting
-        // the new wallet on the success screen flips the gate to the main
-        // tabs and tears this cover down before the user taps Done
-        // (2026-06-20 fix). Syncs immediately, so finishing the flow
+        // the new wallet in the final handoff step flips the gate to the main
+        // tabs and tears this cover down before the flow can dismiss itself.
+        // Syncs immediately, so finishing the flow
         // (`activeFlow = nil`) lets the gate cut straight to the wallet.
         .onChange(of: activeFlow) { _, flow in
             flowActive = (flow != nil)
