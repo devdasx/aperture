@@ -15,6 +15,35 @@ enum PortfolioPnLState: String, Sendable, Equatable {
     case unavailable
 }
 
+enum PortfolioFlowClassification: String, Sendable, Equatable {
+    case externalIncoming
+    case externalOutgoing
+    case internalTransfer
+    case swap
+    case ambiguousBridge
+}
+
+enum PortfolioFlowClassifier {
+    static func classify(
+        direction: TransactionDirection,
+        kind: TransactionKind,
+        counterpartyOwned: Bool,
+        hasIncomingLeg: Bool,
+        hasOutgoingLeg: Bool
+    ) -> PortfolioFlowClassification {
+        if direction == .internal || kind == .selfTransfer || counterpartyOwned {
+            return .internalTransfer
+        }
+        if hasIncomingLeg && hasOutgoingLeg {
+            return .swap
+        }
+        if kind == .bridge {
+            return .ambiguousBridge
+        }
+        return direction == .incoming ? .externalIncoming : .externalOutgoing
+    }
+}
+
 struct WalletPnLSummaryDTO: Sendable, Equatable {
     let walletId: UUID
     let displayCurrencyCode: String
@@ -471,7 +500,7 @@ final class PortfolioPnLRepository: @unchecked Sendable {
 
         let flowRows = try flowRows(walletId: walletId, from: windowStart, through: asOf)
         let keys = Set(currentRows.keys).union(baselineRows.keys).union(flowRows.map(\.assetKey))
-        let flowChainsByKey = Dictionary(grouping: flowRows, by: \.assetKey).compactMapValues(\.first?.chain)
+        let flowChainsByKey = Dictionary(grouping: flowRows, by: \.assetKey).compactMapValues { $0.first?.chain }
         var assets: [PortfolioPnLAssetInput] = []
         var completeFlows: [PortfolioPnLFlowInput] = []
         var incompleteKeys = Set<String>()
@@ -648,7 +677,7 @@ final class PortfolioPnLRepository: @unchecked Sendable {
                   AND captured_at_ms BETWEEN ? AND ?
                 """,
                 arguments: [walletId.uuidString, lower, upper]
-            ).compactMap(SupportedChain.init(rawValue:)))
+            ).compactMap { SupportedChain(rawValue: $0) })
         }
     }
 
@@ -1102,26 +1131,21 @@ actor PortfolioHistoryCoordinator {
             let hasOutgoing = group.contains { $0.direction == .outgoing }
             let counterpartyOwned = source.ownedAddresses.contains(transaction.counterparty.lowercased())
 
-            let classification: String
-            if transaction.direction == .internal || transaction.kind == .selfTransfer || counterpartyOwned {
-                classification = "internal"
-            } else if hasIncoming && hasOutgoing {
-                classification = "swap"
-            } else if transaction.kind == .bridge {
-                classification = "ambiguousBridge"
-            } else if transaction.direction == .incoming {
-                classification = "externalIncoming"
-            } else {
-                classification = "externalOutgoing"
-            }
+            let classification = PortfolioFlowClassifier.classify(
+                direction: transaction.direction,
+                kind: transaction.kind,
+                counterpartyOwned: counterpartyOwned,
+                hasIncomingLeg: hasIncoming,
+                hasOutgoingLeg: hasOutgoing
+            )
 
-            if classification == "internal" || classification == "swap" {
+            if classification == .internalTransfer || classification == .swap {
                 values.append(.init(
                     transactionId: transaction.id,
                     walletId: walletId,
                     chain: transaction.chain,
                     assetKey: transaction.assetKey,
-                    classification: classification,
+                    classification: classification.rawValue,
                     signedAmount: 0,
                     occurredAt: transaction.occurredAt,
                     unitPriceUSD: nil,
@@ -1132,13 +1156,13 @@ actor PortfolioHistoryCoordinator {
                 ))
                 continue
             }
-            guard classification != "ambiguousBridge" else {
+            guard classification != .ambiguousBridge else {
                 values.append(.init(
                     transactionId: transaction.id,
                     walletId: walletId,
                     chain: transaction.chain,
                     assetKey: transaction.assetKey,
-                    classification: classification,
+                    classification: classification.rawValue,
                     signedAmount: 0,
                     occurredAt: transaction.occurredAt,
                     unitPriceUSD: nil,
@@ -1161,7 +1185,7 @@ actor PortfolioHistoryCoordinator {
                 walletId: walletId,
                 chain: transaction.chain,
                 assetKey: transaction.assetKey,
-                classification: classification,
+                classification: classification.rawValue,
                 signedAmount: signedAmount,
                 occurredAt: transaction.occurredAt,
                 unitPriceUSD: historical?.amount,

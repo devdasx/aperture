@@ -169,6 +169,10 @@ actor TokenPricingEngine {
     /// transaction timestamp. It never substitutes the current spot price.
     func historicalUSDPrice(symbol: String, at target: Date) async -> HistoricalResolvedPrice? {
         let normalized = symbol.uppercased()
+        let underlying = WrappedAssetAliases.resolveSymbol(normalized)
+        guard let descriptor = descriptor(for: underlying), let coinGeckoId = descriptor.coinGeckoId else {
+            return nil
+        }
         let tolerance: TimeInterval = 30 * 60
         if let database = persistenceDatabase,
            let cached = try? PriceSnapshotRepository(database: database).nearest(
@@ -180,10 +184,6 @@ actor TokenPricingEngine {
             return HistoricalResolvedPrice(amount: cached.price, at: cached.fetchedAt, source: cached.source)
         }
 
-        let underlying = WrappedAssetAliases.resolveSymbol(normalized)
-        guard let descriptor = descriptor(for: underlying), let coinGeckoId = descriptor.coinGeckoId else {
-            return nil
-        }
         var components = URLComponents()
         components.scheme = "https"
         components.host = "api.coingecko.com"
