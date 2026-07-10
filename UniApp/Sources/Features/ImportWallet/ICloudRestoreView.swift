@@ -19,6 +19,7 @@ struct ICloudRestoreView: View {
     /// Called with the new wallet id after a successful import; the parent
     /// dismisses to the main wallet shell.
     let onImported: (UUID) -> Void
+    let onDuplicate: (ExistingWalletImportMatch) -> Void
 
     @Environment(\.openURL) private var openURL
     @Environment(\.editMode) private var editMode
@@ -383,6 +384,9 @@ struct ICloudRestoreView: View {
             }
             applyDeletedBackups(ids)
             UniHapticEngine.shared.play(.contextualImpact(.weighted))
+        } catch WalletCommandRepositoryError.alreadyImported(let match) {
+            passwordError = false
+            onDuplicate(match)
         } catch {
             deleteErrorMessage = Self.message(for: error)
             UniHapticEngine.shared.play(.warning)

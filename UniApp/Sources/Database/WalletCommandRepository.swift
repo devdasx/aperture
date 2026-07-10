@@ -1,6 +1,15 @@
 import Foundation
 import GRDB
 
+struct ExistingWalletImportMatch: Identifiable, Sendable, Equatable {
+    let id: UUID
+    let name: String
+}
+
+enum WalletCommandRepositoryError: Error, Sendable, Equatable {
+    case alreadyImported(ExistingWalletImportMatch)
+}
+
 @MainActor
 final class WalletCommandRepository {
     private let database: AppDatabase
@@ -179,6 +188,10 @@ final class WalletCommandRepository {
         let descriptor = WalletDescriptor(id: id, kind: kind, hasPassphrase: hasPassphrase)
 
         try database.write { db in
+            if kind != .created,
+               let existing = try existingWalletMatch(for: addresses, db: db) {
+                throw WalletCommandRepositoryError.alreadyImported(existing)
+            }
             let sortOrder = try nextSortOrder(db)
             try db.execute(
                 sql: """
@@ -252,6 +265,78 @@ final class WalletCommandRepository {
             )
         }
         return id
+    }
+
+    private struct AddressIdentity: Hashable {
+        let chainRaw: String
+        let address: String
+    }
+
+    private func existingWalletMatch(
+        for addresses: [(chainRaw: String, address: String)],
+        db: Database
+    ) throws -> ExistingWalletImportMatch? {
+        let candidates = Set(addresses.compactMap(Self.addressIdentity))
+        guard !candidates.isEmpty else { return nil }
+
+        struct MatchScore {
+            let match: ExistingWalletImportMatch
+            let sortOrder: Int
+            var count: Int
+        }
+
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT w.id, w.name, w.sort_order, a.chain_raw, a.address
+            FROM wallet_addresses a
+            JOIN wallets w ON w.id = a.wallet_id
+            ORDER BY w.sort_order ASC, w.created_at_ms ASC
+            """
+        )
+        var scores: [UUID: MatchScore] = [:]
+        for row in rows {
+            let chainRaw: String = row["chain_raw"]
+            let address: String = row["address"]
+            guard let identity = Self.addressIdentity((chainRaw, address)),
+                  candidates.contains(identity),
+                  let walletId = UUID(uuidString: row["id"] as String)
+            else { continue }
+
+            if var score = scores[walletId] {
+                score.count += 1
+                scores[walletId] = score
+            } else {
+                scores[walletId] = MatchScore(
+                    match: ExistingWalletImportMatch(id: walletId, name: row["name"]),
+                    sortOrder: row["sort_order"],
+                    count: 1
+                )
+            }
+        }
+
+        return scores.values.sorted {
+            if $0.count != $1.count { return $0.count > $1.count }
+            return $0.sortOrder < $1.sortOrder
+        }.first?.match
+    }
+
+    private static func addressIdentity(
+        _ entry: (chainRaw: String, address: String)
+    ) -> AddressIdentity? {
+        guard let chain = SupportedChain(rawValue: entry.chainRaw) else { return nil }
+        var address = entry.address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else { return nil }
+
+        if chain.family == .evm || chain == .aptos || chain == .sui {
+            address = address.lowercased()
+        } else if chain == .bitcoinCash {
+            address = address.lowercased()
+            if address.hasPrefix("bitcoincash:") {
+                address.removeFirst("bitcoincash:".count)
+            }
+        }
+        return AddressIdentity(chainRaw: chain.rawValue, address: address)
     }
 
     private func nextSortOrder(_ db: Database) throws -> Int {

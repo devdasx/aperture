@@ -43,6 +43,7 @@ struct ImportWalletFlow: View {
     /// Set when `persist` throws. Navigation stays in place so the user can
     /// retry from the same commit screen after reading or emailing details.
     @State private var persistErrorReport: ApertureErrorReport?
+    @State private var duplicateImport: DuplicateImportPresentation?
 
     /// True while `persistThen` is running (derive + write to GRDB +
     /// fire first refresh). Passed down to the active commit
@@ -82,6 +83,12 @@ struct ImportWalletFlow: View {
                         state: state,
                         onImported: { _ in
                             finishImport(.mnemonic)
+                        },
+                        onDuplicate: { match in
+                            duplicateImport = DuplicateImportPresentation(
+                                match: match,
+                                result: .mnemonic
+                            )
                         }
                     )
                 case .keyChainPicker:
@@ -136,6 +143,16 @@ struct ImportWalletFlow: View {
             ApertureErrorReportSheet(report: report)
                 .uniAppEnvironment()
         }
+        .sheet(item: $duplicateImport) { duplicate in
+            AlreadyImportedWalletSheet(
+                walletName: duplicate.match.name,
+                onTryAnother: { tryAnotherWallet(after: duplicate) },
+                onUseWallet: { useExistingWallet(duplicate) }
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
     }
 
     /// Persist the imported wallet via `WalletCommandRepository`, then fire
@@ -160,6 +177,8 @@ struct ImportWalletFlow: View {
                 // flow.
                 state.zeroSensitiveInput()
                 finishImport(result)
+            } catch WalletCommandRepositoryError.alreadyImported(let match) {
+                duplicateImport = DuplicateImportPresentation(match: match, result: result)
             } catch {
                 Self.log.error(
                     "Wallet import persist failed: \(String(describing: error), privacy: .public)"
@@ -183,6 +202,59 @@ struct ImportWalletFlow: View {
         WalletCompletionNoticeCenter.enqueue(.imported)
         ScreenRestoration.routeToMainScreenNow()
         onCompleted(result)
+    }
+
+    private func tryAnotherWallet(after duplicate: DuplicateImportPresentation) {
+        duplicateImport = nil
+        switch duplicate.result {
+        case .privateKey, .watchOnly:
+            if !navigationPath.isEmpty { navigationPath.removeLast() }
+        case .mnemonic:
+            break
+        }
+    }
+
+    private func useExistingWallet(_ duplicate: DuplicateImportPresentation) {
+        duplicateImport = nil
+        ActiveWalletPointer.set(duplicate.match.id)
+        state.zeroSensitiveInput()
+        ScreenRestoration.routeToMainScreenNow()
+        onCompleted(duplicate.result)
+    }
+}
+
+private struct DuplicateImportPresentation: Identifiable {
+    let match: ExistingWalletImportMatch
+    let result: ImportResult
+
+    var id: UUID { match.id }
+}
+
+private struct AlreadyImportedWalletSheet: View {
+    let walletName: String
+    let onTryAnother: () -> Void
+    let onUseWallet: () -> Void
+
+    var body: some View {
+        UniSheet(title: "Wallet already imported", icon: "wallet.pass") {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                UniHeadline(text: walletName, alignment: .leading)
+                UniBody(
+                    text: "This wallet is already saved in Aperture. No duplicate was created. You can enter different wallet details or switch to the saved wallet now.",
+                    color: UniColors.Text.secondary
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        } actions: {
+            VStack(spacing: UniSpacing.s) {
+                UniButton(title: "Use this wallet", variant: .primary) {
+                    onUseWallet()
+                }
+                UniButton(title: "Try another wallet", variant: .secondary) {
+                    onTryAnother()
+                }
+            }
+        }
     }
 }
 

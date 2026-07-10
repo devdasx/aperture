@@ -176,6 +176,67 @@ struct GRDBWalletFlowPersistenceTests {
         #expect(snapshotWallets.map(\.id).contains(walletID))
     }
 
+    @Test("all import methods reject an address already saved by another wallet")
+    func duplicateImportsReturnExistingWalletWithoutWritingAnything() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { cleanup(database: database) }
+        let commands = WalletCommandRepository(database: database)
+        let existingID = UUID()
+        let existingAddress = "0x00000000000000000000000000000000000000aB"
+
+        try await commands.insertCreatedWallet(
+            id: existingID,
+            name: "Primary Wallet",
+            mnemonicWordCount: 12,
+            hasPassphrase: false,
+            colorTag: "default",
+            requiresBackup: false,
+            addresses: [(SupportedChain.ethereum.rawValue, existingAddress)]
+        )
+
+        let attempts: [() async throws -> UUID] = [
+            {
+                try await commands.insertImportedMnemonicWallet(
+                    id: UUID(),
+                    name: "Duplicate Phrase",
+                    mnemonicWordCount: 12,
+                    hasPassphrase: false,
+                    colorTag: "default",
+                    addresses: [(SupportedChain.ethereum.rawValue, existingAddress.lowercased())]
+                )
+            },
+            {
+                try await commands.insertImportedKeyWallet(
+                    id: UUID(),
+                    name: "Duplicate Key",
+                    colorTag: "default",
+                    addresses: [(SupportedChain.ethereum.rawValue, existingAddress.lowercased())]
+                )
+            },
+            {
+                try await commands.insertWatchOnlyWallet(
+                    id: UUID(),
+                    name: "Duplicate Watch",
+                    colorTag: "default",
+                    addresses: [(SupportedChain.ethereum.rawValue, existingAddress.lowercased())]
+                )
+            }
+        ]
+
+        for attempt in attempts {
+            do {
+                _ = try await attempt()
+                Issue.record("Expected duplicate import to be rejected")
+            } catch WalletCommandRepositoryError.alreadyImported(let match) {
+                #expect(match.id == existingID)
+                #expect(match.name == "Primary Wallet")
+            }
+        }
+
+        #expect(try WalletRepository(database: database).walletCount() == 1)
+        #expect(try TestAppDatabaseFactory.count("wallet_secrets", database: database) == 0)
+    }
+
     private func walletName(_ walletID: UUID, database: AppDatabase) throws -> String? {
         try TestAppDatabaseFactory.scalarString(
             "SELECT name FROM wallets WHERE id = ?",
