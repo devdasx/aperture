@@ -18,7 +18,7 @@ enum ContractTokenDiscovery {
         catalogAssets: [CatalogAsset],
         customTokens: [CustomTokenSnapshot]
     ) -> [SupportedChain] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = normalizedQuery(query)
         guard trimmed.count >= 4 else { return [] }
         let symbolUpper = symbol.uppercased()
         return chains.filter { chain in
@@ -35,7 +35,7 @@ enum ContractTokenDiscovery {
     }
 
     static func contractMatches(_ contract: String, chain: SupportedChain, query: String) -> Bool {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = normalizedQuery(query)
         guard trimmed.count >= 4 else { return false }
 
         if let normalized = normalizedContract(trimmed, for: chain) {
@@ -57,56 +57,102 @@ enum ContractTokenDiscovery {
         catalogAssets: [CatalogAsset],
         customTokens: [CustomTokenSnapshot]
     ) async -> DiscoveredContractToken? {
-        for candidate in candidateContracts(query: query, availableChains: availableChains) {
-            if isKnown(
-                chain: candidate.chain,
-                contract: candidate.contract,
-                catalogAssets: catalogAssets,
-                customTokens: customTokens
-            ) {
-                continue
-            }
-
-            if let metadata = await fetchMetadata(chain: candidate.chain, contract: candidate.contract) {
-                return DiscoveredContractToken(
+        let candidates = candidateContracts(query: query, availableChains: availableChains)
+            .filter { candidate in
+                !isKnown(
                     chain: candidate.chain,
                     contract: candidate.contract,
-                    symbol: metadata.symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
-                    name: metadata.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                    decimals: metadata.decimals
+                    catalogAssets: catalogAssets,
+                    customTokens: customTokens
                 )
             }
+        guard !candidates.isEmpty else { return nil }
+
+        let results = await withTaskGroup(
+            of: CandidateMetadata?.self,
+            returning: [CandidateMetadata].self
+        ) { group in
+            for candidate in candidates {
+                group.addTask {
+                    guard let metadata = await fetchMetadata(
+                        chain: candidate.chain,
+                        contract: candidate.contract
+                    ) else {
+                        return nil
+                    }
+                    return CandidateMetadata(candidate: candidate, metadata: metadata)
+                }
+            }
+
+            var results: [CandidateMetadata] = []
+            for await result in group {
+                if let result {
+                    results.append(result)
+                }
+            }
+            return results
         }
-        return nil
+
+        guard let result = results.min(by: { $0.candidate.priority < $1.candidate.priority }) else {
+            return nil
+        }
+        let metadata = result.metadata
+        return DiscoveredContractToken(
+            chain: result.candidate.chain,
+            contract: result.candidate.contract,
+            symbol: metadata.symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+            name: metadata.name.trimmingCharacters(in: .whitespacesAndNewlines),
+            decimals: metadata.decimals
+        )
     }
 
     private struct Candidate: Sendable, Hashable {
         let chain: SupportedChain
         let contract: String
+        let priority: Int
+    }
+
+    private struct CandidateMetadata: Sendable {
+        let candidate: Candidate
+        let metadata: TokenMetadataFetchResult
     }
 
     private static func candidateContracts(query: String, availableChains: [SupportedChain]) -> [Candidate] {
         let chains = CustomTokenSupport.orderedChains(availableChains: availableChains)
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = normalizedQuery(query)
         guard !trimmed.isEmpty else { return [] }
 
         var candidates: [Candidate] = []
+        var nextPriority = 0
+
+        func appendCandidate(chain: SupportedChain, contract: String) {
+            candidates.append(Candidate(
+                chain: chain,
+                contract: contract,
+                priority: nextPriority
+            ))
+            nextPriority += 1
+        }
+
         if chains.contains(.solana),
            case .valid(let mint) = ContractValidator.validateSolanaMint(trimmed) {
-            candidates.append(Candidate(chain: .solana, contract: mint))
+            appendCandidate(chain: .solana, contract: mint)
         }
         if chains.contains(.tron),
            case .valid(let contract) = ContractValidator.validateTronContract(trimmed) {
-            candidates.append(Candidate(chain: .tron, contract: contract))
+            appendCandidate(chain: .tron, contract: contract)
         }
-        if case .valid(let contract) = ContractValidator.validateEVM(trimmed) {
-            candidates.append(contentsOf: chains
-                .filter { $0.family == .evm }
-                .map { Candidate(chain: $0, contract: contract) })
+        if let contract = normalizedEVMContract(trimmed) {
+            for chain in chains where chain.family == .evm {
+                appendCandidate(chain: chain, contract: contract)
+            }
         }
 
-        var seen: Set<Candidate> = []
-        return candidates.filter { seen.insert($0).inserted }
+        var seen: Set<String> = []
+        return candidates.filter { candidate in
+            let key = "\(candidate.chain.rawValue)|\(compareKey(candidate.contract, chain: candidate.chain))"
+            return seen.insert(key).inserted
+        }
     }
 
     private static func normalizedContract(_ input: String, for chain: SupportedChain) -> String? {
@@ -120,9 +166,8 @@ enum ContractTokenDiscovery {
                 return normalized
             }
         default:
-            if chain.family == .evm,
-               case .valid(let normalized) = ContractValidator.validateEVM(input) {
-                return normalized
+            if chain.family == .evm {
+                return normalizedEVMContract(input)
             }
         }
         return nil
@@ -191,6 +236,37 @@ enum ContractTokenDiscovery {
             keys.append(looseKey(payload))
         }
         return Array(Set(keys))
+    }
+
+    private static func normalizedEVMContract(_ input: String) -> String? {
+        let trimmed = normalizedQuery(input)
+        if case .valid(let normalized) = ContractValidator.validateEVM(trimmed) {
+            return normalized
+        }
+        let hexAlphabet = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        guard trimmed.count == 40,
+              trimmed.unicodeScalars.allSatisfy({ hexAlphabet.contains($0) }),
+              case .valid(let normalized) = ContractValidator.validateEVM("0x\(trimmed)") else {
+            return nil
+        }
+        return normalized
+    }
+
+    private static func normalizedQuery(_ value: String) -> String {
+        var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let schemeRange = trimmed.range(of: ":"), trimmed.range(of: "://") == nil {
+            let afterScheme = String(trimmed[schemeRange.upperBound...])
+            if !afterScheme.isEmpty {
+                trimmed = afterScheme
+            }
+        }
+        if let queryStart = trimmed.firstIndex(of: "?") {
+            trimmed = String(trimmed[..<queryStart])
+        }
+        if let atSign = trimmed.firstIndex(of: "@") {
+            trimmed = String(trimmed[..<atSign])
+        }
+        return trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func looseKey(_ value: String) -> String {
