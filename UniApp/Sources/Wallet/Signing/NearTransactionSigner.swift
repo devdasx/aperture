@@ -48,9 +48,8 @@ enum NearTransactionSigner {
         guard draft.chain == .near else {
             throw SigningError.malformedDraft("NEAR signer used for \(draft.chain.rawValue)")
         }
-        guard let recipient = draft.recipients.first else {
-            throw SigningError.malformedDraft("no recipient")
-        }
+        // BUG-001: NEAR is single-recipient; refuse multi drafts.
+        let recipient = try SendRecipientSigning.requireSingleRecipient(draft)
         guard let nonce = jit.nearNonce else {
             throw SigningError.justInTimeRefreshFailed("NEAR access-key nonce not refreshed")
         }

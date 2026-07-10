@@ -39,9 +39,8 @@ enum RippleTransactionSigner {
         guard draft.chain == .ripple else {
             throw SigningError.malformedDraft("XRP signer used for \(draft.chain.rawValue)")
         }
-        guard let recipient = draft.recipients.first else {
-            throw SigningError.malformedDraft("no recipient")
-        }
+        // BUG-001: XRP is single-recipient; refuse multi drafts.
+        let recipient = try SendRecipientSigning.requireSingleRecipient(draft)
         guard let sequence = jit.xrpSequence else {
             throw SigningError.justInTimeRefreshFailed("XRP account sequence not refreshed")
         }

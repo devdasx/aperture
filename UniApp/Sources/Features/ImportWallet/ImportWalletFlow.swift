@@ -87,7 +87,8 @@ struct ImportWalletFlow: View {
                         onDuplicate: { match in
                             duplicateImport = DuplicateImportPresentation(
                                 match: match,
-                                result: .mnemonic
+                                result: .mnemonic,
+                                returnsToPreviousScreen: true
                             )
                         }
                     )
@@ -178,7 +179,11 @@ struct ImportWalletFlow: View {
                 state.zeroSensitiveInput()
                 finishImport(result)
             } catch WalletCommandRepositoryError.alreadyImported(let match) {
-                duplicateImport = DuplicateImportPresentation(match: match, result: result)
+                duplicateImport = DuplicateImportPresentation(
+                    match: match,
+                    result: result,
+                    returnsToPreviousScreen: result != .mnemonic
+                )
             } catch {
                 Self.log.error(
                     "Wallet import persist failed: \(String(describing: error), privacy: .public)"
@@ -206,11 +211,9 @@ struct ImportWalletFlow: View {
 
     private func tryAnotherWallet(after duplicate: DuplicateImportPresentation) {
         duplicateImport = nil
-        switch duplicate.result {
-        case .privateKey, .watchOnly:
-            if !navigationPath.isEmpty { navigationPath.removeLast() }
-        case .mnemonic:
-            break
+        state.resetInput(for: duplicate.result)
+        if duplicate.returnsToPreviousScreen, !navigationPath.isEmpty {
+            navigationPath.removeLast()
         }
     }
 
@@ -226,6 +229,7 @@ struct ImportWalletFlow: View {
 private struct DuplicateImportPresentation: Identifiable {
     let match: ExistingWalletImportMatch
     let result: ImportResult
+    let returnsToPreviousScreen: Bool
 
     var id: UUID { match.id }
 }
@@ -238,7 +242,9 @@ private struct AlreadyImportedWalletSheet: View {
     var body: some View {
         UniSheet(title: "Wallet already imported", icon: "wallet.pass") {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
-                UniHeadline(text: walletName, alignment: .leading)
+                Text(verbatim: walletName)
+                    .font(UniTypography.headline)
+                    .foregroundStyle(UniColors.Text.primary)
                 UniBody(
                     text: "This wallet is already saved in Aperture. No duplicate was created. You can enter different wallet details or switch to the saved wallet now.",
                     color: UniColors.Text.secondary

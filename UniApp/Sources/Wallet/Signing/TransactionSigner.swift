@@ -30,11 +30,16 @@ enum TransactionSigner {
         /// `getLatestBlockhash` → `value.blockhash` (base58); valid ~60–90s.
         let solanaRecentBlockhash: String?
         /// Recipient's Associated Token Account (derived) for an SPL send.
+        /// Single-recipient convenience; multi uses `solanaRecipientTokenAccountsByOwner`.
         let solanaRecipientTokenAccount: String?
         /// Sender's Associated Token Account for an SPL send.
         let solanaSenderTokenAccount: String?
         /// Whether the recipient ATA does NOT yet exist (→ CreateAndTransfer).
         let solanaRecipientATANeedsCreation: Bool?
+        /// Multi-recipient SPL: owner address → ATA (BUG-001).
+        let solanaRecipientTokenAccountsByOwner: [String: String]?
+        /// Multi-recipient SPL: owner address → needs ATA creation (BUG-001).
+        let solanaRecipientATANeedsCreationByOwner: [String: Bool]?
 
         // MARK: Bitcoin family
         /// The address's CURRENT unspent-output set, re-fetched off-main
@@ -118,6 +123,8 @@ enum TransactionSigner {
             solanaRecipientTokenAccount: String? = nil,
             solanaSenderTokenAccount: String? = nil,
             solanaRecipientATANeedsCreation: Bool? = nil,
+            solanaRecipientTokenAccountsByOwner: [String: String]? = nil,
+            solanaRecipientATANeedsCreationByOwner: [String: Bool]? = nil,
             xrpSequence: UInt32? = nil,
             xrpLastLedgerSequence: UInt32? = nil,
             stellarSequence: UInt64? = nil,
@@ -147,6 +154,8 @@ enum TransactionSigner {
             self.solanaRecipientTokenAccount = solanaRecipientTokenAccount
             self.solanaSenderTokenAccount = solanaSenderTokenAccount
             self.solanaRecipientATANeedsCreation = solanaRecipientATANeedsCreation
+            self.solanaRecipientTokenAccountsByOwner = solanaRecipientTokenAccountsByOwner
+            self.solanaRecipientATANeedsCreationByOwner = solanaRecipientATANeedsCreationByOwner
             self.xrpSequence = xrpSequence
             self.xrpLastLedgerSequence = xrpLastLedgerSequence
             self.stellarSequence = stellarSequence

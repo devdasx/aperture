@@ -163,11 +163,13 @@ extension ChainComposeCapability {
 
         case .stellar:
             // Base reserve = 0.5 XLM (live base_reserve_in_stroops:5000000).
+            // WalletCore Stellar signer is single-op only → maxRecipients 1
+            // (BUG-001; matches ChainSendCapability).
             return ChainComposeCapability(
                 feeModel: .stellarPerOp, supportsUTXO: false, opReturnMaxBytes: nil,
                 memoKind: .stellarMemo, memoMaxBytes: 28,
                 reserve: .stellarReserve(baseReserve: Decimal(string: "0.5")!),
-                maxRecipients: 20, nativeDecimals: decimals)
+                maxRecipients: 1, nativeDecimals: decimals)
 
         // MARK: - Sui
 

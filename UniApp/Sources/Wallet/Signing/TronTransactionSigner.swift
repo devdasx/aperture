@@ -48,9 +48,8 @@ enum TronTransactionSigner {
         guard draft.chain == .tron else {
             throw SigningError.malformedDraft("TRON signer used for \(draft.chain.rawValue)")
         }
-        guard let recipient = draft.recipients.first else {
-            throw SigningError.malformedDraft("no recipient")
-        }
+        // BUG-001: TRON is single-recipient; refuse multi drafts.
+        let recipient = try SendRecipientSigning.requireSingleRecipient(draft)
         guard let blockJSON = jit.tronBlockHeaderJSON, !blockJSON.isEmpty else {
             throw SigningError.justInTimeRefreshFailed("TRON block reference not refreshed")
         }

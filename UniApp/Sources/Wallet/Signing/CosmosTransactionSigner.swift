@@ -53,9 +53,8 @@ enum CosmosTransactionSigner {
         jit: TransactionSigner.JustInTimeData,
         privateKey: PrivateKey
     ) throws -> SignedTransaction {
-        guard let recipient = draft.recipients.first else {
-            throw SigningError.malformedDraft("no recipient")
-        }
+        // Orphan Cosmos path: still refuse multi silently under-sending.
+        let recipient = try SendRecipientSigning.requireSingleRecipient(draft)
         guard let accountNumber = jit.cosmosAccountNumber else {
             throw SigningError.justInTimeRefreshFailed("Kava account number not refreshed")
         }

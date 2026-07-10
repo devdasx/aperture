@@ -1,40 +1,20 @@
 import Foundation
 import WalletCore
 
-/// Builds + signs Solana transactions (native SOL + SPL token transfer,
-/// with idempotent ATA creation + optional SPL memo + compute-budget
-/// priority fee) from `SendDraft` + just-in-time data, adapted from
-/// Stabro's proven `signSolanaTransaction` onto Aperture's contracts.
+/// Builds + signs Solana transactions (native SOL + SPL token transfer).
 ///
-/// **wallet-core SigningInput (Solana.proto, WalletCore 4.6.13 —
-/// field names verified against the pinned `arm64.swiftinterface`):**
-/// `privateKey`, `sender`, `recentBlockhash` (JIT), `txEncoding`
-/// (`.base64`), `priorityFeePrice` (micro-lamports/CU), `priorityFeeLimit`
-/// (compute units), and the transaction oneof:
-/// - `transferTransaction` = `SolanaTransfer{recipient, value(lamports), memo}`
-///   for native SOL.
-/// - `tokenTransferTransaction` = `SolanaTokenTransfer{tokenMintAddress,
-///   senderTokenAddress, recipientTokenAddress, amount, decimals, memo,
-///   tokenProgramID}` when the recipient ATA already exists.
-/// - `createAndTransferTokenTransaction` = `SolanaCreateAndTransferToken{…}`
-///   (idempotent ATA create + transfer) when it does not.
-///
-/// **Fee model (matrix §G4, doc-grounded — solana.com/docs/core/fees):**
-/// base = 5,000 lamports/signature (static); priority = ceil(price ×
-/// limit / 1e6) lamports, billed on the REQUESTED limit. The draft's
-/// `FeeChoice.computeUnitPrice` (micro-lamports/CU) + `.computeUnitLimit`
-/// (CU) drive wallet-core's `SetComputeUnitPrice`/`SetComputeUnitLimit`
-/// compute-budget instructions. A 0 price (idle network) is allowed.
-///
-/// **JIT:** `recentBlockhash` (getLatestBlockhash, ~60–90s validity) +
-/// the resolved sender/recipient ATAs and whether the recipient ATA must
-/// be created (getTokenAccountsByOwner / derived ATA). Broadcast:
-/// `sendTransaction` (base64); confirm `getSignatureStatuses`.
-///
-/// Output: `output.encoded` is the base64 signed tx; the node assigns the
-/// signature/txid at broadcast (Solana's signature is the first signature
-/// of the tx — `txHash` left empty, the broadcaster returns the real id).
+/// **Multi-recipient (BUG-001):**
+/// - N = 1: WalletCore high-level transfer / token transfer paths.
+/// - N > 1 native: `RawMessage` with N `SystemProgram.transfer` instructions.
+/// - N > 1 SPL: `RawMessage` with N token transfers (all recipient ATAs must
+///   already exist — creation is single-recipient only in the high-level path).
 enum SolanaTransactionSigner {
+
+    private static let systemProgramID = "11111111111111111111111111111111"
+    /// SystemProgram::Transfer instruction index.
+    private static let systemTransferIx: UInt32 = 2
+    /// SPL Token::Transfer instruction index.
+    private static let tokenTransferIx: UInt8 = 3
 
     static func sign(
         draft: SendDraft,
@@ -44,9 +24,7 @@ enum SolanaTransactionSigner {
         guard draft.chain == .solana else {
             throw SigningError.malformedDraft("Solana signer used for \(draft.chain.rawValue)")
         }
-        guard let recipient = draft.recipients.first else {
-            throw SigningError.malformedDraft("no recipient")
-        }
+        let recipients = try SendRecipientSigning.requireRecipients(draft)
         guard let blockhash = jit.solanaRecentBlockhash, !blockhash.isEmpty else {
             throw SigningError.justInTimeRefreshFailed("Solana recent blockhash not refreshed")
         }
@@ -57,33 +35,27 @@ enum SolanaTransactionSigner {
         input.recentBlockhash = blockhash
         input.txEncoding = .base64
 
-        // Compute-budget priority fee (matrix §G4). Price is
-        // micro-lamports/CU, limit is compute units; both come from the
-        // resolved FeeChoice. A 0 price is valid (idle network); set the
-        // instructions only when a positive price/limit is present so a
-        // bare transfer isn't burdened with a no-op compute-budget ix.
-        if let priceDec = draft.fee.computeUnitPrice,
-           let price = SigningAmount.uint64(priceDec), price > 0 {
-            input.priorityFeePrice = SolanaPriorityFeePrice.with { $0.price = price }
-        }
-        if let limitDec = draft.fee.computeUnitLimit,
-           let limit = SigningAmount.uint64(limitDec), limit > 0, limit <= UInt32.max {
-            input.priorityFeeLimit = SolanaPriorityFeeLimit.with { $0.limit = UInt32(limit) }
-        }
+        applyPriorityFees(&input, draft: draft, recipientCount: recipients.count)
 
         let memo = solanaMemo(from: draft.memo)
 
-        if draft.isTokenSend {
-            try buildTokenTransfer(&input, draft: draft, recipient: recipient, memo: memo, jit: jit)
+        if recipients.count == 1, let recipient = recipients.first {
+            if draft.isTokenSend {
+                try buildTokenTransfer(&input, draft: draft, recipient: recipient, memo: memo, jit: jit)
+            } else {
+                guard let lamports = SigningAmount.uint64(display: recipient.amount, decimals: draft.chain.nativeDecimals) else {
+                    throw SigningError.malformedDraft("invalid SOL amount")
+                }
+                input.transferTransaction = SolanaTransfer.with {
+                    $0.recipient = recipient.address
+                    $0.value = lamports
+                    if !memo.isEmpty { $0.memo = memo }
+                }
+            }
+        } else if draft.isTokenSend {
+            try buildMultiTokenTransfer(&input, draft: draft, recipients: recipients, blockhash: blockhash, jit: jit)
         } else {
-            guard let lamports = SigningAmount.uint64(display: recipient.amount, decimals: draft.chain.nativeDecimals) else {
-                throw SigningError.malformedDraft("invalid SOL amount")
-            }
-            input.transferTransaction = SolanaTransfer.with {
-                $0.recipient = recipient.address
-                $0.value = lamports
-                if !memo.isEmpty { $0.memo = memo }
-            }
+            try buildMultiNativeTransfer(&input, draft: draft, recipients: recipients, blockhash: blockhash)
         }
 
         let output: SolanaSigningOutput = AnySigner.sign(input: input, coin: .solana)
@@ -94,12 +66,37 @@ enum SolanaTransactionSigner {
         let rawData = Data(output.encoded.utf8)
         return SignedTransaction(
             rawData: rawData,
-            rawHex: output.encoded, // base64 wire form for sendTransaction
-            txHash: ""              // node assigns the signature at broadcast
+            rawHex: output.encoded,
+            txHash: ""
         )
     }
 
-    // MARK: - Token transfer
+    // MARK: - Priority fees
+
+    private static func applyPriorityFees(
+        _ input: inout SolanaSigningInput,
+        draft: SendDraft,
+        recipientCount: Int
+    ) {
+        if let priceDec = draft.fee.computeUnitPrice,
+           let price = SigningAmount.uint64(priceDec), price > 0 {
+            input.priorityFeePrice = SolanaPriorityFeePrice.with { $0.price = price }
+        }
+        let scaledLimit: UInt64 = {
+            if let limitDec = draft.fee.computeUnitLimit,
+               let limit = SigningAmount.uint64(limitDec), limit > 0 {
+                return limit
+            }
+            // Multi transfers need more CU headroom.
+            let base: UInt64 = draft.isTokenSend ? 50_000 : 450
+            return base &* UInt64(max(1, min(recipientCount, 15)))
+        }()
+        if scaledLimit > 0, scaledLimit <= UInt32.max {
+            input.priorityFeeLimit = SolanaPriorityFeeLimit.with { $0.limit = UInt32(scaledLimit) }
+        }
+    }
+
+    // MARK: - Single token transfer (high-level WC)
 
     private static func buildTokenTransfer(
         _ input: inout SolanaSigningInput,
@@ -116,10 +113,6 @@ enum SolanaTransactionSigner {
         }
         let decimals = UInt32(max(0, draft.effectiveDecimals))
 
-        // The ATAs are derived by the compose/JIT layer (the recipient's
-        // ATA must be checked for existence). Fall back to local
-        // derivation via wallet-core's SolanaAddress so the signer never
-        // hard-fails when the JIT layer didn't pre-resolve them.
         let tokenProgramId = SolanaTokenRegistry.tokenProgramId(for: mint)
         let senderATA = jit.solanaSenderTokenAccount
             ?? SolanaProgramDerivedAddress.associatedTokenAddress(
@@ -129,6 +122,7 @@ enum SolanaTransactionSigner {
             )
             ?? SolanaAddress(string: draft.fromAddress)?.defaultTokenAddress(tokenMintAddress: mint)
         let recipientATA = jit.solanaRecipientTokenAccount
+            ?? jit.solanaRecipientTokenAccountsByOwner?[recipient.address]
             ?? SolanaProgramDerivedAddress.associatedTokenAddress(
                 owner: recipient.address,
                 mint: mint,
@@ -140,10 +134,9 @@ enum SolanaTransactionSigner {
         }
         let walletCoreTokenProgram = walletCoreTokenProgramId(for: SolanaTokenRegistry.standard(for: mint))
 
-        // `recipientNeedsActivation` (set by compose) OR the JIT
-        // existence check selects CreateAndTransfer (idempotent create +
-        // transfer) vs a plain TokenTransfer when the ATA already exists.
-        let needsCreation = jit.solanaRecipientATANeedsCreation ?? draft.recipientNeedsActivation
+        let needsCreation = jit.solanaRecipientATANeedsCreationByOwner?[recipient.address]
+            ?? jit.solanaRecipientATANeedsCreation
+            ?? draft.recipientNeedsActivation
 
         if needsCreation {
             input.createAndTransferTokenTransaction = SolanaCreateAndTransferToken.with {
@@ -169,10 +162,168 @@ enum SolanaTransactionSigner {
         }
     }
 
+    // MARK: - Multi native (RawMessage)
+
+    private static func buildMultiNativeTransfer(
+        _ input: inout SolanaSigningInput,
+        draft: SendDraft,
+        recipients: [SendRecipientAmount],
+        blockhash: String
+    ) throws {
+        // account_keys: [signer, r1, r2, …, systemProgram]
+        var accountKeys: [String] = [draft.fromAddress]
+        var recipientIndices: [UInt32] = []
+        recipientIndices.reserveCapacity(recipients.count)
+        for r in recipients {
+            if let existing = accountKeys.firstIndex(of: r.address) {
+                recipientIndices.append(UInt32(existing))
+            } else {
+                recipientIndices.append(UInt32(accountKeys.count))
+                accountKeys.append(r.address)
+            }
+        }
+        let systemProgramIndex = UInt32(accountKeys.count)
+        accountKeys.append(systemProgramID)
+
+        var instructions: [SolanaRawMessage.Instruction] = []
+        instructions.reserveCapacity(recipients.count)
+        for (i, r) in recipients.enumerated() {
+            guard let lamports = SigningAmount.uint64(display: r.amount, decimals: draft.chain.nativeDecimals) else {
+                throw SigningError.malformedDraft("invalid SOL amount")
+            }
+            instructions.append(SolanaRawMessage.Instruction.with {
+                $0.programID = systemProgramIndex
+                $0.accounts = [0, recipientIndices[i]] // from (signer), to
+                $0.programData = systemTransferData(lamports: lamports)
+            })
+        }
+
+        let legacy = SolanaRawMessage.MessageLegacy.with {
+            $0.header = SolanaRawMessage.MessageHeader.with {
+                $0.numRequiredSignatures = 1
+                $0.numReadonlySignedAccounts = 0
+                $0.numReadonlyUnsignedAccounts = 1 // system program
+            }
+            $0.accountKeys = accountKeys
+            $0.recentBlockhash = blockhash
+            $0.instructions = instructions
+        }
+        input.rawMessage = SolanaRawMessage.with {
+            $0.legacy = legacy
+        }
+    }
+
+    // MARK: - Multi SPL (RawMessage, ATAs must exist)
+
+    private static func buildMultiTokenTransfer(
+        _ input: inout SolanaSigningInput,
+        draft: SendDraft,
+        recipients: [SendRecipientAmount],
+        blockhash: String,
+        jit: TransactionSigner.JustInTimeData
+    ) throws {
+        guard let mint = draft.tokenContract, !mint.isEmpty else {
+            throw SigningError.malformedDraft("SPL token send missing mint")
+        }
+        let tokenProgramId = SolanaTokenRegistry.tokenProgramId(for: mint)
+        let senderATA = jit.solanaSenderTokenAccount
+            ?? SolanaProgramDerivedAddress.associatedTokenAddress(
+                owner: draft.fromAddress,
+                mint: mint,
+                tokenProgramId: tokenProgramId
+            )
+            ?? SolanaAddress(string: draft.fromAddress)?.defaultTokenAddress(tokenMintAddress: mint)
+        guard let senderATA, !senderATA.isEmpty else {
+            throw SigningError.malformedDraft("could not derive sender SPL token account")
+        }
+
+        // Multi SPL requires every recipient ATA to already exist.
+        var recipientATAs: [(owner: String, ata: String)] = []
+        recipientATAs.reserveCapacity(recipients.count)
+        for r in recipients {
+            if jit.solanaRecipientATANeedsCreationByOwner?[r.address] == true {
+                throw SigningError.signingFailed(
+                    "One or more recipients need a token account created first. Send to them individually, or fund their token account, then try multi-send again."
+                )
+            }
+            let ata = jit.solanaRecipientTokenAccountsByOwner?[r.address]
+                ?? SolanaProgramDerivedAddress.associatedTokenAddress(
+                    owner: r.address,
+                    mint: mint,
+                    tokenProgramId: tokenProgramId
+                )
+                ?? SolanaAddress(string: r.address)?.defaultTokenAddress(tokenMintAddress: mint)
+            guard let ata, !ata.isEmpty else {
+                throw SigningError.malformedDraft("could not derive recipient SPL token account")
+            }
+            recipientATAs.append((r.address, ata))
+        }
+
+        // account_keys: [signer, senderATA, rATA1…, tokenProgram]
+        var accountKeys: [String] = [draft.fromAddress, senderATA]
+        var destIndices: [UInt32] = []
+        for (_, ata) in recipientATAs {
+            if let existing = accountKeys.firstIndex(of: ata) {
+                destIndices.append(UInt32(existing))
+            } else {
+                destIndices.append(UInt32(accountKeys.count))
+                accountKeys.append(ata)
+            }
+        }
+        let tokenProgramIndex = UInt32(accountKeys.count)
+        accountKeys.append(tokenProgramId)
+
+        var instructions: [SolanaRawMessage.Instruction] = []
+        for (i, r) in recipients.enumerated() {
+            guard let amount = SigningAmount.uint64(display: r.amount, decimals: draft.effectiveDecimals) else {
+                throw SigningError.malformedDraft("invalid SPL token amount")
+            }
+            // Token Transfer accounts: source, dest, authority
+            instructions.append(SolanaRawMessage.Instruction.with {
+                $0.programID = tokenProgramIndex
+                $0.accounts = [1, destIndices[i], 0]
+                $0.programData = tokenTransferData(amount: amount)
+            })
+        }
+
+        let legacy = SolanaRawMessage.MessageLegacy.with {
+            $0.header = SolanaRawMessage.MessageHeader.with {
+                $0.numRequiredSignatures = 1
+                $0.numReadonlySignedAccounts = 0
+                $0.numReadonlyUnsignedAccounts = 1 // token program
+            }
+            $0.accountKeys = accountKeys
+            $0.recentBlockhash = blockhash
+            $0.instructions = instructions
+        }
+        input.rawMessage = SolanaRawMessage.with {
+            $0.legacy = legacy
+        }
+    }
+
+    // MARK: - Instruction data
+
+    private static func systemTransferData(lamports: UInt64) -> Data {
+        var data = Data(count: 12)
+        // u32 LE instruction index = 2 (Transfer)
+        data[0] = UInt8(systemTransferIx & 0xff)
+        data[1] = UInt8((systemTransferIx >> 8) & 0xff)
+        data[2] = UInt8((systemTransferIx >> 16) & 0xff)
+        data[3] = UInt8((systemTransferIx >> 24) & 0xff)
+        var le = lamports.littleEndian
+        withUnsafeBytes(of: &le) { data.replaceSubrange(4..<12, with: $0) }
+        return data
+    }
+
+    private static func tokenTransferData(amount: UInt64) -> Data {
+        var data = Data([tokenTransferIx])
+        var le = amount.littleEndian
+        withUnsafeBytes(of: &le) { data.append(contentsOf: $0) }
+        return data
+    }
+
     // MARK: - Helpers
 
-    /// SPL memo string from the draft's typed memo (some recipients may require
-    /// it — matrix §G4 "destination-tag equivalent").
     private static func solanaMemo(from memo: SendMemoValue) -> String {
         switch memo {
         case .splMemo(let s): return s

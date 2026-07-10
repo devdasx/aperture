@@ -251,6 +251,21 @@ final class ImportWalletState {
         privateKeyRaw = ""
     }
 
+    func resetInput(for result: ImportResult) {
+        switch result {
+        case .mnemonic:
+            mnemonicWords = Array(repeating: "", count: mnemonicWordCount.rawValue)
+            mnemonicPassphrase = ""
+            derivedAddressesFromMnemonic = [:]
+        case .privateKey:
+            privateKeyRaw = ""
+            derivedAddressFromKey = ""
+        case .watchOnly:
+            watchOnlyRaw = ""
+            watchOnlyAddresses = []
+        }
+    }
+
     /// Zero-pad raw key bytes to exactly 64 bytes for the SeedVault
     /// fixed-slot contract. The key occupies the leading bytes; the
     /// remainder is zero padding. Inputs longer than 64 bytes are

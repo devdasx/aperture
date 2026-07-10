@@ -34,7 +34,7 @@ extension SendExecutor {
             }
 
             guard draft.isTokenSend, let mint = draft.tokenContract,
-                  let recipient = draft.recipients.first else {
+                  !draft.recipients.isEmpty else {
                 return TransactionSigner.JustInTimeData(solanaRecentBlockhash: blockhash)
             }
 
@@ -44,29 +44,41 @@ extension SendExecutor {
                 mint: mint,
                 tokenProgramId: tokenProgramId
             ) ?? SolanaAddress(string: draft.fromAddress)?.defaultTokenAddress(tokenMintAddress: mint)
-            let recipientATA = SolanaProgramDerivedAddress.associatedTokenAddress(
-                owner: recipient.address,
-                mint: mint,
-                tokenProgramId: tokenProgramId
-            ) ?? SolanaAddress(string: recipient.address)?.defaultTokenAddress(tokenMintAddress: mint)
-            // Recipient ATA existence: getAccountInfo → value null ⇒ create.
-            var needsCreation = true
-            if let recipientATA {
-                let info = try? await RPCClient.shared.callJSONResultData(
-                    chain: .solana, method: "getAccountInfo",
-                    params: [recipientATA, ["encoding": "base64"] as [String: Sendable]]
-                )
-                if let info,
-                   let infoRoot = (try? JSONSerialization.jsonObject(with: info)) as? [String: Any],
-                   infoRoot["value"] is [String: Any] {
-                    needsCreation = false
+
+            // BUG-001: resolve ATA existence for every recipient (multi SPL).
+            var atasByOwner: [String: String] = [:]
+            var needsByOwner: [String: Bool] = [:]
+            atasByOwner.reserveCapacity(draft.recipients.count)
+            needsByOwner.reserveCapacity(draft.recipients.count)
+            for r in draft.recipients {
+                let recipientATA = SolanaProgramDerivedAddress.associatedTokenAddress(
+                    owner: r.address,
+                    mint: mint,
+                    tokenProgramId: tokenProgramId
+                ) ?? SolanaAddress(string: r.address)?.defaultTokenAddress(tokenMintAddress: mint)
+                var needsCreation = true
+                if let recipientATA {
+                    atasByOwner[r.address] = recipientATA
+                    let info = try? await RPCClient.shared.callJSONResultData(
+                        chain: .solana, method: "getAccountInfo",
+                        params: [recipientATA, ["encoding": "base64"] as [String: Sendable]]
+                    )
+                    if let info,
+                       let infoRoot = (try? JSONSerialization.jsonObject(with: info)) as? [String: Any],
+                       infoRoot["value"] is [String: Any] {
+                        needsCreation = false
+                    }
                 }
+                needsByOwner[r.address] = needsCreation
             }
+            let firstOwner = draft.recipients.first?.address
             return TransactionSigner.JustInTimeData(
                 solanaRecentBlockhash: blockhash,
-                solanaRecipientTokenAccount: recipientATA,
+                solanaRecipientTokenAccount: firstOwner.flatMap { atasByOwner[$0] },
                 solanaSenderTokenAccount: senderATA,
-                solanaRecipientATANeedsCreation: needsCreation
+                solanaRecipientATANeedsCreation: firstOwner.flatMap { needsByOwner[$0] },
+                solanaRecipientTokenAccountsByOwner: atasByOwner,
+                solanaRecipientATANeedsCreationByOwner: needsByOwner
             )
         } catch let rpc as RPCError {
             throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)

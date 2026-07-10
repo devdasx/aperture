@@ -62,17 +62,10 @@ enum BitcoinTransactionSigner {
         guard let utxos = candidateUTXOs, !utxos.isEmpty else {
             throw SigningError.malformedDraft("no UTXOs selected")
         }
-        guard let recipient = draft.recipients.first else {
+        // BUG-001: every recipient becomes a real vout (primary + extraOutputs).
+        let recipients = try SendRecipientSigning.requireRecipients(draft, coin: coin)
+        guard let primary = recipients.first else {
             throw SigningError.malformedDraft("no recipient")
-        }
-        // Defensive: validate EVERY recipient address against the chain's own
-        // rules (wallet-core) before building outputs. The Send UI already
-        // validates each recipient and wallet-core's `lockScriptForAddress`
-        // would reject an invalid one — this is belt-and-braces so a malformed
-        // address can never reach output construction and waste a fee on an
-        // un-spendable/garbage output.
-        for r in draft.recipients where !coin.validate(address: r.address) {
-            throw SigningError.malformedDraft("invalid \(draft.chain.displayName) recipient address")
         }
         guard let byteFeeDec = draft.fee.byteFeeRate, byteFeeDec > 0 else {
             throw SigningError.malformedDraft("no fee rate")
@@ -82,21 +75,21 @@ enum BitcoinTransactionSigner {
 
         // Primary recipient amount in sats (base units; Bitcoin family
         // uses 8 decimals — the matrix confirms satsPerCoin = 1e8).
-        let primarySats = sats(recipient.amount, decimals: draft.chain.nativeDecimals)
+        let primarySats = sats(primary.amount, decimals: draft.chain.nativeDecimals)
 
         var input = BitcoinSigningInput()
         input.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
         input.amount = primarySats
         input.byteFee = byteFee
-        input.toAddress = recipient.address
+        input.toAddress = primary.address
         input.changeAddress = changeAddress
         input.coinType = coin.rawValue
         input.useMaxAmount = draft.isMaxSend
         input.privateKey = privateKeys.map(\.data)
 
         // Multi-recipient → extra outputs beyond the primary to_address.
-        if draft.recipients.count > 1 {
-            for extra in draft.recipients.dropFirst() {
+        if recipients.count > 1 {
+            for extra in recipients.dropFirst() {
                 var out = BitcoinOutputAddress()
                 out.toAddress = extra.address
                 out.amount = sats(extra.amount, decimals: draft.chain.nativeDecimals)

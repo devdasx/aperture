@@ -23,6 +23,17 @@ enum PolkadotSigningNetwork: String, Sendable, Hashable {
 
     var transferKeepAliveCallIndex: UInt8 { 0x03 }
 
+    /// `frame_utility` pallet index (Polkadot relay vs Asset Hub metadata).
+    var utilityPalletIndex: UInt8 {
+        switch self {
+        case .relay: return 26
+        case .assetHub: return 40
+        }
+    }
+
+    /// `utility.batch_all` call index (atomic multi-call; fails all on error).
+    var batchAllCallIndex: UInt8 { 0x02 }
+
     /// Asset Hub's `ChargeAssetTxPayment` signed extension encodes
     /// `{ tip, asset_id }`; `asset_id = None` means fees are paid in native DOT.
     var signedExtraIncludesFeeAssetID: Bool {
@@ -81,12 +92,9 @@ enum PolkadotTransactionSigner {
             // Asset Hub assets are a separate parachain path (matrix §G11).
             throw SigningError.signingFailed("Sending tokens on Polkadot isn't available yet")
         }
-        guard let recipient = draft.recipients.first else {
-            throw SigningError.malformedDraft("no recipient")
-        }
-        guard let value = SigningAmount.uint64(display: recipient.amount, decimals: draft.chain.nativeDecimals) else {
-            throw SigningError.malformedDraft("invalid DOT amount")
-        }
+        // BUG-001: every recipient is encoded into the call (single transfer
+        // or utility.batch_all of transferKeepAlive calls).
+        let recipients = try SendRecipientSigning.requireRecipients(draft)
         guard let specVersion = jit.polkadotSpecVersion,
               let txVersion = jit.polkadotTransactionVersion else {
             throw SigningError.justInTimeRefreshFailed("Polkadot runtime version not refreshed")
@@ -106,15 +114,30 @@ enum PolkadotTransactionSigner {
         guard let genesisHash = SigningNumeric.hexToData(stripped0x(genesisHashHex)) else {
             throw SigningError.signingFailed("Polkadot genesis hash invalid")
         }
-        guard let accountId = SS58.decodeAccountId(recipient.address) else {
-            throw SigningError.malformedDraft("invalid Polkadot recipient address")
+
+        var transferCalls: [Data] = []
+        transferCalls.reserveCapacity(recipients.count)
+        for r in recipients {
+            guard let value = SigningAmount.uint64(display: r.amount, decimals: draft.chain.nativeDecimals) else {
+                throw SigningError.malformedDraft("invalid DOT amount")
+            }
+            guard let accountId = SS58.decodeAccountId(r.address) else {
+                throw SigningError.malformedDraft("invalid Polkadot recipient address")
+            }
+            transferCalls.append(
+                transferKeepAliveCall(toAccountId: Data(accountId), value: value, network: network)
+            )
         }
-        let toAccountId = Data(accountId)
         let tip = draft.fee.polkadotTipPlancks.flatMap(SigningAmount.uint64) ?? 0
 
         let publicKey = privateKey.getPublicKeyEd25519().data
         let era = mortalEra(blockNumber: blockNumber, period: mortalEraPeriod)
-        let call = transferKeepAliveCall(toAccountId: toAccountId, value: value, network: network)
+        let call: Data
+        if transferCalls.count == 1, let only = transferCalls.first {
+            call = only
+        } else {
+            call = batchAllCall(innerCalls: transferCalls, network: network)
+        }
         let signedExtra = signedExtra(
             era: era,
             nonce: nonce,
@@ -156,6 +179,17 @@ enum PolkadotTransactionSigner {
         var out = Data([network.balancesPalletIndex, network.transferKeepAliveCallIndex])
         out.append(multiAddress(accountId: toAccountId))
         out.append(compact(value))
+        return out
+    }
+
+    /// `utility.batch_all(calls)` — atomic multi-transfer (BUG-001).
+    /// SCALE: pallet | call_index | Compact<u32> len | Call… (raw call bytes).
+    static func batchAllCall(innerCalls: [Data], network: PolkadotSigningNetwork) -> Data {
+        var out = Data([network.utilityPalletIndex, network.batchAllCallIndex])
+        out.append(compact(UInt64(innerCalls.count)))
+        for call in innerCalls {
+            out.append(call)
+        }
         return out
     }
 

@@ -40,11 +40,12 @@ enum ChainSendCapability {
         case .solana:
             return 15
 
-        // Stellar — up to 100 Payment operations per tx. wallet-core
-        // high-level is a single opPayment → custom multi-op XDR at
-        // signing time.
+        // Stellar — protocol allows many ops/tx, but WalletCore's Stellar
+        // SigningInput is a single-operation oneof (no multi-op builder).
+        // Cap at 1 so the UI never offers multi until a real multi-op
+        // XDR path lands (BUG-001 honesty).
         case .stellar:
-            return 20
+            return 1
 
         // Aptos — `0x1::aptos_account::batch_transfer(vector<address>,
         // vector<u64>)` stdlib entry function. wallet-core high-level is
