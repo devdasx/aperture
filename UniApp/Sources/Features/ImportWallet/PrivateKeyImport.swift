@@ -10,7 +10,6 @@ struct PrivateKeyEntryView: View {
     @State private var isShowingGuide: Bool = false
     @State private var isShowingLeakedWarning: Bool = false
     @State private var isShowingScanner: Bool = false
-    @State private var isKeyRevealed: Bool = false
     @FocusState private var keyFocused: Bool
 
     /// `true` while the view is disappearing because the user chose to
@@ -60,7 +59,10 @@ struct PrivateKeyEntryView: View {
         .background(UniColors.Background.primary)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .principal) {
+                ChainNavTitle(chain: chain)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isShowingGuide = true
                 } label: {
@@ -68,9 +70,6 @@ struct PrivateKeyEntryView: View {
                         .font(.system(size: 17, weight: .semibold))
                 }
                 .accessibilityLabel(Text("What's a private key?"))
-            }
-            ToolbarItem(placement: .principal) {
-                ChainNavTitle(chain: chain)
             }
         }
         .uniBottomActionBar {
@@ -155,13 +154,13 @@ struct PrivateKeyEntryView: View {
         }
     }
 
-    /// Private-key input — `UniTextField` with `forceLTR`. Hex strings,
+    /// Private-key input — an always-visible LTR text field. Hex strings,
     /// WIFs, and base58 keys are always LTR-shaped regardless of the
     /// app's locale, so even an Arabic-locale user sees the key text
     /// flow left-to-right.
     private var keyField: some View {
         ZStack(alignment: .bottomTrailing) {
-            privateKeyInputControl
+            TextField("Paste your private key", text: $state.privateKeyRaw, axis: .vertical)
                 .focused($keyFocused)
                 .textFieldStyle(.automatic)
                 .textInputAutocapitalization(.never)
@@ -172,9 +171,9 @@ struct PrivateKeyEntryView: View {
                 .font(UniTypography.body)
                 .foregroundStyle(UniColors.Input.text)
                 .tint(UniColors.Tint.accent)
-                .lineLimit(isKeyRevealed ? 4...8 : 1...1)
+                .lineLimit(4...8)
                 .padding(.leading, UniSpacing.mPlus)
-                .padding(.trailing, 56)
+                .padding(.trailing, UniSpacing.mPlus)
                 .padding(.top, UniSpacing.m)
                 .padding(.bottom, 62)
                 .frame(maxWidth: .infinity, minHeight: 166, alignment: .topLeading)
@@ -190,23 +189,9 @@ struct PrivateKeyEntryView: View {
                     keyFocused = false
                 }
 
-            revealKeyButton
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, 6)
-                .padding(.trailing, UniSpacing.xs)
-
             keyUtilityButtons
                 .padding(.trailing, UniSpacing.s)
                 .padding(.bottom, UniSpacing.s)
-        }
-    }
-
-    @ViewBuilder
-    private var privateKeyInputControl: some View {
-        if isKeyRevealed {
-            TextField("Paste your private key", text: $state.privateKeyRaw, axis: .vertical)
-        } else {
-            SecureField("Paste your private key", text: $state.privateKeyRaw)
         }
     }
 
@@ -220,21 +205,6 @@ struct PrivateKeyEntryView: View {
                         lineWidth: keyFocused ? 1 : 0
                     )
             }
-    }
-
-    private var revealKeyButton: some View {
-        Button {
-            isKeyRevealed.toggle()
-            keyFocused = true
-        } label: {
-            Image(systemName: isKeyRevealed ? "eye.slash" : "eye")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(UniColors.Input.revealIcon)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(isKeyRevealed ? "Hide private key" : "Show private key"))
     }
 
     private var keyUtilityButtons: some View {
