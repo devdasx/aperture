@@ -547,7 +547,8 @@ struct PinChangeFlow: View {
                             step = .confirmNew(expected: newPin)
                         },
                         onCancel: { onFinish() },
-                        showsNavigationControls: false
+                        showsNavigationControls: false,
+                        accessContext: .changePasscode
                     )
                 case .confirmNew(let expected):
                     PinCodeView(
@@ -560,7 +561,8 @@ struct PinChangeFlow: View {
                         onConfirmMismatch: {
                             step = .setNew
                         },
-                        showsNavigationControls: false
+                        showsNavigationControls: false,
+                        accessContext: .changePasscode
                     )
                 }
             }

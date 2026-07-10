@@ -346,9 +346,12 @@ struct PinCodeView: View {
 
     private var titleKey: LocalizedStringKey {
         switch mode {
-        case .set:     return "Turn on passcode"
-        case .confirm: return "Confirm passcode"
-        case .verify:  return "Enter passcode"
+        case .set:
+            return accessContext == .changePasscode ? "Enter new passcode" : "Turn on passcode"
+        case .confirm:
+            return accessContext == .changePasscode ? "Confirm new passcode" : "Confirm passcode"
+        case .verify:
+            return "Enter passcode"
         }
     }
 
@@ -364,9 +367,13 @@ struct PinCodeView: View {
     private var subtitleKey: LocalizedStringKey {
         switch mode {
         case .set:
-            return "Enter a 6-digit passcode for this device."
+            return accessContext == .changePasscode
+                ? "Enter a new 6-digit passcode for this device."
+                : "Enter a 6-digit passcode for this device."
         case .confirm:
-            return "Re-enter your 6-digit passcode."
+            return accessContext == .changePasscode
+                ? "Re-enter your new 6-digit passcode."
+                : "Re-enter your 6-digit passcode."
         case .verify:
             return "Enter your 6-digit passcode."
         }
