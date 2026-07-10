@@ -170,6 +170,24 @@ extension BiometricService.BiometryType {
         }
     }
 
+    var disableReason: LocalizedStringResource {
+        switch self {
+        case .faceID:  return "Confirm turning off Face ID for Aperture."
+        case .touchID: return "Confirm turning off Touch ID for Aperture."
+        case .opticID: return "Confirm turning off Optic ID for Aperture."
+        case .none:    return "Confirm turning off biometric unlock for Aperture."
+        }
+    }
+
+    var disableSendingReason: LocalizedStringResource {
+        switch self {
+        case .faceID:  return "Confirm turning off Face ID for sending transactions."
+        case .touchID: return "Confirm turning off Touch ID for sending transactions."
+        case .opticID: return "Confirm turning off Optic ID for sending transactions."
+        case .none:    return "Confirm turning off biometric authentication for sending transactions."
+        }
+    }
+
     var reenrollmentReason: LocalizedStringResource {
         switch self {
         case .faceID:  return "Confirm your new Face ID enrollment."

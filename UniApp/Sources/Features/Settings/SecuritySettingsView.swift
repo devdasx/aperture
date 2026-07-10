@@ -1,5 +1,42 @@
 import SwiftUI
 
+enum SecuritySettingAuthorization: Equatable, Sendable {
+    case none
+    case biometric
+    case passcode
+}
+
+enum SecuritySettingChange: Equatable, Identifiable, Sendable {
+    case biometricEnabled(Bool)
+    case requireBiometricForSend(Bool)
+    case forgotPasscodeResetEnabled(Bool)
+    case eraseDataEnabled(Bool)
+
+    var id: String {
+        switch self {
+        case .biometricEnabled(let enabled):
+            return "biometric-\(enabled)"
+        case .requireBiometricForSend(let enabled):
+            return "send-biometric-\(enabled)"
+        case .forgotPasscodeResetEnabled(let enabled):
+            return "forgot-reset-\(enabled)"
+        case .eraseDataEnabled(let enabled):
+            return "erase-data-\(enabled)"
+        }
+    }
+
+    var authorization: SecuritySettingAuthorization {
+        switch self {
+        case .biometricEnabled:
+            return .biometric
+        case .requireBiometricForSend(let enabled):
+            return enabled ? .none : .biometric
+        case .forgotPasscodeResetEnabled, .eraseDataEnabled:
+            return .passcode
+        }
+    }
+}
+
 /// Settings → Security. Single surface for all device-side
 /// authentication: PIN enable/change/disable, biometric toggle,
 /// auto-lock duration, backup-pending shortcut, and reset-import-
@@ -24,12 +61,16 @@ struct SecuritySettingsView: View {
     @State private var isShowingDisableVerify: Bool = false
     @State private var biometricAvailable: Bool = false
     @State private var biometryType: BiometricService.BiometryType = .none
+    @State private var biometricAuthorizationTask: Task<Void, Never>?
+    @State private var isBiometricAuthorizationInFlight: Bool = false
+    @State private var pendingPasscodeChange: SecuritySettingChange?
+    @State private var verifiedPasscodeChange: SecuritySettingChange?
     /// Confirms ARMING "Erase Data" — a destructive auto-wipe, so it's never
-    /// turned on by a single stray tap. Turning it OFF needs no confirm.
+    /// turned on by a single stray tap. Passcode verification happens first.
     @State private var isShowingEraseDataConfirm: Bool = false
     /// First-enable education for the lock-screen forgot-passcode reset hatch.
     /// The toggle remains off until the user explicitly enables it from the
-    /// sheet.
+    /// native alert after passcode verification.
     @State private var isShowingForgotPasscodeResetExplanation: Bool = false
 
     var body: some View {
@@ -40,6 +81,10 @@ struct SecuritySettingsView: View {
         .onAppear {
             refreshBiometryState()
             syncBiometricActionTogglesWithMaster()
+        }
+        .onDisappear {
+            biometricAuthorizationTask?.cancel()
+            biometricAuthorizationTask = nil
         }
     }
 
@@ -56,7 +101,7 @@ struct SecuritySettingsView: View {
                     // Disabled (greyed, non-interactive) until a passcode
                     // exists — biometrics need the passcode as fallback.
                     biometricRow
-                        .disabled(!pinEnabled)
+                        .disabled(!pinEnabled || isBiometricAuthorizationInFlight)
                         .opacity(pinEnabled ? 1 : 0.5)
                 }
             } header: {
@@ -73,7 +118,15 @@ struct SecuritySettingsView: View {
             // the master toggle is on.
             if biometricAvailable {
                 Section {
-                    biometricActionRow("Sending transactions", isOn: $requireForSend)
+                    biometricActionRow(
+                        "Sending transactions",
+                        isOn: Binding(
+                            get: { requireForSend },
+                            set: {
+                                requestSecuritySettingChange(.requireBiometricForSend($0))
+                            }
+                        )
+                    )
                 } header: {
                     Text(verbatim: "Use \(biometryType.displayName) For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
                 } footer: {
@@ -226,6 +279,30 @@ struct SecuritySettingsView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
+        .sheet(
+            item: $pendingPasscodeChange,
+            onDismiss: applyVerifiedPasscodeChange
+        ) { change in
+            NavigationStack {
+                PinCodeView(
+                    mode: .verify,
+                    onComplete: { _ in
+                        verifiedPasscodeChange = change
+                        pendingPasscodeChange = nil
+                    },
+                    onCancel: {
+                        pendingPasscodeChange = nil
+                    },
+                    allowsBiometrics: false,
+                    showsNavigationControls: false,
+                    accessContext: .accessSecurity
+                )
+            }
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
     }
 
     // MARK: - Rows
@@ -255,11 +332,7 @@ struct SecuritySettingsView: View {
         UniToggle(isOn: Binding(
             get: { biometricEnabled },
             set: { newValue in
-                if newValue {
-                    Task { await tryEnableBiometric() }
-                } else {
-                    setBiometricEnabled(false)
-                }
+                requestSecuritySettingChange(.biometricEnabled(newValue))
             }
         )) {
             HStack(spacing: UniSpacing.s) {
@@ -274,6 +347,7 @@ struct SecuritySettingsView: View {
             }
         }
         .tint(UniColors.Button.Primary.tint)
+        .disabled(isBiometricAuthorizationInFlight)
         .padding(.vertical, UniSpacing.xxs)
         .listRowBackground(UniColors.List.rowBackground)
     }
@@ -287,7 +361,7 @@ struct SecuritySettingsView: View {
                 .foregroundStyle(biometricEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
         }
         .tint(UniColors.Button.Primary.tint)
-        .disabled(!biometricEnabled)
+        .disabled(!biometricEnabled || isBiometricAuthorizationInFlight)
         .padding(.vertical, UniSpacing.xxs)
         .listRowBackground(UniColors.List.rowBackground)
     }
@@ -318,15 +392,7 @@ struct SecuritySettingsView: View {
             UniToggle(isOn: Binding(
                 get: { forgotPasscodeResetEnabled },
                 set: { newValue in
-                    if newValue {
-                        if forgotPasscodeResetEducationSeen {
-                            forgotPasscodeResetEnabled = true
-                        } else {
-                            isShowingForgotPasscodeResetExplanation = true
-                        }
-                    } else {
-                        forgotPasscodeResetEnabled = false
-                    }
+                    requestSecuritySettingChange(.forgotPasscodeResetEnabled(newValue))
                 }
             )) {
                 Text("Reset from Forgot Passcode")
@@ -355,11 +421,7 @@ struct SecuritySettingsView: View {
             UniToggle(isOn: Binding(
                 get: { eraseDataEnabled },
                 set: { newValue in
-                    if newValue {
-                        isShowingEraseDataConfirm = true // confirm before arming
-                    } else {
-                        eraseDataEnabled = false
-                    }
+                    requestSecuritySettingChange(.eraseDataEnabled(newValue))
                 }
             )) {
                 Text("Erase Data")
@@ -377,15 +439,101 @@ struct SecuritySettingsView: View {
         }
     }
 
+    private func requestSecuritySettingChange(_ change: SecuritySettingChange) {
+        guard !isAlreadyApplied(change) else { return }
+
+        switch change.authorization {
+        case .none:
+            applyAuthorizedSettingChange(change)
+        case .biometric:
+            guard !isBiometricAuthorizationInFlight else { return }
+            isBiometricAuthorizationInFlight = true
+            biometricAuthorizationTask?.cancel()
+            biometricAuthorizationTask = Task { @MainActor in
+                await authenticateBiometricSettingChange(change)
+            }
+        case .passcode:
+            guard pendingPasscodeChange == nil else { return }
+            pendingPasscodeChange = change
+        }
+    }
+
     @MainActor
-    private func tryEnableBiometric() async {
+    private func authenticateBiometricSettingChange(_ change: SecuritySettingChange) async {
         let service = BiometricService()
-        let outcome = await service.authenticate(reason: service.biometryType.enableReason)
-        if case .success = outcome {
-            setBiometricEnabled(true)
+        let outcome = await service.authenticate(
+            reason: biometricReason(for: change, biometryType: service.biometryType)
+        )
+
+        guard !Task.isCancelled else {
+            isBiometricAuthorizationInFlight = false
+            biometricAuthorizationTask = nil
+            return
+        }
+
+        isBiometricAuthorizationInFlight = false
+        biometricAuthorizationTask = nil
+        guard case .success = outcome else { return }
+
+        applyAuthorizedSettingChange(change)
+        if change == .biometricEnabled(true) {
             BiometricEnrollmentTracker.captureSnapshot(database: AppDatabase.shared)
-        } else {
-            setBiometricEnabled(false)
+        }
+    }
+
+    private func biometricReason(
+        for change: SecuritySettingChange,
+        biometryType: BiometricService.BiometryType
+    ) -> LocalizedStringResource {
+        switch change {
+        case .biometricEnabled(true):
+            return biometryType.enableReason
+        case .biometricEnabled(false):
+            return biometryType.disableReason
+        case .requireBiometricForSend(false):
+            return biometryType.disableSendingReason
+        default:
+            return biometryType.unlockReason
+        }
+    }
+
+    private func applyVerifiedPasscodeChange() {
+        guard let change = verifiedPasscodeChange else { return }
+        verifiedPasscodeChange = nil
+        applyAuthorizedSettingChange(change)
+    }
+
+    private func applyAuthorizedSettingChange(_ change: SecuritySettingChange) {
+        switch change {
+        case .biometricEnabled(let enabled):
+            setBiometricEnabled(enabled)
+        case .requireBiometricForSend(let enabled):
+            requireForSend = enabled
+        case .forgotPasscodeResetEnabled(let enabled):
+            if enabled, !forgotPasscodeResetEducationSeen {
+                isShowingForgotPasscodeResetExplanation = true
+            } else {
+                forgotPasscodeResetEnabled = enabled
+            }
+        case .eraseDataEnabled(let enabled):
+            if enabled {
+                isShowingEraseDataConfirm = true
+            } else {
+                eraseDataEnabled = false
+            }
+        }
+    }
+
+    private func isAlreadyApplied(_ change: SecuritySettingChange) -> Bool {
+        switch change {
+        case .biometricEnabled(let enabled):
+            return biometricEnabled == enabled
+        case .requireBiometricForSend(let enabled):
+            return requireForSend == enabled
+        case .forgotPasscodeResetEnabled(let enabled):
+            return forgotPasscodeResetEnabled == enabled
+        case .eraseDataEnabled(let enabled):
+            return eraseDataEnabled == enabled
         }
     }
 
