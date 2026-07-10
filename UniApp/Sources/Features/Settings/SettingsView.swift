@@ -45,7 +45,6 @@ enum SettingsDestination: Hashable, Codable {
     case currency
     case preferences
     case diagnostics
-    case help
     case about
 
     /// Whether this destination may be auto-restored on a cold launch.
@@ -64,7 +63,7 @@ enum SettingsDestination: Hashable, Codable {
         case .diagnostics:
             return SettingsInternalVisibility.showsDiagnostics
         case .wallets, .walletDetail, .autoLock, .hideSmallBalances,
-             .language, .appearance, .currency, .preferences, .help, .about:
+             .language, .appearance, .currency, .preferences, .about:
             return true
         }
     }
@@ -354,18 +353,8 @@ struct SettingsView: View {
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
-            // Section 4 — Help & About
+            // Section 4 — About
             Section {
-                NavigationLink(value: SettingsDestination.help) {
-                    SettingsRow(
-                        systemImage: "questionmark.circle",
-                        title: "Help & Support",
-                        trailing: nil,
-                        iconTint: .blue
-                    )
-                }
-                .listRowBackground(UniColors.List.rowBackground)
-
                 NavigationLink(value: SettingsDestination.about) {
                     SettingsRow(
                         systemImage: "info.circle",
@@ -407,7 +396,6 @@ struct SettingsView: View {
         case .currency:                  CurrencyPickerView()
         case .preferences:               PreferencesView()
         case .diagnostics:               DiagnosticsLogView()
-        case .help:                      HelpAndSupportView()
         case .about:                     AboutView()
         }
     }
@@ -508,7 +496,7 @@ struct SettingsView: View {
         case .hideSmallBalances:
             return (.preferences, stack)
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .diagnostics, .help, .about:
+             .preferences, .diagnostics, .about:
             return (first, Array(stack.dropFirst()))
         }
     }
@@ -516,7 +504,7 @@ struct SettingsView: View {
     private static func isSplitRoot(_ destination: SettingsDestination) -> Bool {
         switch destination {
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .diagnostics, .help, .about:
+             .preferences, .diagnostics, .about:
             return true
         case .walletDetail, .autoLock, .hideSmallBalances:
             return false
@@ -588,8 +576,7 @@ private struct SettingsRow: View {
     let systemImage: String
     let title: LocalizedStringKey
     /// Optional trailing summary. `nil` for rows that don't carry a
-    /// status (Help & Support, future external-link rows) — the row
-    /// collapses without the right-side `Text`.
+    /// status — the row collapses without the right-side `Text`.
     let trailing: LocalizedStringKey?
     var iconTint: Color = .gray
 

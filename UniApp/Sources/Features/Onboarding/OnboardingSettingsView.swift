@@ -3,7 +3,7 @@ import SwiftUI
 /// Pre-wallet Settings sheet — the slim Settings surface presented from
 /// the onboarding gear icon. Carries ONLY the rows that make sense
 /// before the user has created or imported a wallet: language,
-/// appearance, haptic feedback, help & support, and about.
+/// appearance, haptic feedback, and about.
 ///
 /// **Why a separate view (and not a flag on `SettingsView`).** Per
 /// Rule #2 §A.2 ("simplicity through reduction"), feature flags on a
@@ -13,10 +13,10 @@ import SwiftUI
 /// nothing to refresh or reset). A separate view names the contract
 /// honestly: this is the *pre-wallet* Settings.
 ///
-/// **Pushed picker destinations are reused** — `LanguagePickerView`,
-/// `AppearancePickerView`, and `HelpAndSupportView` are the same
-/// screens the full `SettingsView` uses. Their behavior is identical;
-/// only the parent list differs.
+/// **Pushed picker destinations are reused** — `LanguagePickerView`
+/// and `AppearancePickerView` are the same screens the full
+/// `SettingsView` uses. Their behavior is identical; only the parent
+/// list differs.
 struct OnboardingSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -72,20 +72,8 @@ struct OnboardingSettingsView: View {
                         .listRowBackground(UniColors.List.rowBackground)
                 }
 
-                // Help & About — external links and version surface
-                // are useful pre-wallet too (user might want to read
-                // the docs or check the open-source repo before
-                // trusting the app with their keys).
+                // About — version and legal surface available pre-wallet.
                 Section {
-                    NavigationLink(value: OnboardingSettingsDestination.help) {
-                        OnboardingSettingsRow(
-                            systemImage: "questionmark.circle",
-                            title: "Help & Support",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.List.rowBackground)
-
                     NavigationLink(value: OnboardingSettingsDestination.about) {
                         OnboardingSettingsRow(
                             systemImage: "info.circle",
@@ -105,7 +93,6 @@ struct OnboardingSettingsView: View {
                 switch destination {
                 case .language:        LanguagePickerView()
                 case .appearance:      AppearancePickerView()
-                case .help:            HelpAndSupportView()
                 case .about:           OnboardingAboutView(
                                           onTapTerms: { isShowingTerms = true },
                                           onTapPrivacy: { isShowingPrivacyPolicy = true }
@@ -146,7 +133,6 @@ struct OnboardingSettingsView: View {
 enum OnboardingSettingsDestination: Hashable, Codable {
     case language
     case appearance
-    case help
     case about
 }
 
