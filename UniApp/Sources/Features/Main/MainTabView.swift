@@ -234,6 +234,7 @@ struct MainTabView: View {
             }
             .sheet(item: $walletCompletionNotice) { notice in
                 WalletCompletionNoticeSheet(notice: notice) {
+                    WalletFirstRefreshPresentationCenter.markCompletionSheetDismissed()
                     walletCompletionNotice = nil
                 }
                 .uniAppEnvironment()
@@ -618,6 +619,35 @@ enum WalletCompletionNoticeCenter {
 
     static func enqueue(_ notice: WalletCompletionNoticeKind) {
         AppPreferenceStore.shared.set(notice.rawValue, forKey: storageKey)
+        WalletFirstRefreshPresentationCenter.markNewWallet(ActiveWalletPointer.currentId)
+    }
+}
+
+enum WalletFirstRefreshPresentationCenter {
+    static let walletIdKey = "pendingWalletFirstRefreshWalletId"
+    static let startedAtKey = "pendingWalletFirstRefreshStartedAt"
+    static let completionDismissedAtKey = "pendingWalletFirstRefreshCompletionDismissedAt"
+
+    static func markNewWallet(_ walletId: UUID?) {
+        guard let walletId else { return }
+        let now = Date().timeIntervalSince1970
+        let store = AppPreferenceStore.shared
+        store.set(walletId.uuidString, forKey: walletIdKey)
+        store.set(now, forKey: startedAtKey)
+        store.set(0.0, forKey: completionDismissedAtKey)
+    }
+
+    static func markCompletionSheetDismissed() {
+        guard !AppPreferenceStore.shared.string(walletIdKey, default: "").isEmpty else { return }
+        AppPreferenceStore.shared.set(Date().timeIntervalSince1970, forKey: completionDismissedAtKey)
+    }
+
+    static func clearIfCurrent(_ walletId: UUID) {
+        let store = AppPreferenceStore.shared
+        guard store.string(walletIdKey, default: "") == walletId.uuidString else { return }
+        store.set("", forKey: walletIdKey)
+        store.set(0.0, forKey: startedAtKey)
+        store.set(0.0, forKey: completionDismissedAtKey)
     }
 }
 

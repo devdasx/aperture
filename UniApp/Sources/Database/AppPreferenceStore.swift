@@ -445,6 +445,9 @@ final class AppPreferenceStore: @unchecked Sendable {
         AllSupportedFilterPreferences.selectedNetworksKey: .string(AllSupportedFilterPreferences.defaultSelectedNetworksJSON),
         AllSupportedFilterPreferences.onlyWithBalanceKey: .bool(AllSupportedFilterPreferences.defaultOnlyWithBalance),
         "pendingWalletCompletionNotice": .string(""),
+        WalletFirstRefreshPresentationCenter.walletIdKey: .string(""),
+        WalletFirstRefreshPresentationCenter.startedAtKey: .double(0),
+        WalletFirstRefreshPresentationCenter.completionDismissedAtKey: .double(0),
         ScreenRestoration.PreferenceKey.settingsPath: .data(Data()),
         ScreenRestoration.PreferenceKey.walletHomePath: .data(Data())
     ]

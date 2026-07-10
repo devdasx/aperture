@@ -121,6 +121,9 @@ struct WalletHomeView: View {
     // rebuilds those rows from persisted TokenBalanceRecord rows, so the card
     // stays database-backed without summing live rows in this parent.
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(WalletFirstRefreshPresentationCenter.walletIdKey) private var firstRefreshPresentationWalletIdRaw: String = ""
+    @GRDBStorage(WalletFirstRefreshPresentationCenter.startedAtKey) private var firstRefreshPresentationStartedAt: Double = 0
+    @GRDBStorage(WalletFirstRefreshPresentationCenter.completionDismissedAtKey) private var firstRefreshPresentationDismissedAt: Double = 0
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @GRDBStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
 
@@ -269,14 +272,22 @@ struct WalletHomeView: View {
         isRefreshing
     }
 
-    /// Initial create/import scan gate. A wallet with no completed address
-    /// scan should render loading placeholders only while this view's first
-    /// background refresh is actually in flight; after that completes, the
-    /// normal fresh-wallet empty state or balance card owns the truth.
+    /// Initial create/import scan gate. A new wallet should render loading
+    /// placeholders only during the bounded first-refresh presentation window;
+    /// after that completes, the normal fresh-wallet empty state or balance
+    /// card owns the truth. This is deliberately not tied to `lastScannedAt`:
+    /// a slow or failed chain scan must not leave the skeleton stuck on screen.
     private var isShowingFirstRefreshSkeleton: Bool {
         guard let wallet = activeWallet else { return false }
         return firstRefreshSkeletonWalletId == wallet.id
-            && mostRecentScanAt == nil
+    }
+
+    private var firstRefreshPresentationFingerprint: String {
+        [
+            firstRefreshPresentationWalletIdRaw,
+            String(firstRefreshPresentationStartedAt),
+            String(firstRefreshPresentationDismissedAt)
+        ].joined(separator: "|")
     }
 
     /// Network-error state retired with the data-fetching layer (2026-06-25):
@@ -619,6 +630,9 @@ struct WalletHomeView: View {
                     rebuildFilterInputs()
                     rebuildDisplayRows()
                     scheduleChainStateReconcile(after: 0)
+                }
+                .onChange(of: firstRefreshPresentationFingerprint) { _, _ in
+                    updateFirstRefreshSkeletonFromPresentationMarker()
                 }
                 // Navigation mirror for root rebuilds. Cold launch clears it
                 // before this view's `init`; live rebuilds can consume it.
@@ -2719,8 +2733,6 @@ struct WalletHomeView: View {
                     userInitiated: false
                 )
                 guard !Task.isCancelled else { return }
-                try? await Task.sleep(for: .seconds(2))
-                guard !Task.isCancelled else { return }
                 await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
                     walletId: walletId,
                     currencyCode: currencyCode,
@@ -2753,20 +2765,58 @@ struct WalletHomeView: View {
 
     private func shouldShowFirstRefreshSkeleton(for walletId: UUID) -> Bool {
         activeWallet?.id == walletId
-            && mostRecentScanAt == nil
+            && firstRefreshPresentationWalletIdRaw == walletId.uuidString
+            && firstRefreshSkeletonDeadline(for: walletId) != nil
     }
 
     private func startFirstRefreshSkeleton(for walletId: UUID) {
-        guard firstRefreshSkeletonWalletId != walletId else { return }
+        guard let deadline = firstRefreshSkeletonDeadline(for: walletId) else {
+            finishFirstRefreshSkeleton(for: walletId)
+            return
+        }
+        let remainingSeconds = max(0, deadline.timeIntervalSinceNow)
         let runId = UUID()
         firstRefreshSkeletonTask?.cancel()
         firstRefreshSkeletonWalletId = walletId
         firstRefreshSkeletonRunId = runId
         firstRefreshSkeletonTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(5))
+            let nanoseconds = UInt64((remainingSeconds * 1_000_000_000).rounded())
+            if nanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: nanoseconds)
+            }
             guard !Task.isCancelled else { return }
             clearFirstRefreshSkeleton(walletId: walletId, runId: runId)
         }
+    }
+
+    private func updateFirstRefreshSkeletonFromPresentationMarker() {
+        guard let walletId = UUID(uuidString: activeWalletIdRaw) else {
+            cancelFirstRefreshSkeleton()
+            return
+        }
+        guard shouldShowFirstRefreshSkeleton(for: walletId) else {
+            cancelFirstRefreshSkeleton()
+            if firstRefreshPresentationWalletIdRaw == walletId.uuidString,
+               firstRefreshPresentationDismissedAt > 0,
+               firstRefreshSkeletonDeadline(for: walletId) == nil {
+                WalletFirstRefreshPresentationCenter.clearIfCurrent(walletId)
+            }
+            return
+        }
+        startFirstRefreshSkeleton(for: walletId)
+    }
+
+    private func firstRefreshSkeletonDeadline(for walletId: UUID) -> Date? {
+        guard firstRefreshPresentationWalletIdRaw == walletId.uuidString,
+              firstRefreshPresentationStartedAt > 0 else { return nil }
+        let startedAt = Date(timeIntervalSince1970: firstRefreshPresentationStartedAt)
+        var deadline = startedAt.addingTimeInterval(5)
+        if firstRefreshPresentationDismissedAt > 0 {
+            let dismissedAt = Date(timeIntervalSince1970: firstRefreshPresentationDismissedAt)
+            deadline = max(deadline, dismissedAt.addingTimeInterval(3))
+        }
+        guard deadline.timeIntervalSinceNow > 0 else { return nil }
+        return deadline
     }
 
     private func clearFirstRefreshSkeleton(walletId: UUID, runId: UUID) {
@@ -2779,6 +2829,14 @@ struct WalletHomeView: View {
         rebuildFilterInputs()
         rebuildDisplayRows()
         scheduleChainStateReconcile(after: 0)
+        finishFirstRefreshSkeleton(for: walletId)
+    }
+
+    private func finishFirstRefreshSkeleton(for walletId: UUID) {
+        if firstRefreshPresentationWalletIdRaw == walletId.uuidString,
+           firstRefreshPresentationDismissedAt > 0 {
+            WalletFirstRefreshPresentationCenter.clearIfCurrent(walletId)
+        }
     }
 
     private func cancelFirstRefreshSkeleton(unless walletId: UUID? = nil) {
