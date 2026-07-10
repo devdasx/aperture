@@ -17,7 +17,7 @@ import SwiftUI
 ///
 /// **What's preserved from the prior splash design:**
 /// - The "Aperture" wordmark with its wipe-up reveal.
-/// - The monochrome background.
+/// - The monochrome surface, now backed by the app-wide background role.
 ///
 /// **What changed:**
 /// - The mark itself: `Brand/Mark.imageset` is rendered through
@@ -167,7 +167,7 @@ struct SplashView: View {
     // MARK: - Background
 
     private var background: some View {
-        UniColors.Splash.base
+        UniColors.Background.primary
             .ignoresSafeArea()
     }
 
