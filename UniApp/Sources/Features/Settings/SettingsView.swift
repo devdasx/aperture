@@ -97,7 +97,6 @@ struct SettingsView: View {
     @State private var splitDetailPath: [SettingsDestination]
     @State private var protectedNavigationDestination: SettingsDestination?
     @State private var isShowingProtectedNavigationGate = false
-    @State private var isShowingSheetDesignPreview = false
 
     init(showsCloseButton: Bool = false, allowsSplitLayout: Bool = true) {
         self.showsCloseButton = showsCloseButton
@@ -164,13 +163,6 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $isShowingProtectedNavigationGate) {
             protectedNavigationGate
-        }
-        .sheet(isPresented: $isShowingSheetDesignPreview) {
-            SheetDesignPreviewSheet()
-                .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationDragIndicator(.hidden)
-                .presentationBackground(UniColors.Background.secondary)
         }
     }
 
@@ -335,21 +327,6 @@ struct SettingsView: View {
                         iconTint: .orange
                     )
                 }
-                .listRowBackground(UniColors.List.rowBackground)
-            }
-
-            Section {
-                Button {
-                    isShowingSheetDesignPreview = true
-                } label: {
-                    SettingsRow(
-                        systemImage: "rectangle.bottomthird.inset.filled",
-                        title: "Sheet Design Preview",
-                        trailing: nil,
-                        iconTint: .blue
-                    )
-                }
-                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
