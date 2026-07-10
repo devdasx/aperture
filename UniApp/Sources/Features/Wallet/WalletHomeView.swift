@@ -909,7 +909,9 @@ struct WalletHomeView: View {
             // background writer keeps `SyncStatusRecord` fresh silently.
             chromeSection
             holdingsBody
+                .listRowBackground(UniColors.List.rowBackground)
             activityListSection
+                .listRowBackground(UniColors.List.rowBackground)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)

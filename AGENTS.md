@@ -2,5 +2,4 @@
 
 These rules are project-specific and apply to every Codex session in this repository.
 
-1. After making any file edit, commit the completed work and push it directly to `origin/main` before the final response.
-2. Before pushing, run `git status --short --branch` and review staged changes so local-only files, secrets, provisioning keys, and unrelated junk are not included.
+1. Do not run Git or GitHub commands. Do not stage, commit, push, pull, branch, inspect Git status or diffs, or call GitHub tools. Make the requested code edits and run only relevant non-Git verification; the user handles version control manually.
