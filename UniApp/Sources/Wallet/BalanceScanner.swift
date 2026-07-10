@@ -61,7 +61,8 @@ actor WalletDataRefreshCoordinator {
         currencyCode: String,
         database: AppDatabase,
         userInitiated: Bool = false,
-        mode: RefreshMode = .full
+        mode: RefreshMode = .full,
+        trigger: PortfolioRefreshTrigger = .automatic
     ) async {
         if let existing = refreshSlots[walletId] {
             if userInitiated {
@@ -86,13 +87,14 @@ actor WalletDataRefreshCoordinator {
         }
 
         let token = UUID()
-        let task = Task { [walletId, currencyCode, database, userInitiated, mode] in
+        let task = Task { [walletId, currencyCode, database, userInitiated, mode, trigger] in
             await self.performRefresh(
                 walletId: walletId,
                 currencyCode: currencyCode,
                 database: database,
                 userInitiated: userInitiated,
-                mode: mode
+                mode: mode,
+                trigger: trigger
             )
         }
         refreshSlots[walletId] = RefreshSlot(token: token, task: task)
@@ -107,9 +109,16 @@ actor WalletDataRefreshCoordinator {
         currencyCode: String,
         database: AppDatabase,
         userInitiated: Bool = false,
-        mode: RefreshMode = .full
+        mode: RefreshMode = .full,
+        trigger: PortfolioRefreshTrigger = .automatic
     ) async {
         let refreshStart = Date()
+        let portfolioRunId = await PortfolioHistoryCoordinator.shared.beginRun(
+            walletId: walletId,
+            trigger: trigger,
+            refreshMode: mode.rawValue,
+            database: database
+        )
         let normalizedCurrency = currencyCode.uppercased()
         let includePrices = mode == .full
         let includeHistory = mode == .full
@@ -436,6 +445,7 @@ actor WalletDataRefreshCoordinator {
         )
 
         if Task.isCancelled {
+            await PortfolioHistoryCoordinator.shared.cancelRun(portfolioRunId, database: database)
             DiagnosticsLogStore.shared.record(
                 .info,
                 category: "scanner",
@@ -474,6 +484,16 @@ actor WalletDataRefreshCoordinator {
                 ]
             )
         }
+        await PortfolioHistoryCoordinator.shared.finishRun(
+            runId: portfolioRunId,
+            walletId: walletId,
+            refreshMode: mode.rawValue,
+            attemptedChains: attemptedChains,
+            successfulChains: refreshedChains,
+            failedChains: failedChains,
+            displayCurrencyCode: normalizedCurrency,
+            database: database
+        )
         await PendingTransactionMonitor.shared.kick(database: database)
         DiagnosticsLogStore.shared.record(
             .info,
@@ -3020,7 +3040,8 @@ actor WalletBackgroundWorkCoordinator {
         walletId: UUID,
         currencyCode: String,
         database: AppDatabase,
-        userInitiated: Bool
+        userInitiated: Bool,
+        trigger: PortfolioRefreshTrigger = .background
     ) async {
         await runReplacing(
             type: .balances,
@@ -3033,7 +3054,8 @@ actor WalletBackgroundWorkCoordinator {
                 currencyCode: currencyCode,
                 database: database,
                 userInitiated: userInitiated,
-                mode: .balancesOnly
+                mode: userInitiated ? .full : .balancesOnly,
+                trigger: trigger
             )
         }
     }
@@ -3041,7 +3063,8 @@ actor WalletBackgroundWorkCoordinator {
     func startFullRefresh(
         walletId: UUID,
         currencyCode: String,
-        database: AppDatabase
+        database: AppDatabase,
+        trigger: PortfolioRefreshTrigger = .automatic
     ) {
         Task {
             await runReplacing(
@@ -3055,7 +3078,8 @@ actor WalletBackgroundWorkCoordinator {
                     currencyCode: currencyCode,
                     database: database,
                     userInitiated: false,
-                    mode: .full
+                    mode: .full,
+                    trigger: trigger
                 )
             }
         }
@@ -3064,7 +3088,8 @@ actor WalletBackgroundWorkCoordinator {
     func refreshFull(
         walletId: UUID,
         currencyCode: String,
-        database: AppDatabase
+        database: AppDatabase,
+        trigger: PortfolioRefreshTrigger = .automatic
     ) async {
         await runReplacing(
             type: .fullRefresh,
@@ -3077,7 +3102,8 @@ actor WalletBackgroundWorkCoordinator {
                 currencyCode: currencyCode,
                 database: database,
                 userInitiated: false,
-                mode: .full
+                mode: .full,
+                trigger: trigger
             )
         }
     }

@@ -16,6 +16,12 @@ actor TokenPricingEngine {
         let isStale: Bool
     }
 
+    struct HistoricalResolvedPrice: Sendable {
+        let amount: Decimal
+        let at: Date
+        let source: String
+    }
+
     private struct Descriptor: Sendable {
         let symbol: String
         let coinGeckoId: String?
@@ -157,6 +163,56 @@ actor TokenPricingEngine {
             sourceUSD > 0
         else { return nil }
         return targetUSD / sourceUSD
+    }
+
+    /// Resolves the closest recorded or provider-supplied USD price around a
+    /// transaction timestamp. It never substitutes the current spot price.
+    func historicalUSDPrice(symbol: String, at target: Date) async -> HistoricalResolvedPrice? {
+        let normalized = symbol.uppercased()
+        let tolerance: TimeInterval = 30 * 60
+        if let database = persistenceDatabase,
+           let cached = try? PriceSnapshotRepository(database: database).nearest(
+               symbol: normalized,
+               currency: "USD",
+               to: target,
+               tolerance: tolerance
+           ) {
+            return HistoricalResolvedPrice(amount: cached.price, at: cached.fetchedAt, source: cached.source)
+        }
+
+        let underlying = WrappedAssetAliases.resolveSymbol(normalized)
+        guard let descriptor = descriptor(for: underlying), let coinGeckoId = descriptor.coinGeckoId else {
+            return nil
+        }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "api.coingecko.com"
+        components.path = "/api/v3/coins/\(coinGeckoId)/market_chart/range"
+        components.queryItems = [
+            URLQueryItem(name: "vs_currency", value: "usd"),
+            URLQueryItem(name: "from", value: String(Int(target.addingTimeInterval(-60 * 60).timeIntervalSince1970))),
+            URLQueryItem(name: "to", value: String(Int(target.addingTimeInterval(60 * 60).timeIntervalSince1970)))
+        ]
+        guard let url = components.url,
+              let response = try? await decode(HistoricalCoinGeckoChart.self, from: url, timeout: 10)
+        else { return nil }
+
+        var best: HistoricalResolvedPrice?
+        var bestDelta = TimeInterval.infinity
+        for point in response.prices where point.count >= 2 {
+            let date = Date(timeIntervalSince1970: point[0] / 1_000)
+            let delta = abs(date.timeIntervalSince(target))
+            guard delta <= tolerance, delta < bestDelta, let price = decimal(point[1]), price > 0 else { continue }
+            bestDelta = delta
+            best = HistoricalResolvedPrice(amount: price, at: date, source: "CoinGecko historical")
+        }
+        if let best, let database = persistenceDatabase {
+            try? PriceSnapshotRepository(database: database).record(
+                [(symbol: normalized, currencyCode: "USD", price: best.amount, source: best.source)],
+                at: best.at
+            )
+        }
+        return best
     }
 
     // MARK: - Token prices
@@ -505,6 +561,10 @@ actor TokenPricingEngine {
 private struct BinanceTicker: Decodable {
     let symbol: String
     let price: String
+}
+
+private struct HistoricalCoinGeckoChart: Decodable {
+    let prices: [[Double]]
 }
 
 private struct CoinbaseTicker: Decodable {

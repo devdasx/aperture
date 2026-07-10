@@ -500,6 +500,9 @@ private extension AppDatabase {
         migrator.registerMigration("v5_wallet_asset_route_templates") { db in
             try db.execute(sql: walletAssetRouteTemplatesSQL)
         }
+        migrator.registerMigration("v6_portfolio_pnl_history") { db in
+            try db.execute(sql: portfolioPnLHistorySQL)
+        }
         return migrator
     }
 
@@ -613,6 +616,124 @@ private extension AppDatabase {
     );
     CREATE INDEX IF NOT EXISTS idx_wallet_asset_route_templates_lookup
         ON wallet_asset_route_templates(wallet_id, flow_raw, updated_at_ms DESC);
+    """
+
+    nonisolated static let portfolioPnLHistorySQL = """
+    CREATE TABLE IF NOT EXISTS portfolio_snapshot_runs (
+        id TEXT PRIMARY KEY,
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        trigger_raw TEXT NOT NULL,
+        refresh_mode_raw TEXT NOT NULL,
+        status_raw TEXT NOT NULL,
+        started_at_ms INTEGER NOT NULL,
+        completed_at_ms INTEGER,
+        attempted_chain_count INTEGER NOT NULL DEFAULT 0,
+        successful_chain_count INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_portfolio_snapshot_runs_wallet_time
+        ON portfolio_snapshot_runs(wallet_id, started_at_ms DESC);
+
+    CREATE TABLE IF NOT EXISTS portfolio_chain_results (
+        run_id TEXT NOT NULL REFERENCES portfolio_snapshot_runs(id) ON DELETE CASCADE,
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        chain_raw TEXT NOT NULL,
+        status_raw TEXT NOT NULL,
+        asset_count INTEGER NOT NULL DEFAULT 0,
+        captured_at_ms INTEGER NOT NULL,
+        PRIMARY KEY(run_id, chain_raw)
+    );
+    CREATE INDEX IF NOT EXISTS idx_portfolio_chain_results_wallet_chain_time
+        ON portfolio_chain_results(wallet_id, chain_raw, captured_at_ms DESC);
+
+    CREATE TABLE IF NOT EXISTS portfolio_asset_snapshots (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES portfolio_snapshot_runs(id) ON DELETE CASCADE,
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        chain_raw TEXT NOT NULL,
+        asset_key TEXT NOT NULL,
+        token_symbol TEXT NOT NULL,
+        token_contract TEXT,
+        decimals INTEGER NOT NULL,
+        raw_balance TEXT NOT NULL,
+        quantity TEXT NOT NULL,
+        unit_price_usd TEXT,
+        unit_price_usd_numeric REAL,
+        usd_value TEXT,
+        usd_value_numeric REAL,
+        price_source TEXT,
+        price_at_ms INTEGER,
+        valuation_status_raw TEXT NOT NULL,
+        captured_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_portfolio_asset_snapshots_wallet_asset_time
+        ON portfolio_asset_snapshots(wallet_id, asset_key, captured_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_portfolio_asset_snapshots_run
+        ON portfolio_asset_snapshots(run_id);
+
+    CREATE TABLE IF NOT EXISTS portfolio_asset_rollups (
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        chain_raw TEXT NOT NULL,
+        asset_key TEXT NOT NULL,
+        resolution_raw TEXT NOT NULL,
+        bucket_start_ms INTEGER NOT NULL,
+        token_symbol TEXT NOT NULL,
+        token_contract TEXT,
+        decimals INTEGER NOT NULL,
+        raw_balance TEXT NOT NULL,
+        quantity TEXT NOT NULL,
+        unit_price_usd TEXT,
+        unit_price_usd_numeric REAL,
+        usd_value TEXT,
+        usd_value_numeric REAL,
+        valuation_status_raw TEXT NOT NULL,
+        source_captured_at_ms INTEGER NOT NULL,
+        PRIMARY KEY(wallet_id, asset_key, resolution_raw, bucket_start_ms)
+    );
+    CREATE INDEX IF NOT EXISTS idx_portfolio_asset_rollups_wallet_resolution_time
+        ON portfolio_asset_rollups(wallet_id, resolution_raw, bucket_start_ms DESC);
+
+    CREATE TABLE IF NOT EXISTS portfolio_flow_valuations (
+        transaction_id TEXT PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        chain_raw TEXT NOT NULL,
+        asset_key TEXT NOT NULL,
+        classification_raw TEXT NOT NULL,
+        signed_amount TEXT NOT NULL,
+        occurred_at_ms INTEGER NOT NULL,
+        unit_price_usd TEXT,
+        unit_price_usd_numeric REAL,
+        signed_value_usd TEXT,
+        signed_value_usd_numeric REAL,
+        price_source TEXT,
+        price_at_ms INTEGER,
+        valuation_status_raw TEXT NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_portfolio_flow_valuations_wallet_time
+        ON portfolio_flow_valuations(wallet_id, occurred_at_ms DESC);
+
+    CREATE TABLE IF NOT EXISTS wallet_pnl_summaries (
+        id TEXT PRIMARY KEY,
+        lookup_key TEXT NOT NULL UNIQUE,
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        display_currency_code TEXT NOT NULL,
+        state_raw TEXT NOT NULL,
+        change_usd TEXT,
+        change_usd_numeric REAL,
+        display_change TEXT,
+        display_change_numeric REAL,
+        return_percent TEXT,
+        return_percent_numeric REAL,
+        fx_rate_from_usd TEXT,
+        as_of_ms INTEGER NOT NULL,
+        window_start_ms INTEGER NOT NULL,
+        compared_asset_count INTEGER NOT NULL DEFAULT 0,
+        relevant_asset_count INTEGER NOT NULL DEFAULT 0,
+        missing_chains_json TEXT NOT NULL DEFAULT '[]',
+        updated_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_wallet_pnl_summaries_wallet_currency
+        ON wallet_pnl_summaries(wallet_id, display_currency_code);
     """
 
     nonisolated static let schemaSQL = """

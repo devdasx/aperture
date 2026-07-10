@@ -68,6 +68,42 @@ final class PriceSnapshotRepository {
         }
     }
 
+    func nearest(
+        symbol: String,
+        currency: String,
+        to target: Date,
+        tolerance: TimeInterval
+    ) throws -> (price: Decimal, fetchedAt: Date, source: String)? {
+        let start = target.addingTimeInterval(-tolerance)
+        let end = target.addingTimeInterval(tolerance)
+        return try database.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT price, fetched_at_ms, source
+                FROM price_snapshots
+                WHERE symbol = ? AND currency_code = ?
+                  AND fetched_at_ms >= ? AND fetched_at_ms <= ?
+                  AND price_numeric > 0
+                ORDER BY ABS(fetched_at_ms - ?) ASC
+                LIMIT 1
+                """,
+                arguments: [
+                    symbol.uppercased(),
+                    currency.uppercased(),
+                    start.databaseMilliseconds,
+                    end.databaseMilliseconds,
+                    target.databaseMilliseconds
+                ]
+            ) else { return nil }
+            return (
+                Decimal(string: row["price"] as String) ?? 0,
+                Date(databaseMilliseconds: row["fetched_at_ms"]),
+                row["source"]
+            )
+        }
+    }
+
     func observations(symbol: String, currency: String) throws -> [(price: Decimal, fetchedAt: Date)] {
         let symbol = symbol.uppercased()
         let currency = currency.uppercased()

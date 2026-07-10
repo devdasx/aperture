@@ -2605,13 +2605,15 @@ struct WalletHomeView: View {
                     walletId: walletId,
                     currencyCode: currencyCode,
                     database: AppDatabase.shared,
-                    userInitiated: false
+                    userInitiated: false,
+                    trigger: .walletOpen
                 )
                 guard !Task.isCancelled else { return }
                 await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
                     walletId: walletId,
                     currencyCode: currencyCode,
-                    database: AppDatabase.shared
+                    database: AppDatabase.shared,
+                    trigger: .walletOpen
                 )
                 await WalletBackgroundWorkCoordinator.shared.startChainKeyBackfill(
                     walletId: walletId,
@@ -2630,7 +2632,8 @@ struct WalletHomeView: View {
             walletId: walletId,
             currencyCode: currencyCode,
             database: AppDatabase.shared,
-            userInitiated: true
+            userInitiated: true,
+            trigger: .pullToRefresh
         )
         guard UUID(uuidString: activeWalletIdRaw) == walletId else { return }
         rebuildFilterInputs()
