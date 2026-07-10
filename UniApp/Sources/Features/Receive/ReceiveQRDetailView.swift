@@ -78,6 +78,18 @@ struct ReceiveQRDetailView: View {
         return address
     }
 
+    private var receivePayloadAddress: String {
+        visibleAddress(for: displayedAddress)
+    }
+
+    private func visibleAddress(for rawAddress: String) -> String {
+        let trimmed = rawAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard chain == .bitcoinCash else { return trimmed }
+        let prefix = "bitcoincash:"
+        guard trimmed.lowercased().hasPrefix(prefix) else { return trimmed }
+        return String(trimmed.dropFirst(prefix.count))
+    }
+
     private var preferredEVMReceiveAddress: String? {
         guard chain.family == .evm else { return nil }
         return preferredReceiveAddress(for: chain)
@@ -140,11 +152,13 @@ struct ReceiveQRDetailView: View {
                 ReceiveQRCard(
                     chain: chain,
                     tokenSymbol: tokenSymbol,
-                    address: displayedAddress
+                    address: receivePayloadAddress,
+                    onQRCodeTapped: {
+                        shareQRCode()
+                    }
                 )
                 ReceiveAddressRow(
-                    address: displayedAddress,
-                    justCopiedAt: $justCopiedAt
+                    address: receivePayloadAddress
                 )
                 actionRow
                 ReceiveChainMismatchFooter(
@@ -277,7 +291,7 @@ struct ReceiveQRDetailView: View {
                     },
                     onShareAddress: {
                         isShowingShareOptions = false
-                        sharePayload = ReceiveSharePayload(items: [displayedAddress])
+                        sharePayload = ReceiveSharePayload(items: [receivePayloadAddress])
                     }
                 )
                 .presentationCompactAdaptation(.popover)
@@ -286,7 +300,7 @@ struct ReceiveQRDetailView: View {
     }
 
     private func shareQRCode() {
-        let payloadAddress = displayedAddress
+        let payloadAddress = receivePayloadAddress
         let symbol = tokenSymbol ?? chain.ticker
         Task {
             let image = await QRCodeGenerator.shared.brandedImage(
@@ -296,16 +310,31 @@ struct ReceiveQRDetailView: View {
                 displayScale: displayScale
             )
             if let image {
-                sharePayload = ReceiveSharePayload(items: [image])
+                sharePayload = ReceiveSharePayload(items: [writeQRCodePNG(image, symbol: symbol) ?? image])
             } else {
                 sharePayload = ReceiveSharePayload(items: [payloadAddress])
             }
         }
     }
 
+    private func writeQRCodePNG(_ image: UIImage, symbol: String) -> URL? {
+        guard let data = image.pngData() else { return nil }
+        let safeSymbol = symbol
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "[^A-Za-z0-9_-]", with: "-", options: .regularExpression)
+        let fileName = "Aperture-\(chain.ticker)-\(safeSymbol.isEmpty ? "receive" : safeSymbol)-QR.png"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        do {
+            try data.write(to: url, options: [.atomic])
+            return url
+        } catch {
+            return nil
+        }
+    }
+
     private func copyDisplayedAddress() {
         SafePasteboard.setItems(
-            [[UTType.plainText.identifier: displayedAddress]],
+            [[UTType.plainText.identifier: receivePayloadAddress]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )
         withAnimation(.easeInOut(duration: 0.2)) {

@@ -1,19 +1,10 @@
 import SwiftUI
-import UIKit
-import UniformTypeIdentifiers
 
 /// The address row beneath the QR card. Full centered address text with a
-/// leading-aligned label and a tap-to-copy gesture on the entire row.
-/// The visible copy affordance lives in the parent action row.
-///
-/// **Copy feedback.** Tapping the row writes to `UIPasteboard.general`
-/// and notifies the parent through `justCopiedAt`; the visible feedback
-/// lives in the action button so the screen has one clear confirmation.
+/// leading-aligned label. Copying is owned by the parent action row so a
+/// casual address tap never writes to the pasteboard.
 struct ReceiveAddressRow: View {
     let address: String
-    /// Non-nil immediately after copy; controlled by the parent so the
-    /// rest of the screen can react with a single shared copy state.
-    @Binding var justCopiedAt: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: UniSpacing.xs) {
@@ -29,13 +20,8 @@ struct ReceiveAddressRow: View {
                 RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                     .fill(UniColors.Card.background)
             )
-            .contentShape(Rectangle())
-            .onTapGesture {
-                copy()
-            }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text("Address \(spokenAddress)"))
-            .accessibilityHint(Text("Double tap to copy"))
 
         }
     }
@@ -88,19 +74,6 @@ struct ReceiveAddressRow: View {
             start = end
         }
         return lines.joined(separator: "\n")
-    }
-
-    private func copy() {
-        // 2-minute pasteboard expiry. A receive address is public
-        // data, but an unbounded pasteboard entry lingers across
-        // every app the user pastes into afterwards. The expiration
-        // keeps the copy useful for the immediate share and gone
-        // after that.
-        SafePasteboard.setItems(
-            [[UTType.plainText.identifier: address]],
-            options: [.expirationDate: Date().addingTimeInterval(120)]
-        )
-        justCopiedAt = Date()
     }
 
     /// VoiceOver pronunciation. Reading every character of a 42-char

@@ -17,6 +17,7 @@ struct ReceiveQRCard: View {
     /// scanning* that the QR matches both the token and the network.
     var tokenSymbol: String? = nil
     let address: String
+    var onQRCodeTapped: (() -> Void)?
 
     /// Rendering context's screen scale — forwarded to the QR
     /// generator so the produced `UIImage` carries the correct
@@ -59,7 +60,13 @@ struct ReceiveQRCard: View {
                     centreOverlay
                 }
                 .frame(maxWidth: 280, maxHeight: 280)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onQRCodeTapped?()
+                }
                 .accessibilityLabel(Text(accessibilityLabelText))
+                .accessibilityAddTraits(onQRCodeTapped == nil ? [] : .isButton)
+                .accessibilityHint(onQRCodeTapped == nil ? Text("") : Text("Shares this QR code as a PNG image"))
         }
         .padding(UniSpacing.l)
         .frame(maxWidth: .infinity)
