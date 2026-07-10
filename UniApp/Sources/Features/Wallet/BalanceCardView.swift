@@ -257,8 +257,9 @@ struct BalanceCardView: View {
         case .unavailable:
             return String.apertureLocalized("Unavailable")
         case .complete, .partial:
-            guard !isHidden, let amount = pnlSummary?.displayChange else {
-                return "••••  ••••"
+            guard !isHidden else { return "••••  ••••" }
+            guard let amount = pnlSummary?.displayChange else {
+                return String.apertureLocalized("Unavailable")
             }
             let amountText = signedFiat(amount)
             let percentageText = pnlSummary?.returnPercent.map(signedPercentage)

@@ -306,7 +306,6 @@ final class PortfolioPnLRepository: @unchecked Sendable {
         if calculatePnL {
             try calculateAndStoreSummary(
                 walletId: walletId,
-                currentRunId: runId,
                 successfulChains: successfulChains,
                 failedChains: failedChains,
                 displayCurrencyCode: displayCurrencyCode,
@@ -462,7 +461,6 @@ final class PortfolioPnLRepository: @unchecked Sendable {
 
     private func calculateAndStoreSummary(
         walletId: UUID,
-        currentRunId: UUID,
         successfulChains: Set<SupportedChain>,
         failedChains: Set<SupportedChain>,
         displayCurrencyCode: String,
@@ -1095,7 +1093,7 @@ actor PortfolioHistoryCoordinator {
             }
 
             if refreshMode == "full" {
-                await resolveFlows(walletId: walletId, repository: repository)
+                try await resolveFlows(walletId: walletId, repository: repository)
             }
             try repository.completeRun(
                 runId: runId,
@@ -1120,9 +1118,9 @@ actor PortfolioHistoryCoordinator {
         }
     }
 
-    private func resolveFlows(walletId: UUID, repository: PortfolioPnLRepository) async {
+    private func resolveFlows(walletId: UUID, repository: PortfolioPnLRepository) async throws {
         let since = Date().addingTimeInterval(-27 * 60 * 60)
-        guard let source = try? repository.confirmedTransactions(walletId: walletId, since: since) else { return }
+        let source = try repository.confirmedTransactions(walletId: walletId, since: since)
         let grouped = Dictionary(grouping: source.rows, by: { "\($0.chain.rawValue)|\($0.txHash)" })
         var values: [PortfolioFlowValue] = []
         for transaction in source.rows {
@@ -1195,6 +1193,6 @@ actor PortfolioHistoryCoordinator {
                 valuationStatus: historical == nil ? "unavailable" : "complete"
             ))
         }
-        try? repository.upsertFlowValuations(values)
+        try repository.upsertFlowValuations(values)
     }
 }
