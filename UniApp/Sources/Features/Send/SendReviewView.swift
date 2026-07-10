@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 /// Send · Step 5 — Review + real send. Shows the complete, validated
@@ -78,6 +79,10 @@ struct SendReviewView: View {
 
     private var chain: SupportedChain { draft.chain }
     private var assetSymbol: String { draft.tokenSymbol ?? chain.ticker }
+    private var localAmountText: String? {
+        guard let price = assetUnitPrice, price > 0 else { return nil }
+        return WalletFormatting.fiat(draft.totalAmount * price, currencyCode: currencyCode, hidden: hideBalances)
+    }
 
     var body: some View {
         Group {
@@ -86,7 +91,10 @@ struct SendReviewView: View {
                 SendSentView(
                     transaction: tx,
                     amount: WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals, hidden: hideBalances),
+                    localAmount: localAmountText,
                     assetSymbol: assetSymbol,
+                    tokenContract: draft.tokenContract,
+                    assetKind: draft.tokenSymbol == nil ? "Coin" : "Token",
                     recipient: draft.recipients.first?.name
                         ?? WalletFormatting.shortAddress(draft.recipients.first?.address ?? "", prefix: 8, suffix: 6),
                     senderAddress: draft.fromAddress,
@@ -537,9 +545,15 @@ struct SendReviewView: View {
 /// canonical explorer for this hash (Rule #16 — the hash is real and the
 /// user can verify it on a third-party surface they trust).
 private struct SendSentView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
+
     let transaction: SendExecutor.SentTransaction
     let amount: String
+    let localAmount: String?
     let assetSymbol: String
+    let tokenContract: String?
+    let assetKind: String
     let recipient: String
     /// The sender's address — needed so the confirmation poll can resolve
     /// status on the chains whose tx lookup is address-scoped (TON, NEAR,
@@ -550,6 +564,9 @@ private struct SendSentView: View {
     @State private var didCopy: Bool = false
     @State private var copiedAt: Date?
     @State private var copyResetTask: Task<Void, Never>?
+    @State private var isRenderingShareImage: Bool = false
+    @State private var screenshotShareItem: SendSentScreenshotShareItem?
+    @State private var screenshotShareFailed: Bool = false
 
     /// The live on-chain verdict, polled after the screen appears so the hero
     /// moves from "Submitted" to "Sent"/"Failed" the moment the chain reports
@@ -590,6 +607,26 @@ private struct SendSentView: View {
         .uniHaptic(.error, trigger: isFailed ? resolvedAt : nil)
         .task(id: transaction.txHash) { await pollForConfirmation() }
         .onDisappear { copyResetTask?.cancel() }
+        .sheet(item: $screenshotShareItem) { item in
+            SendSentScreenshotShareSheet(item: item)
+        }
+        .alert("Screenshot unavailable", isPresented: $screenshotShareFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Aperture couldn't prepare this receipt screenshot. Try again.")
+        }
+        .overlay {
+            if isRenderingShareImage {
+                ZStack {
+                    UniColors.Background.primary.opacity(0.28)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(UniColors.Text.primary)
+                }
+                .transition(.opacity)
+            }
+        }
     }
 
     /// Keep checking the chain until the broadcast tx confirms or reverts,
@@ -620,6 +657,10 @@ private struct SendSentView: View {
             Text(verbatim: "\(amount) \(assetSymbol)")
                 .font(UniTypography.title3.monospacedDigit())
                 .foregroundStyle(UniColors.Text.secondary)
+                .environment(\.layoutDirection, .leftToRight)
+            Text(verbatim: localAmount ?? "Local amount unavailable")
+                .font(UniTypography.callout.monospacedDigit())
+                .foregroundStyle(UniColors.Text.tertiary)
                 .environment(\.layoutDirection, .leftToRight)
             UniBody(
                 text: heroBody,
@@ -661,6 +702,16 @@ private struct SendSentView: View {
     private var summaryCard: some View {
         UniCard(padding: 0) {
             VStack(spacing: 0) {
+                if assetKind == "Coin" {
+                    row("Coin", value: assetSymbol)
+                } else {
+                    row("Token", value: assetSymbol)
+                }
+                UniDivider().padding(.leading, UniSpacing.m)
+                row("Amount", value: "\(amount) \(assetSymbol)", mono: true)
+                UniDivider().padding(.leading, UniSpacing.m)
+                row("Local amount", value: localAmount ?? "Unavailable", mono: localAmount != nil)
+                UniDivider().padding(.leading, UniSpacing.m)
                 row("To", value: recipient, mono: true)
                 UniDivider().padding(.leading, UniSpacing.m)
                 row("Network", value: transaction.chain.displayName)
@@ -684,12 +735,13 @@ private struct SendSentView: View {
                     Spacer(minLength: UniSpacing.s)
                     copyButton
                 }
+                shareScreenshotButton
                 if let explorerURL {
                     Link(destination: explorerURL) {
                         HStack(spacing: UniSpacing.xs) {
                             Image(systemName: "safari")
                                 .font(.system(size: 14, weight: .semibold))
-                            Text("View on explorer")
+                            Text("View on Explorer")
                                 .font(UniTypography.subheadlineEmphasized)
                         }
                         .foregroundStyle(UniColors.Text.link)
@@ -715,12 +767,68 @@ private struct SendSentView: View {
         .accessibilityLabel(Text("Copy transaction hash"))
     }
 
+    private var shareScreenshotButton: some View {
+        Button {
+            shareScreenshot()
+        } label: {
+            HStack(spacing: UniSpacing.xs) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 14, weight: .semibold))
+                Text(isRenderingShareImage ? "Preparing Screenshot" : "Share Screenshot")
+                    .font(UniTypography.subheadlineEmphasized)
+            }
+            .foregroundStyle(UniColors.Text.link)
+            .padding(.top, UniSpacing.xxs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isRenderingShareImage)
+        .accessibilityLabel(Text("Share screenshot"))
+    }
+
     private var doneBar: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
             UniButton(title: "Done", variant: .primary, action: onDone)
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.s)
         }
+    }
+
+    @MainActor
+    private func shareScreenshot() {
+        guard !isRenderingShareImage else { return }
+        isRenderingShareImage = true
+        defer { isRenderingShareImage = false }
+
+        let receipt = SendSentScreenshotReceipt(
+            chain: transaction.chain,
+            tokenSymbol: assetSymbol,
+            tokenContract: tokenContract,
+            statusText: statusText,
+            status: status,
+            primaryAmount: "\(amount) \(assetSymbol)",
+            localAmount: localAmount ?? "Local amount unavailable",
+            assetKind: assetKind,
+            assetSymbol: assetSymbol,
+            recipient: recipient,
+            network: transaction.chain.displayName,
+            hashText: WalletFormatting.shortAddress(transaction.txHash, prefix: 12, suffix: 10),
+            appStoreText: ApertureWeb.appStoreDisplay
+        )
+        let renderer = ImageRenderer(
+            content: SendSentScreenshotView(receipt: receipt)
+                .environment(\.colorScheme, colorScheme)
+        )
+        renderer.scale = displayScale
+        guard let image = renderer.uiImage else {
+            screenshotShareFailed = true
+            return
+        }
+        screenshotShareItem = SendSentScreenshotShareItem(
+            image: image,
+            message: "Sent with Aperture. A clean self-custody wallet for crypto you control.",
+            appStoreURL: URL(string: ApertureWeb.appStore)
+        )
     }
 
     private func copyHash() {
@@ -754,6 +862,168 @@ private struct SendSentView: View {
         .padding(.horizontal, UniSpacing.m)
         .padding(.vertical, UniSpacing.s)
     }
+
+    private var statusText: String {
+        if isFailed { return String(localized: "Failed") }
+        if isPending { return String(localized: "Submitted") }
+        return String(localized: "Sent")
+    }
+}
+
+private struct SendSentScreenshotReceipt {
+    let chain: SupportedChain
+    let tokenSymbol: String
+    let tokenContract: String?
+    let statusText: String
+    let status: TransactionConfirmation.Outcome
+    let primaryAmount: String
+    let localAmount: String
+    let assetKind: String
+    let assetSymbol: String
+    let recipient: String
+    let network: String
+    let hashText: String
+    let appStoreText: String
+}
+
+private struct SendSentScreenshotView: View {
+    let receipt: SendSentScreenshotReceipt
+
+    var body: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 8) {
+                CoinMark(
+                    chain: receipt.chain,
+                    tokenSymbol: receipt.tokenSymbol,
+                    contract: receipt.tokenContract
+                )
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
+
+                Text("CRYPTO SENT")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.tertiary)
+
+                Text(verbatim: receipt.primaryAmount)
+                    .font(.system(size: 42, weight: .semibold))
+                    .minimumScaleFactor(0.55)
+                    .lineLimit(1)
+                    .environment(\.layoutDirection, .leftToRight)
+
+                Text(verbatim: receipt.localAmount)
+                    .font(.system(size: 20, weight: .regular).monospacedDigit())
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                    .environment(\.layoutDirection, .leftToRight)
+
+                Text(verbatim: receipt.statusText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusForeground)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(statusBackground))
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 0) {
+                screenshotRow(receipt.assetKind, value: receipt.assetSymbol)
+                Divider()
+                screenshotRow("Amount", value: receipt.primaryAmount, monospaced: true)
+                Divider()
+                screenshotRow("Local amount", value: receipt.localAmount, monospaced: true)
+                Divider()
+                screenshotRow("To", value: receipt.recipient, monospaced: true)
+                Divider()
+                screenshotRow("Network", value: receipt.network)
+                Divider()
+                screenshotRow("Transaction", value: receipt.hashText, monospaced: true)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(UniColors.Card.background)
+            )
+
+            VStack(spacing: 4) {
+                Text("Sent with Aperture")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.secondary)
+                Text(verbatim: "Self-custody crypto, fast, clean, and yours. Get Aperture on the App Store.")
+                    .font(.caption2)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .multilineTextAlignment(.center)
+                Text(verbatim: receipt.appStoreText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(28)
+        .frame(width: 390)
+        .background(UniColors.Background.primary)
+    }
+
+    private func screenshotRow(
+        _ label: String,
+        value: String,
+        monospaced: Bool = false
+    ) -> some View {
+        LabeledContent {
+            Text(verbatim: value)
+                .font(monospaced ? .body.monospacedDigit() : .body)
+                .foregroundStyle(UniColors.Text.primary)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .environment(\.layoutDirection, .leftToRight)
+        } label: {
+            Text(verbatim: label)
+                .foregroundStyle(UniColors.Text.secondary)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var statusForeground: Color {
+        switch receipt.status {
+        case .confirmed:
+            return UniColors.Feedback.Success.foreground
+        case .pending:
+            return UniColors.Feedback.Warning.foreground
+        case .failed:
+            return UniColors.Feedback.Error.foreground
+        }
+    }
+
+    private var statusBackground: Color {
+        switch receipt.status {
+        case .confirmed:
+            return UniColors.Feedback.Success.background
+        case .pending:
+            return UniColors.Feedback.Warning.background
+        case .failed:
+            return UniColors.Feedback.Error.background
+        }
+    }
+}
+
+private struct SendSentScreenshotShareItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let message: String
+    let appStoreURL: URL?
+}
+
+private struct SendSentScreenshotShareSheet: UIViewControllerRepresentable {
+    let item: SendSentScreenshotShareItem
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        var items: [Any] = [item.image, item.message]
+        if let appStoreURL = item.appStoreURL {
+            items.append(appStoreURL)
+        }
+        return UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Failed state
