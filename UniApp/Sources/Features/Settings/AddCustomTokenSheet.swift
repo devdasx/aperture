@@ -185,9 +185,16 @@ struct AddCustomTokenSheet: View {
             UniQRScannerSheet(
                 title: "Scan contract",
                 prompt: scannerPrompt,
+                expectedContent: .contractAddress,
                 onRawDeliver: { payload in
                     applyIncomingContract(payload)
                     isScanningContract = false
+                },
+                rawPayloadValidator: { payload in
+                    let clean = parseIncomingContract(payload)
+                    guard !clean.isEmpty else { return false }
+                    if case .valid = validateContractInput(clean) { return true }
+                    return false
                 }
             )
             .uniAppEnvironment()

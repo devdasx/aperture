@@ -750,6 +750,7 @@ struct WalletHomeView: View {
             if scanPrefill != nil { isShowingSend = true }
         }) {
             UniQRScannerSheet(
+                expectedContent: .walletAddress,
                 onSend: { chain, address in
                     scanPrefill = SendView.ScanPrefill(chain: chain, recipient: address)
                     isShowingScanner = false

@@ -29,15 +29,56 @@ import UniformTypeIdentifiers
 /// flow above. The name `UniQRScannerSheet` is kept so existing call sites
 /// migrate by adding the new closures; the surface is now full-screen.
 struct UniQRScannerSheet: View {
+    enum ExpectedContent: Equatable {
+        case walletAddress
+        case recoveryPhrase
+        case privateKey
+        case contractAddress
+
+        var unrecognizedTitle: LocalizedStringKey {
+            switch self {
+            case .walletAddress:
+                return "Address not recognized"
+            case .recoveryPhrase:
+                return "Recovery phrase not recognized"
+            case .privateKey:
+                return "Private key not recognized"
+            case .contractAddress:
+                return "Contract address not recognized"
+            }
+        }
+
+        var unrecognizedMessage: LocalizedStringKey {
+            switch self {
+            case .walletAddress:
+                return "That isn't a wallet address."
+            case .recoveryPhrase:
+                return "That isn't a recovery phrase."
+            case .privateKey:
+                return "That isn't a private key."
+            case .contractAddress:
+                return "That isn't a contract address."
+            }
+        }
+    }
+
     /// Inline title (default "Scan").
     var title: LocalizedStringKey = "Scan"
     /// Hint shown above the bottom controls while scanning.
     var prompt: LocalizedStringKey = "You can scan a wallet address or a payment request"
+    /// What this scanner expects in the current flow. Drives the
+    /// unrecognized copy so we say "address", "private key", "contract
+    /// address", or "recovery phrase" instead of a vague "code".
+    var expectedContent: ExpectedContent = .walletAddress
     /// **Raw-deliver mode.** When set, ANY decoded payload (camera / gallery /
     /// paste) is handed straight back and the scanner closes — no
     /// classification, no result sheet. Used by the Send recipient field, which
     /// validates downstream against its already-chosen chain.
     var onRawDeliver: ((String) -> Void)? = nil
+    /// Optional raw-mode guard. If present and it rejects a decoded payload, the
+    /// scanner stays open and shows the same unrecognized sheet with
+    /// `expectedContent` copy instead of closing into a downstream field error.
+    var rawPayloadValidator: ((String) -> Bool)? = nil
     /// Standalone "Send to this address" — opens the send flow pre-filled. When
     /// nil the address sheet shows only Copy.
     var onSend: ((SupportedChain, String) -> Void)? = nil
@@ -280,11 +321,11 @@ struct UniQRScannerSheet: View {
             Spacer(minLength: 0)
         }
         HStack(spacing: UniSpacing.s) {
-            pillButton(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc", dark: false) {
+            scannerActionButton(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc", variant: .secondary) {
                 copyAddress(value)
             }
             if let onSend {
-                pillButton("Send", systemImage: "arrow.up.right", dark: true) {
+                scannerActionButton("Send", systemImage: "arrow.up.right", variant: .primary) {
                     UniHapticEngine.shared.play(.success)
                     onSend(chain, value)
                     dismiss()
@@ -300,10 +341,10 @@ struct UniQRScannerSheet: View {
                 .font(.system(size: 34))
                 .foregroundStyle(Color(red: 1.0, green: 0.36, blue: 0.32))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Code not recognized")
+                Text(expectedContent.unrecognizedTitle)
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
-                Text("That isn't a wallet address.")
+                Text(expectedContent.unrecognizedMessage)
                     .font(UniTypography.footnote)
                     .foregroundStyle(.white.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
@@ -311,10 +352,10 @@ struct UniQRScannerSheet: View {
             Spacer(minLength: 0)
         }
         HStack(spacing: UniSpacing.s) {
-            pillButton("Paste", systemImage: "doc.on.clipboard", dark: false) {
+            scannerActionButton("Paste", systemImage: "doc.on.clipboard", variant: .secondary) {
                 resumeScanning(); pasteFromClipboard()
             }
-            pillButton("Try again", systemImage: "arrow.clockwise", dark: true) { resumeScanning() }
+            scannerActionButton("Try again", systemImage: "arrow.clockwise", variant: .primary) { resumeScanning() }
         }
     }
 
@@ -323,19 +364,25 @@ struct UniQRScannerSheet: View {
         .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
     }
 
-    private func pillButton(_ title: LocalizedStringKey, systemImage: String?, dark: Bool, tint: Color = .white, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage { Image(systemName: systemImage).font(.system(size: 15, weight: .semibold)) }
-                Text(title).font(.system(size: 16, weight: .semibold))
-            }
-            .foregroundStyle(dark ? .white : .white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(dark ? tint.opacity(tint == .white ? 1 : 1) : Color.white.opacity(0.12), in: Capsule())
-            .foregroundStyle(dark && tint == .white ? Color.black : Color.white)
+    private func scannerActionButton(
+        _ title: LocalizedStringKey,
+        systemImage: String?,
+        variant: UniButton.Variant,
+        action: @escaping () -> Void
+    ) -> some View {
+        UniButton(
+            title: title,
+            variant: variant,
+            systemImage: systemImage,
+            action: action
+        )
+    }
+
+    private func presentUnrecognized() {
+        UniHapticEngine.shared.play(.error)
+        withAnimation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.82)) {
+            detection = .unrecognized
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Transient note
@@ -357,6 +404,10 @@ struct UniQRScannerSheet: View {
     private func handleDecode(_ payload: String) {
         guard !hasDelivered, detection == nil else { return }
         if let rawDeliverHandler {
+            if let rawPayloadValidator, !rawPayloadValidator(payload) {
+                presentUnrecognized()
+                return
+            }
             hasDelivered = true
             UniHapticEngine.shared.play(.selection)
             rawDeliverHandler(payload)

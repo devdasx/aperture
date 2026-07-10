@@ -81,9 +81,16 @@ struct PrivateKeyEntryView: View {
             UniQRScannerSheet(
                 title: "Scan private key",
                 prompt: "Point your camera at a private-key QR code.",
+                expectedContent: .privateKey,
                 onRawDeliver: { scanned in
                     fillPrivateKey(scanned)
                     isShowingScanner = false
+                },
+                rawPayloadValidator: { scanned in
+                    let cleaned = scanned.trimmingCharacters(in: .whitespacesAndNewlines).filter { !$0.isNewline }
+                    guard let format = state.service.detectFormat(cleaned, on: chain) else { return false }
+                    if case .extendedPublicKey = format { return false }
+                    return format != .unknown
                 }
             )
             .uniAppEnvironment()

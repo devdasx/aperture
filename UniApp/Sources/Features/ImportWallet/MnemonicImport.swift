@@ -107,9 +107,13 @@ struct MnemonicEntryView: View {
             UniQRScannerSheet(
                 title: "Scan recovery phrase",
                 prompt: "Point your camera at a recovery-phrase QR code.",
+                expectedContent: .recoveryPhrase,
                 onRawDeliver: { scanned in
                     fillFromText(scanned)
                     isShowingScanner = false
+                },
+                rawPayloadValidator: { scanned in
+                    Self.hasValidMnemonicCandidate(in: scanned)
                 }
             )
             .uniAppEnvironment()
@@ -377,6 +381,15 @@ struct MnemonicEntryView: View {
         text.lowercased()
             .split { !$0.isLetter }
             .map(String.init)
+    }
+
+    private static func hasValidMnemonicCandidate(in text: String) -> Bool {
+        let tokens = mnemonicTokens(from: text)
+        guard !tokens.isEmpty else { return false }
+        let bip39Only = tokens.filter { BIP39Wordlist.english.contains($0) }
+        return [tokens, bip39Only].contains { candidate in
+            [12, 15, 18, 21, 24].contains(candidate.count) && BIP39.validate(candidate)
+        }
     }
 
     private static func trailingToken(in text: String) -> String {

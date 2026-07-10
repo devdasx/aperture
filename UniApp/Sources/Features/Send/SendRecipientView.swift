@@ -215,9 +215,15 @@ struct SendRecipientView: View {
             UniQRScannerSheet(
                 title: "Scan address",
                 prompt: "Point your camera at a \(chain.displayName) address QR code.",
+                expectedContent: .walletAddress,
                 onRawDeliver: { scanned in
                     handleIncoming(scanned)
                     isScanning = false
+                },
+                rawPayloadValidator: { scanned in
+                    let incoming = parseIncoming(scanned)
+                    guard !incoming.address.isEmpty else { return false }
+                    return WalletCoreKeyImportService().validateAddress(incoming.address, on: chain)
                 }
             )
             .uniAppEnvironment()
