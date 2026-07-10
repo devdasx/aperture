@@ -13,6 +13,7 @@ struct BalanceCardView: View {
     let totalFiat: Decimal
     let currencyCode: String
     let lastUpdated: Date?
+    let pnlSummary: WalletPnLSummaryDTO?
     let showsFirstRefreshBalanceSkeleton: Bool
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
@@ -27,6 +28,7 @@ struct BalanceCardView: View {
         totalFiat: Decimal,
         currencyCode: String,
         lastUpdated: Date?,
+        pnlSummary: WalletPnLSummaryDTO? = nil,
         showsFirstRefreshBalanceSkeleton: Bool = false,
         onSwitchWallet: @escaping () -> Void,
         onAddFunds: @escaping () -> Void
@@ -36,6 +38,7 @@ struct BalanceCardView: View {
         self.totalFiat = totalFiat
         self.currencyCode = currencyCode
         self.lastUpdated = lastUpdated
+        self.pnlSummary = pnlSummary
         self.showsFirstRefreshBalanceSkeleton = showsFirstRefreshBalanceSkeleton
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
@@ -83,6 +86,10 @@ struct BalanceCardView: View {
                 .padding(.bottom, 8)
 
             tappableBalanceNumber
+
+            if resolvedState == .value || showsFirstRefreshBalanceSkeleton {
+                pnlRow
+            }
         }
     }
 
@@ -210,6 +217,86 @@ struct BalanceCardView: View {
     }
 
     @ViewBuilder
+    private var pnlRow: some View {
+        if showsFirstRefreshBalanceSkeleton {
+            HStack(spacing: UniSpacing.s) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(UniColors.Skeleton.base)
+                    .frame(width: 56, height: 12)
+                Spacer(minLength: UniSpacing.s)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(UniColors.Skeleton.base)
+                    .frame(width: 112, height: 12)
+            }
+            .padding(.top, 14)
+            .unredacted()
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+                Text("24h PnL")
+                    .font(UniTypography.caption2)
+                    .foregroundStyle(UniColors.Text.secondary)
+
+                Spacer(minLength: UniSpacing.s)
+
+                Text(verbatim: pnlText)
+                    .font(UniTypography.caption2.weight(.semibold))
+                    .foregroundStyle(pnlColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            .padding(.top, 14)
+        }
+    }
+
+    private var pnlText: String {
+        let state = pnlSummary?.state ?? .collecting
+        switch state {
+        case .collecting:
+            return String.apertureLocalized("Collecting history")
+        case .unavailable:
+            return String.apertureLocalized("Unavailable")
+        case .complete, .partial:
+            guard !isHidden, let amount = pnlSummary?.displayChange else {
+                return "••••  ••••"
+            }
+            let amountText = signedFiat(amount)
+            let percentageText = pnlSummary?.returnPercent.map(signedPercentage)
+            let value = percentageText.map { "\(amountText) (\($0))" } ?? amountText
+            return state == .partial ? "\(value) · \(String.apertureLocalized("Partial"))" : value
+        }
+    }
+
+    private var pnlColor: Color {
+        guard let summary = pnlSummary,
+              summary.state == .complete || summary.state == .partial,
+              let change = summary.displayChange
+        else { return UniColors.Text.secondary }
+        if change > 0 { return UniColors.Text.success }
+        if change < 0 { return UniColors.Send.negative }
+        return UniColors.Text.secondary
+    }
+
+    private func signedFiat(_ amount: Decimal) -> String {
+        let formatted = WalletFormatting.fiat(abs(amount), currencyCode: currencyCode)
+        if amount > 0 { return "+\(formatted)" }
+        if amount < 0 { return "-\(formatted)" }
+        return formatted
+    }
+
+    private func signedPercentage(_ percentage: Decimal) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        formatter.locale = .current
+        let value = formatter.string(from: NSDecimalNumber(decimal: abs(percentage))) ?? "0"
+        if percentage > 0 { return "+\(value)%" }
+        if percentage < 0 { return "-\(value)%" }
+        return "\(value)%"
+    }
+
+    @ViewBuilder
     private var zeroBody: some View {
         ZStack(alignment: .topLeading) {
             zeroVisibleBody
@@ -290,7 +377,29 @@ struct BalanceCardView: View {
         if resolvedState == .zero {
             return Text("Total balance \(value). Add crypto to get started.")
         }
-        return Text("Total balance \(value)")
+        return Text("Total balance \(value). \(pnlAccessibilityDescription)")
+    }
+
+    private var pnlAccessibilityDescription: String {
+        guard !isHidden else { return String.apertureLocalized("24-hour profit and loss hidden") }
+        let state = pnlSummary?.state ?? .collecting
+        switch state {
+        case .collecting:
+            return String.apertureLocalized("24-hour profit and loss is collecting history")
+        case .unavailable:
+            return String.apertureLocalized("24-hour profit and loss is unavailable")
+        case .complete, .partial:
+            guard let amount = pnlSummary?.displayChange else {
+                return String.apertureLocalized("24-hour profit and loss is unavailable")
+            }
+            let amountText = signedFiat(amount)
+            let percentage = pnlSummary?.returnPercent.map(signedPercentage)
+            let coverage = state == .partial ? String.apertureLocalized("Partial coverage") : String.apertureLocalized("Complete coverage")
+            if let percentage {
+                return "24-hour profit and loss \(amountText), \(percentage). \(coverage)"
+            }
+            return "24-hour profit and loss \(amountText). \(coverage)"
+        }
     }
 }
 

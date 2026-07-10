@@ -2765,6 +2765,20 @@ struct WalletHomeView: View {
             rebuildDisplayRows()
         }
 
+        let pnlFXRate: Decimal?
+        if code == "USD" {
+            pnlFXRate = 1
+        } else {
+            pnlFXRate = await TokenPricingEngine.shared.crossRate(from: "USD", to: code)
+        }
+        if let pnlFXRate {
+            try? PortfolioPnLRepository(database: AppDatabase.shared).projectLatestSummary(
+                walletId: walletId,
+                displayCurrencyCode: code,
+                fxRateFromUSD: pnlFXRate
+            )
+        }
+
         let symbols = (try? projectionRepository.tokenSymbols(walletId: walletId)) ?? []
         guard !symbols.isEmpty else { return }
         let prices = await TokenPricingEngine.shared.unitPrices(
@@ -3039,6 +3053,7 @@ private struct BalanceCardLiveSection: View {
             totalFiat: totalFiat,
             currencyCode: currencyCode,
             lastUpdated: lastUpdated,
+            pnlSummary: cardObservation.pnlSummary,
             onSwitchWallet: onSwitchWallet,
             onAddFunds: onAddFunds
         )

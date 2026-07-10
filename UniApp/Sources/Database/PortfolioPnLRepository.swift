@@ -455,6 +455,11 @@ final class PortfolioPnLRepository: @unchecked Sendable {
             through: windowStart.addingTimeInterval(Self.baselineTolerance),
             target: windowStart
         )
+        let baselineCoveredChains = try coveredChains(
+            walletId: walletId,
+            around: windowStart,
+            tolerance: Self.baselineTolerance
+        )
 
         let earliestSnapshot = try database.read { db in
             try Int64.fetchOne(
@@ -466,24 +471,40 @@ final class PortfolioPnLRepository: @unchecked Sendable {
 
         let flowRows = try flowRows(walletId: walletId, from: windowStart, through: asOf)
         let keys = Set(currentRows.keys).union(baselineRows.keys).union(flowRows.map(\.assetKey))
+        let flowChainsByKey = Dictionary(grouping: flowRows, by: \.assetKey).compactMapValues(\.first?.chain)
         var assets: [PortfolioPnLAssetInput] = []
         var completeFlows: [PortfolioPnLFlowInput] = []
         var incompleteKeys = Set<String>()
         var missingChains = failedChains
 
         for key in keys {
-            guard let current = currentRows[key], let baseline = baselineRows[key],
-                  let ending = current.usdValue, let starting = baseline.usdValue
-            else {
+            guard let chain = currentRows[key]?.chain ?? baselineRows[key]?.chain ?? flowChainsByKey[key] else {
                 incompleteKeys.insert(key)
-                if let chain = currentRows[key]?.chain ?? baselineRows[key]?.chain {
-                    missingChains.insert(chain)
-                }
+                continue
+            }
+
+            let ending: Decimal?
+            if let current = currentRows[key] {
+                ending = current.usdValue
+            } else {
+                ending = successfulChains.contains(chain) ? 0 : nil
+            }
+
+            let starting: Decimal?
+            if let baseline = baselineRows[key] {
+                starting = baseline.usdValue
+            } else {
+                starting = baselineCoveredChains.contains(chain) ? 0 : nil
+            }
+
+            guard let ending, let starting else {
+                incompleteKeys.insert(key)
+                missingChains.insert(chain)
                 continue
             }
             assets.append(PortfolioPnLAssetInput(
                 assetKey: key,
-                chain: current.chain,
+                chain: chain,
                 startingValueUSD: starting,
                 endingValueUSD: ending
             ))
@@ -506,24 +527,27 @@ final class PortfolioPnLRepository: @unchecked Sendable {
             ))
         }
 
+        let comparableAssets = assets.filter { !incompleteKeys.contains($0.assetKey) }
         let state: PortfolioPnLState
         let calculation: PortfolioPnLCalculation?
-        if assets.isEmpty {
-            let stillCollecting = earliestSnapshot.map { $0 > windowStart.addingTimeInterval(-Self.baselineTolerance) } ?? true
+        if comparableAssets.isEmpty {
+            let stillCollecting = !successfulChains.isEmpty
+                && (baselineCoveredChains.isEmpty
+                    || earliestSnapshot.map { $0 > windowStart.addingTimeInterval(-Self.baselineTolerance) } ?? true)
             state = stillCollecting ? .collecting : .unavailable
             calculation = nil
         } else {
             calculation = PortfolioPnLCalculator.calculate(
-                assets: assets,
+                assets: comparableAssets,
                 flows: completeFlows.filter { !incompleteKeys.contains($0.assetKey) },
                 windowStart: windowStart,
                 windowEnd: asOf
             )
-            state = incompleteKeys.isEmpty && failedChains.isEmpty && assets.count == keys.count ? .complete : .partial
+            state = incompleteKeys.isEmpty && failedChains.isEmpty && comparableAssets.count == keys.count ? .complete : .partial
         }
 
-        let displayChange = calculation?.changeUSD.flatMap { change in
-            displayFXRate.map { change * $0 }
+        let displayChange = calculation.flatMap { calculation in
+            displayFXRate.map { calculation.changeUSD * $0 }
         }
         try storeSummary(
             walletId: walletId,
@@ -535,7 +559,7 @@ final class PortfolioPnLRepository: @unchecked Sendable {
             fxRateFromUSD: displayFXRate,
             asOf: asOf,
             windowStart: windowStart,
-            comparedAssetCount: assets.count,
+            comparedAssetCount: comparableAssets.count,
             relevantAssetCount: keys.count,
             missingChains: Array(missingChains),
             updatedAt: asOf
@@ -552,7 +576,7 @@ final class PortfolioPnLRepository: @unchecked Sendable {
                 fxRateFromUSD: 1,
                 asOf: asOf,
                 windowStart: windowStart,
-                comparedAssetCount: assets.count,
+                comparedAssetCount: comparableAssets.count,
                 relevantAssetCount: keys.count,
                 missingChains: Array(missingChains),
                 updatedAt: asOf
@@ -595,7 +619,7 @@ final class PortfolioPnLRepository: @unchecked Sendable {
                 let value = SnapshotValue(
                     assetKey: key,
                     chain: chain,
-                    usdValue: (row["usd_value"] as String?).flatMap(Decimal.init(string:)),
+                    usdValue: (row["usd_value"] as String?).flatMap { Decimal(string: $0) },
                     capturedAt: capturedAt
                 )
                 if best[key] == nil || delta < best[key]!.delta {
@@ -603,6 +627,28 @@ final class PortfolioPnLRepository: @unchecked Sendable {
                 }
             }
             return best.mapValues(\.value)
+        }
+    }
+
+    private func coveredChains(
+        walletId: UUID,
+        around target: Date,
+        tolerance: TimeInterval
+    ) throws -> Set<SupportedChain> {
+        let lower = target.addingTimeInterval(-tolerance).databaseMilliseconds
+        let upper = target.addingTimeInterval(tolerance).databaseMilliseconds
+        return try database.read { db in
+            Set(try String.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT chain_raw
+                FROM portfolio_chain_results
+                WHERE wallet_id = ?
+                  AND status_raw = 'success'
+                  AND captured_at_ms BETWEEN ? AND ?
+                """,
+                arguments: [walletId.uuidString, lower, upper]
+            ).compactMap(SupportedChain.init(rawValue:)))
         }
     }
 
@@ -627,13 +673,13 @@ final class PortfolioPnLRepository: @unchecked Sendable {
                 ORDER BY occurred_at_ms ASC
                 """,
                 arguments: [walletId.uuidString, from.databaseMilliseconds, through.databaseMilliseconds]
-            ).compactMap { row in
+            ).compactMap { row -> StoredFlow? in
                 guard let chain = SupportedChain(rawValue: row["chain_raw"] as String) else { return nil }
                 return StoredFlow(
                     assetKey: row["asset_key"],
                     chain: chain,
                     classification: row["classification_raw"],
-                    signedValueUSD: (row["signed_value_usd"] as String?).flatMap(Decimal.init(string:)),
+                    signedValueUSD: (row["signed_value_usd"] as String?).flatMap { Decimal(string: $0) },
                     valuationStatus: row["valuation_status_raw"],
                     occurredAt: Date(databaseMilliseconds: row["occurred_at_ms"])
                 )
@@ -902,9 +948,9 @@ final class PortfolioPnLRepository: @unchecked Sendable {
             walletId: walletId,
             displayCurrencyCode: row["display_currency_code"],
             state: PortfolioPnLState(rawValue: row["state_raw"] as String) ?? .unavailable,
-            changeUSD: (row["change_usd"] as String?).flatMap(Decimal.init(string:)),
-            displayChange: (row["display_change"] as String?).flatMap(Decimal.init(string:)),
-            returnPercent: (row["return_percent"] as String?).flatMap(Decimal.init(string:)),
+            changeUSD: (row["change_usd"] as String?).flatMap { Decimal(string: $0) },
+            displayChange: (row["display_change"] as String?).flatMap { Decimal(string: $0) },
+            returnPercent: (row["return_percent"] as String?).flatMap { Decimal(string: $0) },
             asOf: Date(databaseMilliseconds: row["as_of_ms"]),
             windowStart: Date(databaseMilliseconds: row["window_start_ms"]),
             comparedAssetCount: row["compared_asset_count"],

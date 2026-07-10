@@ -1170,6 +1170,7 @@ final class CachedPricesObservation: ObservableObject {
 final class WalletBalanceCardObservation: ObservableObject {
     @Published private(set) var chainStates: [ChainStateRecord] = []
     @Published private(set) var portfolioSummaries: [WalletPortfolioSummaryRecord] = []
+    @Published private(set) var pnlSummary: WalletPnLSummaryDTO?
     @Published private(set) var syncStatuses: [SyncStatusRecord] = []
     @Published private(set) var revision: String = "none"
     @Published private(set) var lastError: Error?
@@ -1192,6 +1193,7 @@ final class WalletBalanceCardObservation: ObservableObject {
         guard let newScope else {
             chainStates = []
             portfolioSummaries = []
+            pnlSummary = nil
             syncStatuses = []
             revision = "none"
             return
@@ -1217,6 +1219,7 @@ final class WalletBalanceCardObservation: ObservableObject {
                 revision = snapshot.revision
                 chainStates = snapshot.chainStates
                 portfolioSummaries = snapshot.portfolioSummaries
+                pnlSummary = snapshot.pnlSummary
                 syncStatuses = snapshot.syncStatuses
             }
         )
@@ -1230,6 +1233,7 @@ final class WalletBalanceCardObservation: ObservableObject {
     private struct Snapshot: @unchecked Sendable {
         let chainStates: [ChainStateRecord]
         let portfolioSummaries: [WalletPortfolioSummaryRecord]
+        let pnlSummary: WalletPnLSummaryDTO?
         let syncStatuses: [SyncStatusRecord]
         let revision: String
 
@@ -1253,6 +1257,17 @@ final class WalletBalanceCardObservation: ObservableObject {
                 """,
                 arguments: [scope.walletId.uuidString, scope.currencyCode]
             ).compactMap(WalletObservationMapping.portfolioSummary)
+            let pnlSummary = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT *
+                FROM wallet_pnl_summaries
+                WHERE wallet_id = ? AND display_currency_code = ?
+                ORDER BY updated_at_ms DESC
+                LIMIT 1
+                """,
+                arguments: [scope.walletId.uuidString, scope.currencyCode]
+            ).flatMap(PortfolioPnLRepository.summary)
             let syncStatuses = try Row.fetchAll(
                 db,
                 sql: """
@@ -1289,6 +1304,15 @@ final class WalletBalanceCardObservation: ObservableObject {
                 hasher.combine(row.lastSyncedAt)
                 hasher.combine(row.syncStateRaw)
             }
+            if let pnlSummary {
+                hasher.combine(pnlSummary.state.rawValue)
+                hasher.combine(pnlSummary.changeUSD)
+                hasher.combine(pnlSummary.displayChange)
+                hasher.combine(pnlSummary.returnPercent)
+                hasher.combine(pnlSummary.asOf)
+                hasher.combine(pnlSummary.comparedAssetCount)
+                hasher.combine(pnlSummary.relevantAssetCount)
+            }
             for row in syncStatuses {
                 hasher.combine(row.key)
                 hasher.combine(row.lastSyncedAt)
@@ -1300,6 +1324,7 @@ final class WalletBalanceCardObservation: ObservableObject {
             return Snapshot(
                 chainStates: chainStates,
                 portfolioSummaries: summaries,
+                pnlSummary: pnlSummary,
                 syncStatuses: syncStatuses,
                 revision: String(hasher.finalize())
             )

@@ -32524,6 +32524,15 @@
         }
       }
     },
+    "24-hour profit and loss hidden" : {
+
+    },
+    "24-hour profit and loss is collecting history" : {
+
+    },
+    "24-hour profit and loss is unavailable" : {
+
+    },
     "24h" : {
       "localizations" : {
         "af" : {
@@ -32827,6 +32836,9 @@
           }
         }
       }
+    },
+    "24h PnL" : {
+
     },
     "30d" : {
       "localizations" : {
@@ -121474,6 +121486,9 @@
     "Coins & Tokens" : {
 
     },
+    "Collecting history" : {
+
+    },
     "Color" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -123019,6 +123034,9 @@
           }
         }
       }
+    },
+    "Complete coverage" : {
+
     },
     "Compute unit price" : {
       "extractionState" : "manual",
@@ -318446,6 +318464,12 @@
         }
       }
     },
+    "Partial" : {
+
+    },
+    "Partial coverage" : {
+
+    },
     "Passcode" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -477260,6 +477284,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "總餘額 %@，今日無變動"
+          }
+        }
+      }
+    },
+    "Total balance %@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Total balance %1$@. %2$@"
           }
         }
       }
