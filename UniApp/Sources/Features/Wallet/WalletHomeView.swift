@@ -1712,7 +1712,6 @@ struct WalletHomeView: View {
     private var shouldShowFreshWalletBalanceEmptyState: Bool {
         activeWallet != nil
             && !hasAnyCurrentBalance
-            && allTransactions.isEmpty
     }
 
     private var hasAnyCurrentBalance: Bool {
