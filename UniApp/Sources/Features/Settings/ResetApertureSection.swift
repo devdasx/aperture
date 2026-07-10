@@ -34,7 +34,7 @@ struct ResetApertureSection: View {
         } footer: {
             Text("Deletes every wallet, every encrypted seed, every cached balance, every preference. This cannot be undone — back up any recovery phrases first.")
                 .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Feedback.Error.foreground)
+                .foregroundStyle(UniColors.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
