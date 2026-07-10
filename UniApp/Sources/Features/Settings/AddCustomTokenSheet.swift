@@ -103,6 +103,11 @@ struct AddCustomTokenSheet: View {
                         .tint(UniColors.Button.text)
                     }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if navigationPath.isEmpty {
+                        csvOptionsMenu
+                    }
+                }
             }
             .navigationDestination(for: Destination.self) { destination in
                 switch destination {
@@ -206,8 +211,6 @@ struct AddCustomTokenSheet: View {
     @ViewBuilder
     private var networkSelectionScreen: some View {
         List {
-            csvSection
-
             if filteredNetworkChoices.isEmpty {
                 Section {
                     UniListEmptyState(
@@ -250,48 +253,38 @@ struct AddCustomTokenSheet: View {
         .searchable(text: $networkSearchText, prompt: Text("Search"))
     }
 
-    @ViewBuilder
-    private var csvSection: some View {
-        Section {
-            Button {
-                isImportingCSV = true
-            } label: {
-                Label("Import token list CSV", systemImage: "square.and.arrow.down")
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
+    private var csvOptionsMenu: some View {
+        Menu {
+            Section {
+                Text("Adds custom tokens from a CSV file to this wallet.")
+                Button {
+                    isImportingCSV = true
+                } label: {
+                    Label("Import token list CSV", systemImage: "square.and.arrow.down")
+                }
             }
-            .buttonStyle(.uniListRow)
-            .listRowBackground(UniColors.List.rowBackground)
 
-            Button {
-                prepareCSVExport()
-            } label: {
-                Label("Export custom tokens CSV", systemImage: "square.and.arrow.up")
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
+            Section {
+                Text("Exports this wallet's custom tokens to a CSV file you can back up or edit.")
+                Button {
+                    prepareCSVExport()
+                } label: {
+                    Label("Export custom tokens CSV", systemImage: "square.and.arrow.up")
+                }
             }
-            .buttonStyle(.uniListRow)
-            .listRowBackground(UniColors.List.rowBackground)
-        } header: {
-            UniCaption(text: "Token lists", color: UniColors.Text.tertiary)
-        } footer: {
-            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                UniFootnote(
-                    text: "CSV format: chain, contract, symbol, name, decimals, metadata_from_chain.",
-                    color: UniColors.Text.tertiary
-                )
-                UniFootnote(
-                    text: "Example: tron,TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t,USDT,Tether USD,6,true",
-                    color: UniColors.Text.tertiary
-                )
-                UniFootnote(
-                    text: "Use chain IDs like solana, tron, ethereum, base, arbitrum, polygon, bnbChain, optimism, avalanche, zkSync, scroll, celo, or opBNB.",
-                    color: UniColors.Text.tertiary
-                )
+
+            Section {
+                Text("CSV format: chain, contract, symbol, name, decimals, metadata_from_chain.")
+                Text("Example: tron,TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t,USDT,Tether USD,6,true")
+                Text("Use chain IDs like solana, tron, ethereum, base, arbitrum, polygon, bnbChain, optimism, avalanche, zkSync, scroll, celo, or opBNB.")
+            } header: {
+                Text("CSV help")
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, UniSpacing.xs)
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 17, weight: .semibold))
         }
+        .accessibilityLabel(Text("Token list options"))
     }
 
     private var networkEmptyTitle: LocalizedStringKey {
