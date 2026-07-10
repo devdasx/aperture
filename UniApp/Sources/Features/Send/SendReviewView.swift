@@ -573,19 +573,21 @@ private struct SendSentView: View {
     private var isPending: Bool { status == .pending }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: UniSpacing.l) {
-                    hero
-                    summaryCard
-                    hashCard
-                }
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.top, UniSpacing.xl)
-                .padding(.bottom, UniSpacing.xxl)
+        List {
+            Section {
+                hero
+                    .padding(.horizontal, UniSpacing.l)
+                    .padding(.top, UniSpacing.xl)
+                    .padding(.bottom, UniSpacing.s)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
-            .scrollIndicators(.hidden)
+            detailsSection
+            transactionSection
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .uniBottomActionBar { doneBar }
         .navigationBarTitleDisplayMode(.inline)
@@ -687,57 +689,61 @@ private struct SendSentView: View {
         return "Confirmed on the \(transaction.chain.displayName) network."
     }
 
-    private var summaryCard: some View {
-        UniCard(padding: 0) {
-            VStack(spacing: 0) {
-                if assetKind == "Coin" {
-                    row("Coin", value: assetSymbol)
-                } else {
-                    row("Token", value: assetSymbol)
-                }
-                UniDivider().padding(.leading, UniSpacing.m)
-                row("Amount", value: "\(amount) \(assetSymbol)", mono: true)
-                UniDivider().padding(.leading, UniSpacing.m)
-                row("Local amount", value: localAmount ?? "Unavailable", mono: localAmount != nil)
-                UniDivider().padding(.leading, UniSpacing.m)
-                row("To", value: recipient, mono: true)
-                UniDivider().padding(.leading, UniSpacing.m)
-                row("Network", value: transaction.chain.displayName)
+    private var detailsSection: some View {
+        Section {
+            if assetKind == "Coin" {
+                detailRow("Coin", value: assetSymbol)
+            } else {
+                detailRow("Token", value: assetSymbol)
             }
+            detailRow("Amount", value: "\(amount) \(assetSymbol)", mono: true)
+            detailRow("Local amount", value: localAmount ?? "Unavailable", mono: localAmount != nil)
+            detailRow("To", value: recipient, mono: true)
+            detailRow("Network", value: transaction.chain.displayName)
+        } header: {
+            Text("Details")
         }
     }
 
-    private var hashCard: some View {
-        UniCard {
-            VStack(alignment: .leading, spacing: UniSpacing.s) {
-                Text("Transaction")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                HStack(spacing: UniSpacing.s) {
-                    Text(verbatim: WalletFormatting.shortAddress(transaction.txHash, prefix: 10, suffix: 8))
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundStyle(UniColors.Text.primary)
-                        .environment(\.layoutDirection, .leftToRight)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: UniSpacing.s)
-                    copyButton
-                }
-                shareScreenshotButton
-                if let explorerURL {
-                    Link(destination: explorerURL) {
-                        HStack(spacing: UniSpacing.xs) {
-                            Image(systemName: "safari")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("View on Explorer")
-                                .font(UniTypography.subheadlineEmphasized)
-                        }
+    private var transactionSection: some View {
+        Section {
+            transactionHashRow
+            Button {
+                shareScreenshot()
+            } label: {
+                Label(
+                    isRenderingShareImage ? "Preparing Screenshot" : "Share Screenshot",
+                    systemImage: "photo.on.rectangle.angled"
+                )
+                .foregroundStyle(UniColors.Text.link)
+            }
+            .disabled(isRenderingShareImage)
+            .accessibilityLabel(Text("Share screenshot"))
+
+            if let explorerURL {
+                Link(destination: explorerURL) {
+                    Label("View on Explorer", systemImage: "safari")
                         .foregroundStyle(UniColors.Text.link)
-                        .padding(.top, UniSpacing.xxs)
-                        .contentShape(Rectangle())
-                    }
                 }
             }
+        } header: {
+            Text("Transaction")
+        }
+    }
+
+    private var transactionHashRow: some View {
+        LabeledContent {
+            HStack(spacing: UniSpacing.s) {
+                Text(verbatim: WalletFormatting.shortAddress(transaction.txHash, prefix: 10, suffix: 8))
+                    .font(.body.monospaced())
+                    .foregroundStyle(UniColors.Text.primary)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                copyButton
+            }
+        } label: {
+            Text("Hash")
         }
     }
 
@@ -755,25 +761,6 @@ private struct SendSentView: View {
         .accessibilityLabel(Text("Copy transaction hash"))
     }
 
-    private var shareScreenshotButton: some View {
-        Button {
-            shareScreenshot()
-        } label: {
-            HStack(spacing: UniSpacing.xs) {
-                Image(systemName: "photo.on.rectangle.angled")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(isRenderingShareImage ? "Preparing Screenshot" : "Share Screenshot")
-                    .font(UniTypography.subheadlineEmphasized)
-            }
-            .foregroundStyle(UniColors.Text.link)
-            .padding(.top, UniSpacing.xxs)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isRenderingShareImage)
-        .accessibilityLabel(Text("Share screenshot"))
-    }
-
     private var doneBar: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
             UniButton(title: "Done", variant: .primary, action: onDone)
@@ -785,6 +772,7 @@ private struct SendSentView: View {
     @MainActor
     private func shareScreenshot() {
         guard !isRenderingShareImage else { return }
+        ReceiptScreenshotFlash.play()
         isRenderingShareImage = true
         defer { isRenderingShareImage = false }
 
@@ -834,27 +822,61 @@ private struct SendSentView: View {
         }
     }
 
-    private func row(_ key: LocalizedStringKey, value: String, mono: Bool = false) -> some View {
-        HStack(spacing: UniSpacing.s) {
-            Text(key)
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Text.secondary)
-            Spacer(minLength: UniSpacing.s)
+    private func detailRow(_ key: LocalizedStringKey, value: String, mono: Bool = false) -> some View {
+        LabeledContent {
             Text(verbatim: value)
-                .font(mono ? UniTypography.body.monospaced() : UniTypography.body)
+                .font(mono ? .body.monospacedDigit() : .body)
                 .foregroundStyle(UniColors.Text.primary)
                 .environment(\.layoutDirection, .leftToRight)
                 .lineLimit(1)
                 .truncationMode(.middle)
+        } label: {
+            Text(key)
         }
-        .padding(.horizontal, UniSpacing.m)
-        .padding(.vertical, UniSpacing.s)
     }
 
     private var statusText: String {
         if isFailed { return String(localized: "Failed") }
         if isPending { return String(localized: "Submitted") }
         return String(localized: "Sent")
+    }
+}
+
+@MainActor
+enum ReceiptScreenshotFlash {
+    static func play() {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+        else { return }
+
+        let flash = UIView(frame: window.bounds)
+        flash.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        flash.backgroundColor = .white
+        flash.alpha = 0
+        flash.isUserInteractionEnabled = false
+        window.addSubview(flash)
+
+        UIView.animate(
+            withDuration: 0.08,
+            delay: 0,
+            options: [.allowUserInteraction, .curveEaseOut]
+        ) {
+            flash.alpha = UIAccessibility.isReduceTransparencyEnabled ? 0.72 : 0.9
+        } completion: { _ in
+            UIView.animate(
+                withDuration: UIAccessibility.isReduceMotionEnabled ? 0.12 : 0.28,
+                delay: 0.03,
+                options: [.allowUserInteraction, .curveEaseIn]
+            ) {
+                flash.alpha = 0
+            } completion: { _ in
+                flash.removeFromSuperview()
+            }
+        }
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
 
@@ -878,21 +900,32 @@ private struct SendSentScreenshotView: View {
     let receipt: SendSentScreenshotReceipt
 
     var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 8) {
-                CoinMark(
-                    chain: receipt.chain,
-                    tokenSymbol: receipt.tokenSymbol,
-                    contract: receipt.tokenContract
-                )
-                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
+        VStack(spacing: 20) {
+            brandHeader
 
-                Text("CRYPTO SENT")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(UniColors.Text.tertiary)
+            VStack(spacing: 10) {
+                ZStack(alignment: .bottomTrailing) {
+                    CoinMark(
+                        chain: receipt.chain,
+                        tokenSymbol: receipt.tokenSymbol,
+                        contract: receipt.tokenContract
+                    )
+                    .frame(width: 72, height: 72)
+
+                    Image(systemName: statusSymbol)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(statusForeground)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(statusBackground))
+                }
+
+                Text(verbatim: receipt.statusText)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(UniColors.Text.primary)
 
                 Text(verbatim: receipt.primaryAmount)
                     .font(.system(size: 42, weight: .semibold))
+                    .foregroundStyle(UniColors.Text.primary)
                     .minimumScaleFactor(0.55)
                     .lineLimit(1)
                     .environment(\.layoutDirection, .leftToRight)
@@ -903,15 +936,9 @@ private struct SendSentScreenshotView: View {
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
                     .environment(\.layoutDirection, .leftToRight)
-
-                Text(verbatim: receipt.statusText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(statusForeground)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(statusBackground))
             }
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
 
             VStack(spacing: 0) {
                 screenshotRow(receipt.assetKind, value: receipt.assetSymbol)
@@ -931,24 +958,69 @@ private struct SendSentScreenshotView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(UniColors.Card.background)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(UniColors.Separator.regular.opacity(0.5), lineWidth: 1)
+            )
 
-            VStack(spacing: 4) {
-                Text("Sent with Aperture")
-                    .font(.caption.weight(.semibold))
+            marketingFooter
+        }
+        .padding(24)
+        .frame(width: 430)
+        .background(
+            LinearGradient(
+                colors: [
+                    UniColors.Background.primary,
+                    UniColors.Card.background.opacity(0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+
+    private var brandHeader: some View {
+        HStack(spacing: 10) {
+            ApertureAppLogo(size: 38)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Aperture")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(UniColors.Text.primary)
+                Text("Self-custody crypto wallet")
+                    .font(.caption)
                     .foregroundStyle(UniColors.Text.secondary)
-                Text(verbatim: "Self-custody crypto, fast, clean, and yours. Get Aperture on the App Store.")
+            }
+            Spacer(minLength: 12)
+            statusPill
+        }
+    }
+
+    private var statusPill: some View {
+        Text(verbatim: receipt.statusText)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(statusForeground)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(statusBackground))
+    }
+
+    private var marketingFooter: some View {
+        HStack(alignment: .center, spacing: 10) {
+            ApertureAppLogo(size: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Sent with Aperture")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(UniColors.Text.primary)
+                Text("A cleaner wallet for crypto you control.")
                     .font(.caption2)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .multilineTextAlignment(.center)
+                    .foregroundStyle(UniColors.Text.secondary)
                 Text(verbatim: receipt.appStoreText)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(UniColors.Text.tertiary)
-                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
             }
+            Spacer(minLength: 0)
         }
-        .padding(28)
-        .frame(width: 390)
-        .background(UniColors.Background.primary)
     }
 
     private func screenshotRow(
@@ -968,6 +1040,17 @@ private struct SendSentScreenshotView: View {
                 .foregroundStyle(UniColors.Text.secondary)
         }
         .padding(.vertical, 10)
+    }
+
+    private var statusSymbol: String {
+        switch receipt.status {
+        case .confirmed:
+            return "checkmark"
+        case .pending:
+            return "clock"
+        case .failed:
+            return "xmark"
+        }
     }
 
     private var statusForeground: Color {

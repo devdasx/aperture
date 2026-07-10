@@ -32,6 +32,7 @@ struct TransactionDetailView: View {
     let transactionId: UUID
     @StateObject private var transactionObservation = TransactionRecordObservation()
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     /// The live, fetched detail. `nil` until the fetch lands (or if it
@@ -280,17 +281,18 @@ struct TransactionDetailView: View {
     @ViewBuilder
     private func transactionActionsSection(_ tx: TransactionRecord) -> some View {
         Section {
-            if let url = detail?.explorerURL ?? explorerFallbackURL(tx) {
-                Link(destination: url) {
-                    Label("View on explorer", systemImage: "safari")
-                }
-            }
             Button {
                 shareTransactionScreenshot(tx)
             } label: {
                 Label("Share screenshot", systemImage: "photo.on.rectangle.angled")
             }
             .disabled(isRenderingShareImage)
+
+            if let url = detail?.explorerURL ?? explorerFallbackURL(tx) {
+                Link(destination: url) {
+                    Label("View on explorer", systemImage: "safari")
+                }
+            }
         }
     }
 
@@ -1145,6 +1147,7 @@ struct TransactionDetailView: View {
     @MainActor
     private func shareTransactionScreenshot(_ tx: TransactionRecord) {
         guard !isRenderingShareImage else { return }
+        ReceiptScreenshotFlash.play()
         isRenderingShareImage = true
         defer { isRenderingShareImage = false }
 
@@ -1161,12 +1164,14 @@ struct TransactionDetailView: View {
             statusText: statusText(status),
             status: status,
             whenText: Self.receiptDateTimeFormatter.string(from: when),
+            networkText: resolvedChain?.displayName ?? String(localized: "Unknown network"),
             networkFeeText: feeDisplay(tx),
             hashText: WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 12, suffix: 10),
             appStoreText: ApertureWeb.appStoreDisplay
         )
         let renderer = ImageRenderer(
             content: TransactionScreenshotView(receipt: receipt)
+                .environment(\.colorScheme, colorScheme)
         )
         renderer.scale = displayScale
         guard let image = renderer.uiImage else {
@@ -1383,6 +1388,7 @@ private struct TransactionScreenshotReceipt {
     let statusText: String
     let status: TransactionStatus
     let whenText: String
+    let networkText: String
     let networkFeeText: String?
     let hashText: String
     let appStoreText: String
@@ -1392,23 +1398,36 @@ private struct TransactionScreenshotView: View {
     let receipt: TransactionScreenshotReceipt
 
     var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 8) {
-                if let chain = receipt.chain {
-                    CoinMark(
-                        chain: chain,
-                        tokenSymbol: receipt.tokenSymbol,
-                        contract: receipt.tokenContract
-                    )
-                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
+        VStack(spacing: 20) {
+            brandHeader
+
+            VStack(spacing: 10) {
+                ZStack(alignment: .bottomTrailing) {
+                    if let chain = receipt.chain {
+                        CoinMark(
+                            chain: chain,
+                            tokenSymbol: receipt.tokenSymbol,
+                            contract: receipt.tokenContract
+                        )
+                        .frame(width: 72, height: 72)
+                    } else {
+                        ApertureAppLogo(size: 72)
+                    }
+
+                    Image(systemName: statusSymbol)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(statusForeground)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(statusBackground))
                 }
 
-                Text(verbatim: receipt.directionText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(UniColors.Text.tertiary)
+                Text(verbatim: receipt.directionText.capitalized)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(UniColors.Text.primary)
 
                 Text(verbatim: receipt.primaryAmount)
                     .font(.system(size: 42, weight: .semibold))
+                    .foregroundStyle(UniColors.Text.primary)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
                     .environment(\.layoutDirection, .leftToRight)
@@ -1421,20 +1440,18 @@ private struct TransactionScreenshotView: View {
                         .lineLimit(1)
                         .environment(\.layoutDirection, .leftToRight)
                 }
-
-                Text(verbatim: receipt.statusText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(statusForeground)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(statusBackground))
             }
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
 
             VStack(spacing: 0) {
                 screenshotRow("Status", value: receipt.statusText, valueColor: statusForeground)
                 Divider()
                 screenshotRow("When", value: receipt.whenText)
+                Divider()
+                screenshotRow("Asset", value: receipt.tokenSymbol)
+                Divider()
+                screenshotRow("Network", value: receipt.networkText)
                 if let fee = receipt.networkFeeText {
                     Divider()
                     screenshotRow("Network fee", value: fee, monospaced: true)
@@ -1447,20 +1464,69 @@ private struct TransactionScreenshotView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(UniColors.Card.background)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(UniColors.Separator.regular.opacity(0.5), lineWidth: 1)
+            )
 
-            VStack(spacing: 3) {
-                Text("Shared with Aperture")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(UniColors.Text.secondary)
-                Text(verbatim: "Download on the App Store • \(receipt.appStoreText)")
-                    .font(.caption2)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .multilineTextAlignment(.center)
-            }
+            marketingFooter
         }
-        .padding(28)
-        .frame(width: 390)
-        .background(UniColors.Background.primary)
+        .padding(24)
+        .frame(width: 430)
+        .background(
+            LinearGradient(
+                colors: [
+                    UniColors.Background.primary,
+                    UniColors.Card.background.opacity(0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+
+    private var brandHeader: some View {
+        HStack(spacing: 10) {
+            ApertureAppLogo(size: 38)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Aperture")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(UniColors.Text.primary)
+                Text("Transaction receipt")
+                    .font(.caption)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+            Spacer(minLength: 12)
+            statusPill
+        }
+    }
+
+    private var statusPill: some View {
+        Text(verbatim: receipt.statusText)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(statusForeground)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(statusBackground))
+    }
+
+    private var marketingFooter: some View {
+        HStack(alignment: .center, spacing: 10) {
+            ApertureAppLogo(size: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Verified with Aperture")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(UniColors.Text.primary)
+                Text("A modern crypto wallet built for clear, private control.")
+                    .font(.caption2)
+                    .foregroundStyle(UniColors.Text.secondary)
+                Text(verbatim: receipt.appStoreText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     private func screenshotRow(
@@ -1481,6 +1547,17 @@ private struct TransactionScreenshotView: View {
                 .foregroundStyle(UniColors.Text.secondary)
         }
         .padding(.vertical, 10)
+    }
+
+    private var statusSymbol: String {
+        switch receipt.status {
+        case .confirmed:
+            return "checkmark"
+        case .pending:
+            return "clock"
+        case .failed:
+            return "xmark"
+        }
     }
 
     private var statusForeground: Color {
