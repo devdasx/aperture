@@ -46,7 +46,9 @@ struct ReceiveEVMAccountSearchSheet: View {
                     scopeCard
                     rangeCard
                     searchButton
-                    resultSection
+                    if hasSearched || isSearching || errorMessage != nil {
+                        resultSection
+                    }
                 }
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.l)
@@ -202,12 +204,6 @@ struct ReceiveEVMAccountSearchSheet: View {
 
             if let errorMessage {
                 warningCard(errorMessage)
-            } else if !hasSearched {
-                UniListEmptyState(
-                    title: "Search this chain",
-                    detail: "Aperture will check account balances for this receive network only.",
-                    minHeight: 180
-                )
             } else if isSearching {
                 UniListEmptyState(
                     title: "Search running",
