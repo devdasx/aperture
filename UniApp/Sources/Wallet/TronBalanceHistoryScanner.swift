@@ -52,26 +52,30 @@ actor TronBalanceHistoryScanner {
         )
 
         var isUsed = account.accountExists || EVMHexQuantity.isPositiveDecimalString(account.rawTRX)
-        for balance in account.tokenBalances {
-            if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
-                isUsed = true
-            }
-            try txRepo.upsertBalance(
-                addressId: address.id,
-                tokenSymbol: balance.entry.symbol,
-                tokenContract: balance.entry.contract,
-                decimals: balance.entry.decimals,
-                rawBalance: balance.rawBalance,
-                fiatValueCached: fiatValue(
-                    rawBalance: balance.rawBalance,
+        // BUG-004: only rewrite TRC-20 rows when a token-capable provider
+        // succeeded. `nil` = full-node/native-only fallback — keep last good.
+        if let tokenBalances = account.tokenBalances {
+            for balance in tokenBalances {
+                if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
+                    isUsed = true
+                }
+                try txRepo.upsertBalance(
+                    addressId: address.id,
+                    tokenSymbol: balance.entry.symbol,
+                    tokenContract: balance.entry.contract,
                     decimals: balance.entry.decimals,
-                    symbol: balance.entry.symbol,
-                    trxQuotedPrice: balance.priceInTRX,
-                    prices: priceMap
-                ),
-                fiatCurrencyCode: currencyCode,
-                save: false
-            )
+                    rawBalance: balance.rawBalance,
+                    fiatValueCached: fiatValue(
+                        rawBalance: balance.rawBalance,
+                        decimals: balance.entry.decimals,
+                        symbol: balance.entry.symbol,
+                        trxQuotedPrice: balance.priceInTRX,
+                        prices: priceMap
+                    ),
+                    fiatCurrencyCode: currencyCode,
+                    save: false
+                )
+            }
         }
 
         if !events.isEmpty {
@@ -260,10 +264,11 @@ actor TronBalanceHistoryClient {
         )
         let decoded = try JSONDecoder().decode(TronGridAccountEnvelope.self, from: response)
         guard let account = decoded.data.first else {
+            // Account truly missing: zero native + empty token set is honest.
             return TronAccountSnapshot(
                 rawTRX: "0",
                 accountExists: false,
-                tokenBalances: zeroTokenBalances(supportedTokens)
+                tokenBalances: normalizeTokenBalances([], supportedTokens: supportedTokens)
             )
         }
 
@@ -293,10 +298,13 @@ actor TronBalanceHistoryClient {
             body: ["address": address, "visible": true]
         )
         let decoded = try JSONDecoder().decode(TronFullNodeAccount.self, from: response)
+        // Full-node getaccount has no TRC-20 inventory. BUG-004: do not
+        // invent zero token balances — leave last-good jetton/TRC-20 rows.
+        _ = supportedTokens
         return TronAccountSnapshot(
             rawTRX: String(decoded.balance ?? 0),
             accountExists: decoded.balance != nil || decoded.createTime != nil,
-            tokenBalances: zeroTokenBalances(supportedTokens)
+            tokenBalances: nil
         )
     }
 
@@ -441,6 +449,8 @@ actor TronBalanceHistoryClient {
         )
     }
 
+    /// Successful token-capable provider responses: missing registry tokens
+    /// are truly zero. Never call after a provider failure (BUG-004).
     private func normalizeTokenBalances(
         _ rows: [TronTokenBalanceRead],
         supportedTokens: [TronTokenRegistry.Entry]
@@ -449,10 +459,6 @@ actor TronBalanceHistoryClient {
         return supportedTokens.sorted { $0.symbol < $1.symbol }.map { token in
             byContract[token.contract] ?? TronTokenBalanceRead(entry: token, rawBalance: "0", priceInTRX: nil)
         }
-    }
-
-    private func zeroTokenBalances(_ supportedTokens: [TronTokenRegistry.Entry]) -> [TronTokenBalanceRead] {
-        normalizeTokenBalances([], supportedTokens: supportedTokens)
     }
 
     private func finalize(_ events: [TronHistoryEvent]) -> [TronHistoryEvent] {
@@ -606,7 +612,10 @@ private actor TronProviderThrottle {
 struct TronAccountSnapshot: Sendable {
     let rawTRX: String
     let accountExists: Bool
-    let tokenBalances: [TronTokenBalanceRead]
+    /// `nil` when only a native full-node path ran (no TRC-20 inventory) —
+    /// scanners must not overwrite stored token balances with invented zeros
+    /// (BUG-004).
+    let tokenBalances: [TronTokenBalanceRead]?
 }
 
 struct TronTokenBalanceRead: Sendable {

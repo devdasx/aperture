@@ -60,6 +60,96 @@ struct UTXOService: Sendable {
         }
     }
 
+    // MARK: - Multi-address wallet fetch (BUG-005)
+
+    /// Deduped address set for a Bitcoin-family wallet: preferred send
+    /// address first, then every persisted receive/change path for `chain`.
+    /// Used by compose **and** sign-time JIT so both cover the same set.
+    static func walletAddresses(preferred: String, persisted: [String]) -> [String] {
+        var seen = Set<String>()
+        return ([preferred] + persisted).filter { address in
+            let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            return seen.insert(trimmed).inserted
+        }
+    }
+
+    /// Rebind compose-selected outpoints onto a freshly fetched (or cached)
+    /// UTXO set. Throws when a selected outpoint is no longer spendable.
+    /// When `selected` is nil/empty, returns the full live set (auto-select).
+    static func rebindSelected(
+        selected: [SelectedUTXO]?,
+        live: [SelectedUTXO]
+    ) throws -> [SelectedUTXO] {
+        guard let selected, !selected.isEmpty else {
+            return live
+        }
+        var byOutpoint: [String: SelectedUTXO] = [:]
+        byOutpoint.reserveCapacity(live.count)
+        for utxo in live {
+            byOutpoint[utxo.id] = utxo
+        }
+        var refreshed: [SelectedUTXO] = []
+        refreshed.reserveCapacity(selected.count)
+        for utxo in selected {
+            guard let current = byOutpoint[utxo.id] else {
+                throw SigningError.justInTimeRefreshFailed(
+                    "One or more selected Bitcoin inputs are no longer spendable"
+                )
+            }
+            refreshed.append(current)
+        }
+        return refreshed
+    }
+
+    /// Fetch UTXOs for **every** wallet address on `chain` (BUG-005).
+    ///
+    /// Compose can select coins owned by receive/change paths other than
+    /// `preferredAddress`. Sign-time refresh must use the same address set
+    /// so selected outpoints on non-from paths remain spendable.
+    ///
+    /// When `walletId` is nil, falls back to a single-address fetch of
+    /// `preferredAddress` (preview / no-wallet contexts).
+    func fetchWalletUTXOs(
+        walletId: UUID?,
+        chain: SupportedChain,
+        preferredAddress: String,
+        database: AppDatabase
+    ) async throws -> [SelectedUTXO] {
+        guard chain.family == .bitcoin else {
+            throw RPCError.invalidResponse("fetchWalletUTXOs called for non-UTXO chain \(chain.rawValue)")
+        }
+
+        let addresses: [String]
+        if let walletId {
+            let persisted = try WalletRepository(database: database)
+                .addresses(walletId: walletId)
+                .filter { $0.chain == chain }
+                .map(\.address)
+            addresses = Self.walletAddresses(preferred: preferredAddress, persisted: persisted)
+        } else {
+            addresses = Self.walletAddresses(preferred: preferredAddress, persisted: [])
+        }
+        guard !addresses.isEmpty else { return [] }
+
+        if addresses.count == 1, let only = addresses.first {
+            return try await fetchUTXOs(address: only, chain: chain)
+        }
+
+        return try await withThrowingTaskGroup(of: [SelectedUTXO].self) { group in
+            for address in addresses {
+                group.addTask {
+                    try await self.fetchUTXOs(address: address, chain: chain)
+                }
+            }
+            var all: [SelectedUTXO] = []
+            for try await utxos in group {
+                all.append(contentsOf: utxos)
+            }
+            return all
+        }
+    }
+
     private static func abbreviated(_ address: String) -> String {
         guard address.count > 14 else { return address }
         return "\(address.prefix(8))...\(address.suffix(6))"

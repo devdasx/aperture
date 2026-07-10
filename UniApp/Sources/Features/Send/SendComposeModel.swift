@@ -793,10 +793,12 @@ final class SendComposeModel {
                     return
                 }
             }
-            let utxos = try await fetchWalletUTXOs(
+            // BUG-005: multi-address wallet fetch (same helper as sign-time JIT).
+            let utxos = try await service.fetchWalletUTXOs(
                 walletId: walletId,
-                database: database,
-                service: service
+                chain: chain,
+                preferredAddress: fromAddress,
+                database: database
             )
             guard !Task.isCancelled else { return }
             availableUTXOs = SelectedUTXO.spendPrioritySorted(utxos)
@@ -804,39 +806,6 @@ final class SendComposeModel {
             Self.log.error("UTXO fetch failed for \(self.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
             // Leave availableUTXOs empty — the menu's "Select coins" sheet
             // shows an honest "couldn't load" state and offers retry.
-        }
-    }
-
-    private func fetchWalletUTXOs(
-        walletId: UUID?,
-        database: AppDatabase,
-        service: UTXOService
-    ) async throws -> [SelectedUTXO] {
-        guard let walletId else {
-            return try await service.fetchUTXOs(address: fromAddress, chain: chain)
-        }
-
-        let chain = self.chain
-        let fromAddress = self.fromAddress
-        let persisted = try WalletRepository(database: database)
-            .addresses(walletId: walletId)
-            .filter { $0.chain == chain }
-            .map(\.address)
-        var seen = Set<String>()
-        let addresses = ([fromAddress] + persisted).filter { seen.insert($0).inserted }
-        guard !addresses.isEmpty else { return [] }
-
-        return try await withThrowingTaskGroup(of: [SelectedUTXO].self) { group in
-            for address in addresses {
-                group.addTask {
-                    try await service.fetchUTXOs(address: address, chain: chain)
-                }
-            }
-            var all: [SelectedUTXO] = []
-            for try await utxos in group {
-                all.append(contentsOf: utxos)
-            }
-            return all
         }
     }
 }

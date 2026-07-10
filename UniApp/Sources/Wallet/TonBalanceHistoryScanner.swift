@@ -51,25 +51,29 @@ actor TonBalanceHistoryScanner {
         )
 
         var isUsed = account.accountExists || EVMHexQuantity.isPositiveDecimalString(account.rawTON)
-        for balance in account.jettonBalances {
-            if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
-                isUsed = true
-            }
-            try txRepo.upsertBalance(
-                addressId: address.id,
-                tokenSymbol: balance.entry.symbol,
-                tokenContract: balance.entry.masterContract,
-                decimals: balance.entry.decimals,
-                rawBalance: balance.rawBalance,
-                fiatValueCached: fiatValue(
-                    rawBalance: balance.rawBalance,
+        // BUG-004: only rewrite jetton rows when the jetton fetch succeeded.
+        // `nil` means the token API failed — keep last good local balances.
+        if let jettonBalances = account.jettonBalances {
+            for balance in jettonBalances {
+                if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
+                    isUsed = true
+                }
+                try txRepo.upsertBalance(
+                    addressId: address.id,
+                    tokenSymbol: balance.entry.symbol,
+                    tokenContract: balance.entry.masterContract,
                     decimals: balance.entry.decimals,
-                    symbol: balance.entry.symbol,
-                    prices: priceMap
-                ),
-                fiatCurrencyCode: currencyCode,
-                save: false
-            )
+                    rawBalance: balance.rawBalance,
+                    fiatValueCached: fiatValue(
+                        rawBalance: balance.rawBalance,
+                        decimals: balance.entry.decimals,
+                        symbol: balance.entry.symbol,
+                        prices: priceMap
+                    ),
+                    fiatCurrencyCode: currencyCode,
+                    save: false
+                )
+            }
         }
 
         if !events.isEmpty {
@@ -156,18 +160,22 @@ actor TonBalanceHistoryClient {
 
         do {
             let account = try await accountTask
+            // BUG-004: jetton fetch failure → nil (do not invent zeros).
             let jettons = await jettonsTask
             return TonAccountSnapshot(
                 rawTON: account.rawBalance,
                 accountExists: account.accountExists || EVMHexQuantity.isPositiveDecimalString(account.rawBalance),
-                jettonBalances: normalizeJettonBalances(jettons, supportedTokens: supportedTokens)
+                jettonBalances: jettons.map {
+                    normalizeJettonBalances($0, supportedTokens: supportedTokens)
+                }
             )
         } catch {
+            // Native fallback only — leave jettons untouched in the DB.
             let raw = try await tonCenterNativeBalance(address: address)
             return TonAccountSnapshot(
                 rawTON: raw,
                 accountExists: EVMHexQuantity.isPositiveDecimalString(raw),
-                jettonBalances: zeroJettonBalances(supportedTokens)
+                jettonBalances: nil
             )
         }
     }
@@ -185,14 +193,16 @@ actor TonBalanceHistoryClient {
         return try await tonCenterNativeHistory(address: address)
     }
 
+    /// Returns jetton rows on success, or `nil` when the jetton API fails
+    /// (BUG-004 — never invent zero balances that wipe last-good rows).
     private func safeTonAPIJettonBalances(
         address: String,
         supportedTokens: [TONJettonRegistry.Entry]
-    ) async -> [TonJettonBalanceRead] {
+    ) async -> [TonJettonBalanceRead]? {
         do {
             return try await tonAPIJettonBalances(address: address, supportedTokens: supportedTokens)
         } catch {
-            return zeroJettonBalances(supportedTokens)
+            return nil
         }
     }
 
@@ -466,6 +476,8 @@ actor TonBalanceHistoryClient {
         return action.status == "failed" ? .failed : .confirmed
     }
 
+    /// Successful jetton API responses: missing registry tokens are truly
+    /// zero. Call only after a real fetch — never on transport/API failure.
     private func normalizeJettonBalances(
         _ rows: [TonJettonBalanceRead],
         supportedTokens: [TONJettonRegistry.Entry]
@@ -476,12 +488,6 @@ actor TonBalanceHistoryClient {
         }
         return supportedTokens
             .map { byMaster[$0.masterContract] ?? TonJettonBalanceRead(entry: $0, rawBalance: "0") }
-            .sorted { $0.entry.symbol < $1.entry.symbol }
-    }
-
-    private func zeroJettonBalances(_ supportedTokens: [TONJettonRegistry.Entry]) -> [TonJettonBalanceRead] {
-        supportedTokens
-            .map { TonJettonBalanceRead(entry: $0, rawBalance: "0") }
             .sorted { $0.entry.symbol < $1.entry.symbol }
     }
 
@@ -530,7 +536,9 @@ actor TonBalanceHistoryClient {
 struct TonAccountSnapshot: Sendable, Equatable {
     let rawTON: String
     let accountExists: Bool
-    let jettonBalances: [TonJettonBalanceRead]
+    /// `nil` when jetton/token APIs failed — scanners must not overwrite
+    /// stored jetton balances with invented zeros (BUG-004).
+    let jettonBalances: [TonJettonBalanceRead]?
 }
 
 struct TonJettonBalanceRead: Sendable, Equatable {

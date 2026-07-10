@@ -23,7 +23,8 @@ struct TonBalanceHistoryProbeTests {
         let elapsed = start.duration(to: ContinuousClock.now)
 
         #expect(Decimal(string: snapshot.rawTON) ?? 0 > 0, "known TON treasury account should hold native TON")
-        let usdt = try #require(snapshot.jettonBalances.first { $0.entry.symbol == "USDT" })
+        let jettons = try #require(snapshot.jettonBalances, "jetton API should succeed for known treasury probe")
+        let usdt = try #require(jettons.first { $0.entry.symbol == "USDT" })
         #expect(Decimal(string: usdt.rawBalance) ?? 0 > 0, "known TON treasury account should hold supported USDT jetton")
         #expect(events.contains { $0.tokenSymbol == SupportedChain.ton.ticker }, "history should include native TON transfers")
         #expect(events.contains { $0.tokenSymbol == "USDT" }, "history should include supported USDT jetton transfers")

@@ -542,9 +542,12 @@ final class TronBalanceHistoryLiveTests: XCTestCase {
 
         XCTAssertTrue(account.accountExists)
         XCTAssertGreaterThan(Decimal(string: account.rawTRX) ?? 0, 0)
-        XCTAssertEqual(account.tokenBalances.count, tokens.count)
+        // BUG-004: tokenBalances is optional (nil when only native full-node
+        // fell through). A healthy live probe should get a real token list.
+        let tokenBalances = try XCTUnwrap(account.tokenBalances, "token-capable TRON provider should succeed")
+        XCTAssertEqual(tokenBalances.count, tokens.count)
 
-        let usdt = account.tokenBalances.first { $0.entry.symbol == "USDT" }
+        let usdt = tokenBalances.first { $0.entry.symbol == "USDT" }
         XCTAssertNotNil(usdt)
         XCTAssertGreaterThan(Decimal(string: usdt?.rawBalance ?? "0") ?? 0, 0)
 

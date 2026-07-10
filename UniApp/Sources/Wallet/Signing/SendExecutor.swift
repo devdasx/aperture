@@ -246,26 +246,37 @@ struct SendExecutor {
                 throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)
             }
         case .bitcoin:
-            // Prefer the wallet-level UTXO cache from the latest scanner
-            // pass. Bitcoin balances are aggregated across all persisted
-            // receive/change paths, but signing must keep the exact selected
-            // outpoints from compose after refreshing their current spendability.
+            // BUG-005: compose may select UTXOs across every receive/change
+            // path. Prefer the wallet-level chain_utxos cache; on miss OR
+            // when selected outpoints are missing from the cache, re-fetch
+            // ALL wallet addresses for the chain (same set as compose) —
+            // never only draft.fromAddress.
             do {
                 let cached = try ChainStateRepository(database: database)
                     .utxos(walletId: wallet.id, chain: draft.chain)
-                if !cached.isEmpty {
-                    return TransactionSigner.JustInTimeData(
-                        bitcoinUTXOs: try currentSelectedBitcoinUTXOs(cached, draft: draft)
-                    )
+                if !cached.isEmpty,
+                   let rebound = try? UTXOService.rebindSelected(
+                    selected: draft.selectedUTXOs,
+                    live: cached
+                   ) {
+                    return TransactionSigner.JustInTimeData(bitcoinUTXOs: rebound)
                 }
-                let fresh = try await UTXOService().fetchUTXOs(
-                    address: draft.fromAddress, chain: draft.chain
+                let fresh = try await UTXOService().fetchWalletUTXOs(
+                    walletId: wallet.id,
+                    chain: draft.chain,
+                    preferredAddress: draft.fromAddress,
+                    database: database
                 )
                 return TransactionSigner.JustInTimeData(
-                    bitcoinUTXOs: try currentSelectedBitcoinUTXOs(fresh, draft: draft)
+                    bitcoinUTXOs: try UTXOService.rebindSelected(
+                        selected: draft.selectedUTXOs,
+                        live: fresh
+                    )
                 )
             } catch let rpc as RPCError {
                 throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)
+            } catch let signing as SigningError {
+                throw signing
             } catch {
                 throw SigningError.justInTimeRefreshFailed(error.localizedDescription)
             }
@@ -284,30 +295,6 @@ struct SendExecutor {
         case .polkadot: return try await refreshPolkadot(draft: draft)
         case .ton:      return try await refreshTON(draft: draft)
         }
-    }
-
-    private nonisolated func currentSelectedBitcoinUTXOs(
-        _ current: [SelectedUTXO],
-        draft: SendDraft
-    ) throws -> [SelectedUTXO] {
-        guard let selected = draft.selectedUTXOs, !selected.isEmpty else {
-            return current
-        }
-        var byOutpoint: [String: SelectedUTXO] = [:]
-        for utxo in current {
-            byOutpoint[utxo.id] = utxo
-        }
-        var refreshed: [SelectedUTXO] = []
-        refreshed.reserveCapacity(selected.count)
-        for utxo in selected {
-            guard let current = byOutpoint[utxo.id] else {
-                throw SigningError.justInTimeRefreshFailed(
-                    "One or more selected Bitcoin inputs are no longer spendable"
-                )
-            }
-            refreshed.append(current)
-        }
-        return refreshed
     }
 
     // MARK: - 5. Outbox persistence + confirmation poll
