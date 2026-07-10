@@ -246,4 +246,26 @@ struct SendDraft: Codable, Hashable, Sendable {
 
     /// The decimals to use for amount → base-unit conversion.
     var effectiveDecimals: Int { tokenDecimals ?? chain.nativeDecimals }
+
+    /// Copy with a different `fromAddress` (BUG-002 post-migration send path).
+    func replacingFromAddress(_ newFrom: String) -> SendDraft {
+        SendDraft(
+            chain: chain,
+            tokenSymbol: tokenSymbol,
+            tokenContract: tokenContract,
+            tokenDecimals: tokenDecimals,
+            fromAddress: newFrom,
+            recipients: recipients,
+            fee: fee,
+            selectedUTXOs: selectedUTXOs,
+            changeAddress: changeAddress,
+            changeSats: changeSats,
+            opReturn: opReturn,
+            signalsRBF: signalsRBF,
+            memo: memo,
+            isMaxSend: isMaxSend,
+            recipientNeedsActivation: recipientNeedsActivation,
+            tonBounceable: tonBounceable
+        )
+    }
 }

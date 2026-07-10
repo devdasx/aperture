@@ -110,11 +110,12 @@ struct UniAppApp: App {
                     await TokenPricingEngine.shared.configure(database: AppDatabase.shared)
                     BiometricEnrollmentTracker.checkForDrift(database: AppDatabase.shared)
                     Self.diagnostic(.debug, "Biometric drift check finished")
-                    // Data fetching is disabled for some chains (2026-06-21 —
-                    // EVM + Bitcoin family + Tron) — clear any balances /
-                    // history / UTXOs persisted before the cutover. One-shot,
-                    // off the first frame, self-gated.
+                    // BUG-002: rewrite legacy per-L2 Trust-style EVM addresses
+                    // to the unified MetaMask Ethereum path (no-passphrase
+                    // wallets). Passphrase wallets unify when the user next
+                    // supplies the passphrase (send path).
                     await Task.detached(priority: .utility) {
+                        EVMUnifiedAddressMigration.runBootstrapIfNeeded(database: AppDatabase.shared)
                         await DisabledChainDataPurge.runIfNeeded(database: AppDatabase.shared)
                     }.value
                     await PendingTransactionMonitor.shared.kick(database: AppDatabase.shared)

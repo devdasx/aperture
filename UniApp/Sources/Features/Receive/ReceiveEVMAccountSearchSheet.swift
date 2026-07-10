@@ -1021,7 +1021,9 @@ enum EVMReceiveAccountDeriver {
         range: ClosedRange<Int>
     ) throws -> [EVMReceiveAccountCandidate] {
         guard chain.family == .evm else { throw EVMReceiveAccountSearchError.unsupportedChain }
-        guard let coin = ChainCoinType.coinType(for: chain) else { throw EVMReceiveAccountSearchError.unsupportedChain }
+        // BUG-002: all EVM account search uses Ethereum SLIP-44 (60) —
+        // MetaMask-style m/44'/60'/0'/0/i — not per-L2 Trust coin ids.
+        let coin = ChainCoinType.evm
         let phrase = words
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty }
@@ -1031,7 +1033,7 @@ enum EVMReceiveAccountDeriver {
         }
 
         return range.map { index in
-            let path = "m/44'/\(coin.rawValue)'/0'/0/\(index)"
+            let path = "m/44'/\(ChainCoinType.evmCoinId)'/0'/0/\(index)"
             let privateKey = wallet.getKey(coin: coin, derivationPath: path)
             let address = coin.deriveAddress(privateKey: privateKey)
             return EVMReceiveAccountCandidate(

@@ -125,10 +125,10 @@ enum SigningKeyProvider {
                 try assertParity(privateKey: privateKey, coin: coin, expected: expectedAddress, chain: chain)
                 return try body(privateKey)
             } catch let error as SigningError {
-                guard chain == .solana else { throw error }
-                // Older wallet rows may hold a Solana address discovered on
-                // Trust Wallet / Phantom paths while chain_states still has a
-                // default key blob. Fall through to mnemonic path matching.
+                // Solana: legacy path discovery. EVM (BUG-002): sealed blobs
+                // may still hold pre-unification per-L2 Trust keys — fall
+                // through to mnemonic Ethereum derivation.
+                guard chain == .solana || chain.family == .evm else { throw error }
             }
         }
 

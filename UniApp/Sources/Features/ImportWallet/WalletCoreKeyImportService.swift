@@ -15,11 +15,10 @@ import WalletCore
 /// ed25519 / sr25519 / SCALE / StrKey primitives that WalletCore
 /// already ships and Trust Wallet uses in production.
 ///
-/// **Address parity with Trust Wallet.** Derivation paths match
-/// Trust Wallet exactly because both apps consume WalletCore's
-/// `getAddressForCoin(coin:)` default-path API. A user importing
-/// the same mnemonic in Trust Wallet and Aperture sees the same
-/// addresses on every chain WalletCore covers.
+/// **Address parity (BUG-002).** Non-EVM chains follow WalletCore /
+/// Trust Wallet default coin paths. **All EVM chains** use Ethereum
+/// (`m/44'/60'/0'/0/0`) via `ChainCoinType` — same address on every
+/// L2, matching MetaMask / Rabby and Aperture private-key import.
 ///
 /// **Sendable contract.** `HDWallet` is a reference type backed by
 /// C++ memory — not `Sendable`-clean. The service does NOT hold
@@ -30,79 +29,17 @@ import WalletCore
 /// `Sendable`.
 struct WalletCoreKeyImportService: KeyImportService {
 
-    // MARK: - SupportedChain → CoinType id mapping
-    //
-    // Source: `wallet-core/registry.json` (audited 2026-06-06 against
-    // WalletCore 4.6.13). When a chain has multiple Trust Wallet
-    // derivations (e.g. Bitcoin SegWit vs Legacy vs Taproot) we
-    // take the WalletCore default — which matches what Trust Wallet
-    // Mobile ships, which is what the user asked us to match.
-
-    private static let coinIdForChain: [SupportedChain: UInt32] = [
-        // Bitcoin family (secp256k1 + BIP-32/44/49/84 + base58check / bech32)
-        .bitcoin:      0,
-        .bitcoinCash:  145,
-        .litecoin:     2,
-        .dogecoin:     3,
-
-        // EVM family (secp256k1 + keccak256). Each chain has its own
-        // SLIP-44 entry in Trust Wallet's registry — same secp256k1
-        // key, same Ethereum-style 0x… address, but the derivation
-        // path includes the chain's SLIP-44 index so different chains
-        // can have different first addresses if the user wants to
-        // keep funds segregated. We follow Trust Wallet's convention.
-        .ethereum:     60,
-        .arbitrum:     10042221,
-        .base:         8453,
-        .optimism:     10000070,
-        .scroll:       534352,
-        .zkSync:       10000324,
-        .polygon:      966,
-        .bnbChain:     20000714,   // "Smart Chain"
-        .opBNB:        204,
-        .avalanche:    10009000,   // C-Chain
-        .celo:         52752,
-
-        // Solana family (ed25519 + base58)
-        .solana:       501,
-
-        // XRP Ledger (secp256k1 + base58check, XRP alphabet)
-        .ripple:       144,
-
-        // Stellar (ed25519 + StrKey + CRC16-XModem)
-        .stellar:      148,
-
-        // NEAR (ed25519 + implicit-account hex)
-        .near:         397,
-
-        // TON (ed25519 + TON wallet contract address)
-        .ton:          607,
-
-        // TRON (secp256k1 + base58check + TRON address format)
-        .tron:         195,
-
-        // Polkadot (sr25519 + SS58 + SCALE)
-        .polkadot:     354,
-
-        // Aptos (ed25519 + SHA3-256 address)
-        .aptos:        637,
-
-        // Sui (ed25519 + BLAKE2b-256 address)
-        .sui:          784,
-
-    ]
-
     // MARK: - Mnemonic-based derivation (preferred API)
 
     /// Derive the canonical first address for every supported chain
-    /// from a BIP-39 mnemonic + optional passphrase. Derivation runs
-    /// in **parallel** via a `TaskGroup` — 26 chains resolve in
-    /// roughly the time of the slowest single chain instead of
-    /// 26× that.
+    /// from a BIP-39 mnemonic + optional passphrase.
     ///
     /// Returns: `[chain: address]` for every chain WalletCore knows;
     /// chains we couldn't resolve drop out of the map (the UI then
     /// renders them as derivation-pending — honest, Rule #2 §A.7).
+    ///
+    /// **EVM:** every EVM chain receives the **same** Ethereum address
+    /// (BUG-002 / MetaMask parity).
     func deriveAddresses(
         mnemonic: [String],
         passphrase: String
@@ -120,17 +57,22 @@ struct WalletCoreKeyImportService: KeyImportService {
         // Per-chain reads are cheap (microseconds each on the C++
         // side). We sequence them here rather than use a TaskGroup
         // because TaskGroup would have to ship `HDWallet` across
-        // actor isolation and HDWallet isn't Sendable. The whole
-        // loop completes in well under a millisecond — the
-        // perceived "slow derivation" before was entirely the stub
-        // hash work, not the C++ crypto.
+        // actor isolation and HDWallet isn't Sendable.
         var addresses: [SupportedChain: String] = [:]
         addresses.reserveCapacity(SupportedChain.allCases.count)
-        for chain in SupportedChain.allCases {
-            guard let coinId = Self.coinIdForChain[chain],
-                  let coin = CoinType(rawValue: coinId) else {
-                continue
+
+        // Derive Ethereum once; stamp every EVM chain with that address.
+        if let ethCoin = ChainCoinType.coinType(for: .ethereum) {
+            let ethAddress = wallet.getAddressForCoin(coin: ethCoin)
+            if !ethAddress.isEmpty {
+                for chain in SupportedChain.allCases where chain.family == .evm {
+                    addresses[chain] = ethAddress
+                }
             }
+        }
+
+        for chain in SupportedChain.allCases where chain.family != .evm {
+            guard let coin = ChainCoinType.coinType(for: chain) else { continue }
             let address = wallet.getAddressForCoin(coin: coin)
             // Defensively reject empty strings — WalletCore returns
             // "" when a derivation can't be expressed for some
@@ -158,8 +100,8 @@ struct WalletCoreKeyImportService: KeyImportService {
         fromPrivateKey raw: String,
         on chain: SupportedChain
     ) async throws -> String {
-        guard let coinId = Self.coinIdForChain[chain],
-              let coin = CoinType(rawValue: coinId) else {
+        // EVM private keys → Ethereum coin type (same 0x on every L2).
+        guard let coin = ChainCoinType.coinType(for: chain) else {
             throw KeyImportError.unsupported
         }
         // Decode strictly by positively-identified format (hex, WIF,
@@ -280,8 +222,7 @@ struct WalletCoreKeyImportService: KeyImportService {
     }
 
     func validateAddress(_ raw: String, on chain: SupportedChain) -> Bool {
-        guard let coinId = Self.coinIdForChain[chain],
-              let coin = CoinType(rawValue: coinId) else {
+        guard let coin = ChainCoinType.coinType(for: chain) else {
             return false
         }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -310,8 +251,7 @@ struct WalletCoreKeyImportService: KeyImportService {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         // Only the Bitcoin family has extended public keys.
         guard chain.supportsExtendedPublicKey,
-              let coinId = Self.coinIdForChain[chain],
-              let coin = CoinType(rawValue: coinId) else {
+              let coin = ChainCoinType.coinType(for: chain) else {
             throw KeyImportError.unsupported
         }
         // Prefix → BIP purpose. Covers the standard mainnet version bytes for

@@ -384,9 +384,6 @@ struct ICloudRestoreView: View {
             }
             applyDeletedBackups(ids)
             UniHapticEngine.shared.play(.contextualImpact(.weighted))
-        } catch WalletCommandRepositoryError.alreadyImported(let match) {
-            passwordError = false
-            onDuplicate(match)
         } catch {
             deleteErrorMessage = Self.message(for: error)
             UniHapticEngine.shared.play(.warning)
@@ -537,6 +534,9 @@ struct ICloudRestoreView: View {
             state.zeroSensitiveInput()
             UniHapticEngine.shared.play(.contextualImpact(.consequential))
             onImported(walletId)
+        } catch WalletCommandRepositoryError.alreadyImported(let match) {
+            passwordError = false
+            onDuplicate(match)
         } catch {
             Self.log.error("iCloud restore persist failed: \(String(describing: error), privacy: .public)")
             passwordError = false

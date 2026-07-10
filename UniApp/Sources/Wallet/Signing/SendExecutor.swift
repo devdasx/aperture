@@ -54,8 +54,28 @@ struct SendExecutor {
         walletId: UUID,
         passphrase: String? = nil
     ) async -> Result<SentTransaction, SigningError> {
+        // BUG-002: before EVM sign/JIT, unify legacy per-L2 Trust addresses
+        // to the MetaMask Ethereum path (uses passphrase when required).
+        var effectiveDraft = draft
+        if draft.chain.family == .evm {
+            _ = try? EVMUnifiedAddressMigration.unifyWalletIfNeeded(
+                walletId: walletId,
+                passphrase: passphrase,
+                database: database
+            )
+            if let live = liveAddress(walletId: walletId, chain: draft.chain),
+               !live.isEmpty,
+               live.caseInsensitiveCompare(draft.fromAddress) != .orderedSame {
+                effectiveDraft = draft.replacingFromAddress(live)
+            }
+        }
+
         // 1. Resolve the wallet descriptor + the address row id.
-        guard let resolved = resolveWallet(walletId: walletId, chain: draft.chain, fromAddress: draft.fromAddress) else {
+        guard let resolved = resolveWallet(
+            walletId: walletId,
+            chain: effectiveDraft.chain,
+            fromAddress: effectiveDraft.fromAddress
+        ) else {
             return .failure(.noWallet)
         }
         let walletDescriptor = resolved.descriptor
@@ -65,7 +85,7 @@ struct SendExecutor {
         let signed: SignedTransaction
         do {
             signed = try await signOffMain(
-                draft: draft, wallet: walletDescriptor, database: database, passphrase: passphrase
+                draft: effectiveDraft, wallet: walletDescriptor, database: database, passphrase: passphrase
             )
         } catch let error as SigningError {
             return .failure(error)
@@ -76,7 +96,7 @@ struct SendExecutor {
         // 4. Broadcast (off-main I/O).
         let txHash: String
         do {
-            txHash = try await broadcaster.broadcast(signed, chain: draft.chain)
+            txHash = try await broadcaster.broadcast(signed, chain: effectiveDraft.chain)
         } catch {
             // `broadcast` is typed `throws(SigningError)`, so `error` carries
             // the precise (incl. `.broadcastAmbiguous`) outcome — surface it
@@ -89,16 +109,32 @@ struct SendExecutor {
         //    — a successful broadcast is the source of truth; a failed DB
         //    write must NOT make us report a non-send.
         let recordId = await writePendingRecord(
-            txHash: txHash, draft: draft, addressId: addressId, signed: signed
+            txHash: txHash, draft: effectiveDraft, addressId: addressId, signed: signed
         )
-        await applyOptimisticOutgoingState(walletId: walletId, draft: draft)
+        await applyOptimisticOutgoingState(walletId: walletId, draft: effectiveDraft)
 
         // Fire-and-forget DB monitor. It polls every 3 seconds while pending
         // rows exist and stops per row once the chain reports confirmed or
         // failed, so all supported chains share the same reconciliation path.
         await PendingTransactionMonitor.shared.kick(database: database)
 
-        return .success(SentTransaction(txHash: txHash, chain: draft.chain, recordId: recordId))
+        return .success(SentTransaction(txHash: txHash, chain: effectiveDraft.chain, recordId: recordId))
+    }
+
+    /// Live preferred/receive address for `(wallet, chain)` after migration.
+    private func liveAddress(walletId: UUID, chain: SupportedChain) -> String? {
+        try? database.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                SELECT address FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ?
+                ORDER BY is_receive_preferred DESC
+                LIMIT 1
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            )
+        }
     }
 
     // MARK: - 1. Wallet resolution (main actor)
