@@ -159,21 +159,17 @@ struct SecuritySettingsView: View {
         } message: {
             Text("After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.")
         }
-        .sheet(isPresented: $isShowingForgotPasscodeResetExplanation) {
-            ForgotPasscodeResetEnableSheet(
-                resetSecurityItem: resetSecurityItemName,
-                onEnable: {
-                    forgotPasscodeResetEducationSeen = true
-                    forgotPasscodeResetEnabled = true
-                    isShowingForgotPasscodeResetExplanation = false
-                },
-                onCancel: {
-                    isShowingForgotPasscodeResetExplanation = false
-                }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
+        .alert(Text("Enable lock-screen reset?"), isPresented: $isShowingForgotPasscodeResetExplanation) {
+            Button("Not now", role: .cancel) {
+                isShowingForgotPasscodeResetExplanation = false
+            }
+            Button("Enable Reset", role: .destructive) {
+                forgotPasscodeResetEducationSeen = true
+                forgotPasscodeResetEnabled = true
+                isShowingForgotPasscodeResetExplanation = false
+            }
+        } message: {
+            Text(verbatim: forgotPasscodeResetAlertMessage)
         }
         // navigationTitle / navigationBarTitleDisplayMode /
         // background / onAppear are attached to the outer view above.
@@ -417,48 +413,15 @@ struct SecuritySettingsView: View {
     private var resetSecurityItemName: String {
         biometricAvailable ? "\(biometryType.displayName) setting" : "security settings"
     }
-}
 
-private struct ForgotPasscodeResetEnableSheet: View {
-    let resetSecurityItem: String
-    let onEnable: () -> Void
-    let onCancel: () -> Void
+    private var forgotPasscodeResetAlertMessage: String {
+        """
+        This adds a Reset Aperture option to the forgot-passcode sheet.
 
-    var body: some View {
-        UniSheet(
-            title: "Enable lock-screen reset?",
-            icon: "exclamationmark.triangle",
-            iconTint: UniColors.Feedback.Warning.foreground
-        ) {
-            VStack(alignment: .leading, spacing: UniSpacing.m) {
-                UniBody(
-                    text: "This adds a Reset Aperture option to the forgot-passcode sheet.",
-                    color: UniColors.Text.secondary
-                )
-                .fixedSize(horizontal: false, vertical: true)
+        It can help if you forget your passcode and have your recovery phrase backed up. Resetting erases every local wallet, recovery phrase, passcode, \(resetSecurityItemName), and app cache from this iPhone.
 
-                Text(verbatim: "It can help if you forget your passcode and have your recovery phrase backed up. Resetting erases every local wallet, recovery phrase, passcode, \(resetSecurityItem), and app cache from this iPhone.")
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-                UniBody(
-                    text: "Only enable this if you understand that someone holding your unlocked iPhone could erase Aperture from the passcode screen. They cannot see your funds, but you would need your recovery phrase to restore access.",
-                    color: UniColors.Text.secondary
-                )
-                .fixedSize(horizontal: false, vertical: true)
-            }
-        } actions: {
-            VStack(spacing: UniSpacing.s) {
-                UniButton(title: "Enable Reset", variant: .destructive) {
-                    onEnable()
-                }
-                UniButton(title: "Not now", variant: .secondary) {
-                    onCancel()
-                }
-            }
-        }
+        Only enable this if you understand that someone holding your unlocked iPhone could erase Aperture from the passcode screen. They cannot see your funds, but you would need your recovery phrase to restore access.
+        """
     }
 }
 
