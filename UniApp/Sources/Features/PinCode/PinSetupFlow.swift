@@ -27,8 +27,9 @@ import SwiftUI
 /// flat state-machine is the fix.
 ///
 /// **Skip path.** A "Skip" affordance lives in the trailing toolbar from
-/// the moment the user lands. Tapping presents `PinSkipWarningSheet`,
-/// which names the consequence and offers "Set a passcode" / "Skip anyway".
+/// the moment the user lands. Tapping presents a native iOS confirmation
+/// dialog that names the consequence and offers "Set Passcode" /
+/// "Skip anyway".
 struct PinSetupFlow: View {
 
     /// Fires when the flow resolves — either by completing PIN + biometric
@@ -178,25 +179,13 @@ struct PinSetupFlow: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar { toolbar }
-        .sheet(isPresented: $isShowingSkipWarning) {
-            PinSkipWarningSheet(
-                onSetPin: {
-                    isShowingSkipWarning = false
-                },
-                onSkipAnyway: {
-                    isShowingSkipWarning = false
-                    // User chose no PIN — clear any half-written state +
-                    // ensure the flag is honest.
-                    PinCodeStorage.clear()
-                    pinEnabled = false
-                    biometricEnabled = false
-                    requireForSend = false
-                    onFinish()
-                }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
+        .alert(Text("Skip passcode setup?"), isPresented: $isShowingSkipWarning) {
+            Button("Set Passcode", role: .cancel) {}
+            Button("Skip anyway", role: .destructive) {
+                skipPasscodeSetup()
+            }
+        } message: {
+            Text("Without a passcode, your wallet is only protected by your iPhone's lock screen. If your iPhone is unlocked, anyone with it can use your wallet. You can enable a passcode anytime in Settings.")
         }
         .onDisappear {
             commitTask?.cancel()
@@ -377,6 +366,17 @@ struct PinSetupFlow: View {
     }
 
     private func finishSuccessfully() {
+        onFinish()
+    }
+
+    private func skipPasscodeSetup() {
+        // User chose no PIN — clear any half-written state + ensure the
+        // flags are honest.
+        pendingSetPin = ""
+        PinCodeStorage.clear()
+        pinEnabled = false
+        biometricEnabled = false
+        requireForSend = false
         onFinish()
     }
 }

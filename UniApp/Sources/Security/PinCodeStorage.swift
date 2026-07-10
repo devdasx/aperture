@@ -23,8 +23,8 @@ import Security
 ///
 /// **Honesty (Rule #2 §A.7 + Rule #16).** A PIN protects against casual
 /// access while the phone is unlocked; it does NOT protect the recovery
-/// phrase, the seed, or funds in the cryptographic sense. The
-/// `PinSkipWarningSheet` states this honestly to the user.
+/// phrase, the seed, or funds in the cryptographic sense. The skip-passcode
+/// confirmation dialog states this honestly to the user.
 enum PinCodeStorage {
 
     // MARK: - Configuration

@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Presented when the user taps the leading X close button on
-/// `PinSetupFlow`. Distinct from `PinSkipWarningSheet`: that sheet asks
-/// "skip the PIN but keep the wallet"; this one asks "stop the whole
-/// wallet creation and go back to onboarding".
+/// `PinSetupFlow`. Distinct from the skip-passcode confirmation: that
+/// dialog asks "skip the PIN but keep the wallet"; this one asks "stop the
+/// whole wallet creation and go back to onboarding".
 ///
 /// **Sheet shape.** Uses the unified `UniSheet` shell.
 struct AbandonWalletWarningSheet: View {
