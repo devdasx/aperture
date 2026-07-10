@@ -1,4 +1,5 @@
 import SwiftUI
+import GRDB
 
 // MARK: - RootGate
 
@@ -259,6 +260,7 @@ struct WalletHomeView: View {
     @State private var isRefreshing: Bool = false
     @State private var firstRefreshSkeletonWalletId: UUID?
     @State private var firstRefreshSkeletonRunId: UUID?
+    @State private var firstRefreshSkeletonTask: Task<Void, Never>?
 
     /// `true` while a refresh this view started is in flight. Refresh now
     /// fetches nothing (data-fetching layer removed 2026-06-25), so this stays
@@ -608,7 +610,8 @@ struct WalletHomeView: View {
                     rebuildFilterInputs()
                     rebuildFilteredRows()
                 }
-                .onChange(of: activeWalletIdRaw) { _, _ in
+                .onChange(of: activeWalletIdRaw) { _, newValue in
+                    cancelFirstRefreshSkeleton(unless: UUID(uuidString: newValue))
                     syncObservationScopes()
                     displayRebuildTask?.cancel()
                     chainReconcileTask?.cancel()
@@ -682,6 +685,7 @@ struct WalletHomeView: View {
                 .onDisappear {
                     displayRebuildTask?.cancel()
                     chainReconcileTask?.cancel()
+                    cancelFirstRefreshSkeleton()
                 }
         }
         // Settings is now reached via the four-tab shell (`MainTabView`
@@ -1262,6 +1266,7 @@ struct WalletHomeView: View {
     ) -> some View {
         content()
             .redacted(reason: .placeholder)
+            .firstRefreshSkeletonShimmer()
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -2675,7 +2680,20 @@ struct WalletHomeView: View {
     /// repository actor has already saved even before this view's
     /// GRDB observation has merged them.
     private func walletExists(id: UUID) -> Bool {
-        allWallets.contains { $0.id == id }
+        if allWallets.contains(where: { $0.id == id }) {
+            return true
+        }
+        do {
+            return try AppDatabase.shared.read { db in
+                try Int.fetchOne(
+                    db,
+                    sql: "SELECT 1 FROM wallets WHERE id = ? LIMIT 1",
+                    arguments: [id.uuidString]
+                ) != nil
+            }
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Refresh
@@ -2689,21 +2707,11 @@ struct WalletHomeView: View {
     @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
         guard let walletId = await resolveRefreshWalletId() else { return }
-        let shouldShowInitialSkeleton = shouldShowFirstRefreshSkeleton(for: walletId)
-        let skeletonRunId = shouldShowInitialSkeleton ? UUID() : nil
-        if let skeletonRunId {
-            firstRefreshSkeletonWalletId = walletId
-            firstRefreshSkeletonRunId = skeletonRunId
+        if shouldShowFirstRefreshSkeleton(for: walletId) {
+            startFirstRefreshSkeleton(for: walletId)
         }
         if !userInitiated {
             Task {
-                defer {
-                    if let skeletonRunId {
-                        Task { @MainActor in
-                            clearFirstRefreshSkeleton(walletId: walletId, runId: skeletonRunId)
-                        }
-                    }
-                }
                 await WalletBackgroundWorkCoordinator.shared.refreshBalances(
                     walletId: walletId,
                     currencyCode: currencyCode,
@@ -2713,19 +2721,11 @@ struct WalletHomeView: View {
                 guard !Task.isCancelled else { return }
                 try? await Task.sleep(for: .seconds(2))
                 guard !Task.isCancelled else { return }
-                if shouldShowInitialSkeleton {
-                    await WalletBackgroundWorkCoordinator.shared.refreshFull(
-                        walletId: walletId,
-                        currencyCode: currencyCode,
-                        database: AppDatabase.shared
-                    )
-                } else {
-                    await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
-                        walletId: walletId,
-                        currencyCode: currencyCode,
-                        database: AppDatabase.shared
-                    )
-                }
+                await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
+                    walletId: walletId,
+                    currencyCode: currencyCode,
+                    database: AppDatabase.shared
+                )
                 await WalletBackgroundWorkCoordinator.shared.startChainKeyBackfill(
                     walletId: walletId,
                     database: AppDatabase.shared
@@ -2737,9 +2737,6 @@ struct WalletHomeView: View {
         isRefreshing = true
         defer {
             isRefreshing = false
-            if let skeletonRunId {
-                clearFirstRefreshSkeleton(walletId: walletId, runId: skeletonRunId)
-            }
         }
 
         await WalletBackgroundWorkCoordinator.shared.refreshBalances(
@@ -2759,9 +2756,37 @@ struct WalletHomeView: View {
             && mostRecentScanAt == nil
     }
 
+    private func startFirstRefreshSkeleton(for walletId: UUID) {
+        guard firstRefreshSkeletonWalletId != walletId else { return }
+        let runId = UUID()
+        firstRefreshSkeletonTask?.cancel()
+        firstRefreshSkeletonWalletId = walletId
+        firstRefreshSkeletonRunId = runId
+        firstRefreshSkeletonTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            clearFirstRefreshSkeleton(walletId: walletId, runId: runId)
+        }
+    }
+
     private func clearFirstRefreshSkeleton(walletId: UUID, runId: UUID) {
         guard firstRefreshSkeletonWalletId == walletId,
               firstRefreshSkeletonRunId == runId else { return }
+        firstRefreshSkeletonWalletId = nil
+        firstRefreshSkeletonRunId = nil
+        firstRefreshSkeletonTask = nil
+        guard activeWallet?.id == walletId else { return }
+        rebuildFilterInputs()
+        rebuildDisplayRows()
+        scheduleChainStateReconcile(after: 0)
+    }
+
+    private func cancelFirstRefreshSkeleton(unless walletId: UUID? = nil) {
+        if let walletId, firstRefreshSkeletonWalletId == walletId {
+            return
+        }
+        firstRefreshSkeletonTask?.cancel()
+        firstRefreshSkeletonTask = nil
         firstRefreshSkeletonWalletId = nil
         firstRefreshSkeletonRunId = nil
     }
@@ -2923,9 +2948,61 @@ private struct FirstRefreshBalanceCardSkeleton: View {
             onAddFunds: {}
         )
         .redacted(reason: .placeholder)
+        .firstRefreshSkeletonShimmer()
         .disabled(true)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+private extension View {
+    func firstRefreshSkeletonShimmer() -> some View {
+        modifier(FirstRefreshSkeletonShimmer())
+    }
+}
+
+private struct FirstRefreshSkeletonShimmer: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isAnimating = false
+
+    func body(content: Content) -> some View {
+        if reduceMotion {
+            content
+        } else {
+            content
+                .overlay {
+                    GeometryReader { proxy in
+                        let travel = max(proxy.size.width, proxy.size.height) * 1.8
+                        Rectangle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.clear,
+                                        UniColors.Skeleton.highlight.opacity(0.18),
+                                        Color.clear
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: max(80, proxy.size.width * 0.42))
+                            .rotationEffect(.degrees(8))
+                            .offset(x: isAnimating ? travel : -travel)
+                    }
+                    .allowsHitTesting(false)
+                    .blendMode(.screen)
+                    .mask(content)
+                }
+                .onAppear {
+                    isAnimating = false
+                    withAnimation(.linear(duration: 1.35).repeatForever(autoreverses: false)) {
+                        isAnimating = true
+                    }
+                }
+                .onDisappear {
+                    isAnimating = false
+                }
+        }
     }
 }
 
