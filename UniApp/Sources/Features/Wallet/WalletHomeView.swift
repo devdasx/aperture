@@ -214,12 +214,6 @@ struct WalletHomeView: View {
     /// a push. Owned here on the parent so its path can be reset on
     /// dismiss per Rule #12 §G.
     @State private var isShowingReceive: Bool = false
-    @State private var isShowingAddCustomToken: Bool = false
-    @State private var addCustomTokenInitialChain: SupportedChain?
-    @State private var addCustomTokenActionContext: AddCustomTokenSheet.ActionContext = .none
-    @State private var pendingIncludedTokenTarget: AddCustomTokenSheet.TokenNavigationTarget?
-    @State private var openAddCustomTokenAfterReceiveDismiss: Bool = false
-    @State private var openAddCustomTokenAfterSendDismiss: Bool = false
     /// Drives the Send sheet (the Receive twin). Its own NavigationPath
     /// lives here so the sheet survives Rule #12 §G direction rebuilds.
     @State private var isShowingSend: Bool = false
@@ -708,33 +702,12 @@ struct WalletHomeView: View {
             // sensitive list rows in RTL languages). Rule #12 §G
             // direction-only rebuild key + `.uniAppEnvironment()` so
             // theme + locale propagate into the sheet's own scope.
-            ReceiveView(
-                navigationPath: $receivePath,
-                onAddCustomToken: { chain in
-                    requestStandaloneAddCustomToken(initialChain: chain, actionContext: .receive)
-                }
-            )
+            ReceiveView(navigationPath: $receivePath)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
-        }
-        .sheet(isPresented: $isShowingAddCustomToken, onDismiss: handleAddCustomTokenDismiss) {
-            AddCustomTokenSheet(
-                initialChain: addCustomTokenInitialChain ?? firstSupportedCustomTokenChain,
-                availableChains: availableChainsForCustomTokenAdd,
-                actionContext: addCustomTokenActionContext,
-                onSaved: {},
-                onUseIncludedToken: { target in
-                    pendingIncludedTokenTarget = target
-                }
-            )
-            .id(sheetDirectionKey)
-            .uniAppEnvironment()
-            .uniSheetDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
         }
         // Send — asset-first bottom sheet, the twin of Receive. Same
         // `.large`-only detent, same Rule #12 §G direction rebuild key +
@@ -743,10 +716,7 @@ struct WalletHomeView: View {
         .sheet(isPresented: $isShowingSend, onDismiss: handleSendSheetDismiss) {
             SendView(
                 navigationPath: $sendPath,
-                prefill: scanPrefill,
-                onAddCustomToken: { chain in
-                    requestStandaloneAddCustomToken(initialChain: chain, actionContext: .send)
-                }
+                prefill: scanPrefill
             )
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
@@ -2475,103 +2445,13 @@ struct WalletHomeView: View {
         )
     }
 
-    private var availableChainsForCustomTokenAdd: [SupportedChain] {
-        guard let wallet = activeWallet else { return [] }
-        let chains: Set<SupportedChain> = Set(wallet.addresses.compactMap { address in
-            guard !address.address.isEmpty else { return nil }
-            return SupportedChain(rawValue: address.chainRaw)
-        })
-        return SupportedChain.allCases.filter { chains.contains($0) }
-    }
-
-    private var firstSupportedCustomTokenChain: SupportedChain {
-        CustomTokenSupport.preferredInitialChain(availableChains: availableChainsForCustomTokenAdd)
-    }
-
-    private func requestStandaloneAddCustomToken(
-        initialChain: SupportedChain?,
-        actionContext: AddCustomTokenSheet.ActionContext
-    ) {
-        addCustomTokenInitialChain = initialChain ?? firstSupportedCustomTokenChain
-        addCustomTokenActionContext = actionContext
-        if isShowingReceive {
-            openAddCustomTokenAfterReceiveDismiss = true
-            isShowingReceive = false
-        } else if isShowingSend {
-            openAddCustomTokenAfterSendDismiss = true
-            isShowingSend = false
-        } else {
-            isShowingAddCustomToken = true
-        }
-    }
-
     private func handleReceiveSheetDismiss() {
         receivePath = NavigationPath()
-        guard openAddCustomTokenAfterReceiveDismiss else { return }
-        openAddCustomTokenAfterReceiveDismiss = false
-        isShowingAddCustomToken = true
     }
 
     private func handleSendSheetDismiss() {
         sendPath = NavigationPath()
         scanPrefill = nil
-        guard openAddCustomTokenAfterSendDismiss else { return }
-        openAddCustomTokenAfterSendDismiss = false
-        isShowingAddCustomToken = true
-    }
-
-    private func handleAddCustomTokenDismiss() {
-        addCustomTokenInitialChain = nil
-        let actionContext = addCustomTokenActionContext
-        addCustomTokenActionContext = .none
-        guard let target = pendingIncludedTokenTarget else { return }
-        pendingIncludedTokenTarget = nil
-        openIncludedTokenTarget(target, actionContext: actionContext)
-    }
-
-    private func openIncludedTokenTarget(
-        _ target: AddCustomTokenSheet.TokenNavigationTarget,
-        actionContext: AddCustomTokenSheet.ActionContext
-    ) {
-        switch actionContext {
-        case .receive:
-            guard let address = walletAddress(for: target.chain) else { return }
-            var path = NavigationPath()
-            path.append(ReceiveDestination.qr(
-                chain: target.chain,
-                tokenSymbol: target.symbol,
-                address: address
-            ))
-            receivePath = path
-            isShowingReceive = true
-        case .send:
-            guard let address = walletAddress(for: target.chain) else { return }
-            let descriptor = SendTokenDescriptor(
-                symbol: target.symbol,
-                name: target.name,
-                chain: target.chain,
-                contract: target.contract,
-                decimals: target.decimals,
-                source: target.source == .catalog ? .catalog : .custom
-            )
-            var path = NavigationPath()
-            path.append(SendDestination.recipient(
-                chain: target.chain,
-                token: descriptor,
-                fromAddress: address,
-                prefillRecipient: nil
-            ))
-            sendPath = path
-            isShowingSend = true
-        case .none:
-            break
-        }
-    }
-
-    private func walletAddress(for chain: SupportedChain) -> String? {
-        activeWallet?.addresses.first {
-            $0.chainRaw == chain.rawValue && !$0.address.isEmpty
-        }?.address
     }
 
     /// All balances belonging to the active wallet, sorted by fiat
