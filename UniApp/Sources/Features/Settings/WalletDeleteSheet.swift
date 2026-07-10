@@ -131,7 +131,7 @@ struct WalletDeleteSheet: View {
         // auto-prompt and no biometric keypad key, even when Face ID is
         // enabled. Same presentation shape as `ResetApertureSheet` and
         // the Security entry gate (Rule #15 + Rule #17).
-        .fullScreenCover(isPresented: $isShowingPasscodeGate) {
+        .sheet(isPresented: $isShowingPasscodeGate) {
             NavigationStack {
                 PinCodeView(
                     mode: .verify,
@@ -159,6 +159,8 @@ struct WalletDeleteSheet: View {
                 }
             }
             .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
     }

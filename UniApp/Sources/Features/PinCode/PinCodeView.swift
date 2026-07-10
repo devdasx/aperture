@@ -122,6 +122,15 @@ struct PinCodeView: View {
     /// options menu. Dismissal belongs to the presenter / native app bar, so
     /// this component does not add its own close button.
     var showsNavigationControls: Bool = true
+    /// Shows the app-lock-only principal pill in the navigation bar.
+    /// In-flow authorization sheets intentionally leave this off: the
+    /// presenting sheet already explains the action, and the passcode prompt
+    /// should stay focused and dismissible.
+    var showsAccessContextToolbar: Bool = false
+    /// Shows the app-lock-only forgot-passcode option. A forgotten passcode
+    /// is an app-entry recovery problem, not a mid-send or mid-settings
+    /// action, so only `AppLockView` opts in.
+    var showsForgotPasscodeOption: Bool = false
     /// Short, honest context shown in the nav bar so the user knows what the
     /// passcode unlocks or authorizes before typing it.
     var accessContext: AccessContext? = nil
@@ -293,15 +302,17 @@ struct PinCodeView: View {
 
     @ToolbarContentBuilder
     private var accessContextToolbar: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            PasscodeAccessPill(context: resolvedAccessContext)
+        if showsAccessContextToolbar {
+            ToolbarItem(placement: .principal) {
+                PasscodeAccessPill(context: resolvedAccessContext)
+            }
         }
     }
 
     @ToolbarContentBuilder
     private var navigationControlsToolbar: some ToolbarContent {
         if showsNavigationControls {
-            if mode == .verify, onForgotPin != nil {
+            if showsForgotPasscodeOption, mode == .verify, onForgotPin != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {

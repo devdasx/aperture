@@ -53,8 +53,10 @@ struct SendReviewView: View {
     @State private var sentAt: Date?
     /// Drives the error haptic (bumped on each failure).
     @State private var failedTrigger: Int = 0
-    /// The PIN-fallback presentation (full-screen, the canonical surface).
+    /// The PIN-fallback presentation. Verify gates are native bottom sheets
+    /// so the user can change their mind without leaving the send flow.
     @State private var isShowingPinVerify: Bool = false
+    @State private var didCompletePinVerify: Bool = false
     /// The passphrase prompt presentation.
     @State private var isShowingPassphrase: Bool = false
     /// The collected passphrase, held only for the duration of the send.
@@ -131,8 +133,8 @@ struct SendReviewView: View {
                 CoinTitleBar(chain: chain, tokenSymbol: draft.tokenSymbol, verb: "Review")
             }
         }
-        .fullScreenCover(isPresented: $isShowingPinVerify) {
-            pinVerifyCover
+        .sheet(isPresented: $isShowingPinVerify, onDismiss: handlePinVerifyDismiss) {
+            pinVerifySheet
         }
         .sheet(isPresented: $isShowingPassphrase) {
             SendPassphraseSheet(
@@ -367,13 +369,14 @@ struct SendReviewView: View {
         }
     }
 
-    // MARK: - PIN-fallback cover
+    // MARK: - PIN-fallback sheet
 
-    private var pinVerifyCover: some View {
+    private var pinVerifySheet: some View {
         NavigationStack {
             PinCodeView(
                 mode: .verify,
                 onComplete: { _ in
+                    didCompletePinVerify = true
                     isShowingPinVerify = false
                     afterAuthSuccess()
                 },
@@ -381,25 +384,34 @@ struct SendReviewView: View {
                     isShowingPinVerify = false
                     phase = .review
                 },
-                onForgotPin: {
-                    // A forgotten PIN can't be reset (Rule #16). Cancel the
-                    // send and return the user to Review; the forgot path
-                    // lives in the lock screen, not mid-send.
-                    isShowingPinVerify = false
-                    phase = .review
-                },
                 // Face ID auto-prompts here only when the user kept "Require
                 // Face ID for sending" on; off → passcode-only (no biometric).
                 allowsBiometrics: requireForSend,
+                showsNavigationControls: false,
                 accessContext: .signTransaction(
                     chain: chain,
                     symbol: assetSymbol,
                     contract: draft.tokenContract
                 )
             )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingPinVerify = false
+                        phase = .review
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
+                }
+            }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
         .uniAppEnvironment()
+        .uniSheetDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(UniColors.Background.primary)
     }
 
     // MARK: - Flow
@@ -427,10 +439,16 @@ struct SendReviewView: View {
     /// PIN if one exists, otherwise (Rule #17 optional-PIN) proceed.
     private func routeToPinOrProceed() {
         if PinCodeStorage.hasPin {
+            didCompletePinVerify = false
             isShowingPinVerify = true
         } else {
             afterAuthSuccess()
         }
+    }
+
+    private func handlePinVerifyDismiss() {
+        guard !didCompletePinVerify, phase == .authenticating else { return }
+        phase = .review
     }
 
     /// Auth has succeeded. Collect the passphrase if the wallet needs one,

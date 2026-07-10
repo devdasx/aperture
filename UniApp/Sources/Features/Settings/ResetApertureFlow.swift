@@ -77,7 +77,7 @@ struct ResetApertureFlow: View {
         // The reset's final gate is the app's UNIFIED lock screen — auto Face
         // ID (when the user enabled biometrics) with the PIN keypad fallback,
         // not a raw LAContext prompt. Presented after the user types RESET.
-        .fullScreenCover(isPresented: $isShowingPinGate) {
+        .sheet(isPresented: $isShowingPinGate) {
             NavigationStack {
                 PinCodeView(
                     mode: .verify,
@@ -101,6 +101,9 @@ struct ResetApertureFlow: View {
                 }
             }
             .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
         }
     }
 

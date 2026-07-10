@@ -79,6 +79,8 @@ struct AppLockView: View {
                     guard eraseDataEnabled else { return nil }
                     return max(0, PinCodeStorage.eraseDataThreshold - PinCodeStorage.unlockFailureCount())
                 },
+                showsAccessContextToolbar: true,
+                showsForgotPasscodeOption: true,
                 accessContext: .unlockApp
             )
         }

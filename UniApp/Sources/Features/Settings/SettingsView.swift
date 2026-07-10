@@ -163,7 +163,7 @@ struct SettingsView: View {
                 compactBody
             }
         }
-        .fullScreenCover(isPresented: $isShowingProtectedNavigationGate) {
+        .sheet(isPresented: $isShowingProtectedNavigationGate) {
             protectedNavigationGate
         }
         .sheet(isPresented: $isShowingSheetDesignPreview) {
@@ -448,6 +448,8 @@ struct SettingsView: View {
             }
         }
         .uniAppEnvironment()
+        .uniSheetDetents([.large])
+        .presentationDragIndicator(.visible)
         .presentationBackground(UniColors.Background.primary)
     }
 

@@ -19,6 +19,7 @@ struct SecuritySettingsView: View {
     @GRDBStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
 
     @State private var isShowingPinSetup: Bool = false
+    @State private var isShowingPinChangeVerify: Bool = false
     @State private var isShowingPinChange: Bool = false
     @State private var isShowingDisableVerify: Bool = false
     @State private var biometricAvailable: Bool = false
@@ -105,7 +106,7 @@ struct SecuritySettingsView: View {
                     .listRowBackground(UniColors.List.rowBackground)
 
                     Button {
-                        isShowingPinChange = true
+                        isShowingPinChangeVerify = true
                     } label: {
                         HStack {
                             Text("Change Passcode")
@@ -192,6 +193,21 @@ struct SecuritySettingsView: View {
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
+        .sheet(isPresented: $isShowingPinChangeVerify) {
+            PinChangeVerifyFlow(
+                onSuccess: {
+                    isShowingPinChangeVerify = false
+                    DispatchQueue.main.async {
+                        isShowingPinChange = true
+                    }
+                },
+                onCancel: { isShowingPinChangeVerify = false }
+            )
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
         .fullScreenCover(isPresented: $isShowingPinChange) {
             PinChangeFlow(
                 onFinish: { isShowingPinChange = false }
@@ -199,7 +215,7 @@ struct SecuritySettingsView: View {
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
-        .fullScreenCover(isPresented: $isShowingDisableVerify) {
+        .sheet(isPresented: $isShowingDisableVerify) {
             PinDisableVerifyFlow(
                 onSuccess: {
                     PinCodeStorage.clear()
@@ -210,6 +226,8 @@ struct SecuritySettingsView: View {
                 onCancel: { isShowingDisableVerify = false }
             )
             .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
     }
@@ -522,35 +540,52 @@ struct AutoLockPickerView: View {
 
 // MARK: - PIN change / disable flows
 
-/// Three-step flat state machine: verify current PIN → set new PIN
-/// → confirm new PIN. Mirrors `PinSetupFlow`'s shape but with the
-/// verify gate up front. Per Rule #17 + M-004 (no nested
-/// NavigationStack — flat state machine).
+/// Current-passcode verification before the full-screen change flow. This
+/// is a verify gate, so it presents as a dismissible sheet like every other
+/// in-flow passcode authorization.
+struct PinChangeVerifyFlow: View {
+    let onSuccess: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            PinCodeView(
+                mode: .verify,
+                onComplete: { _ in onSuccess() },
+                onCancel: { onCancel() },
+                showsNavigationControls: false,
+                accessContext: .changePasscode
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { onCancel() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
+                }
+            }
+        }
+    }
+}
+
+/// Two-step full-screen state machine: set new PIN → confirm new PIN.
+/// Current-PIN verification happens in `PinChangeVerifyFlow` first so only
+/// passcode creation and confirmation occupy a full-screen surface.
 struct PinChangeFlow: View {
     let onFinish: () -> Void
 
     private enum Step: Equatable {
-        case verify
         case setNew
         case confirmNew(expected: String)
     }
-    @State private var step: Step = .verify
+    @State private var step: Step = .setNew
     @State private var inlineError: String?
 
     var body: some View {
         NavigationStack {
             Group {
                 switch step {
-                case .verify:
-                    PinCodeView(
-                        mode: .verify,
-                        onComplete: { _ in
-                            step = .setNew
-                        },
-                        onCancel: { onFinish() },
-                        showsNavigationControls: false,
-                        accessContext: .changePasscode
-                    )
                 case .setNew:
                     PinCodeView(
                         mode: .set,
@@ -579,24 +614,17 @@ struct PinChangeFlow: View {
             .toolbar {
                 // Leading toolbar affordance depends on the step
                 // (per the user's 2026-06-06 direction). Step 1
-                // (verify current passcode) is the entry surface —
-                // close × cancels the whole change attempt. Steps
-                // 2–3 are intra-flow navigation — back ← pops to
-                // the previous step.
+                // (set new passcode) is the entry surface — close × cancels
+                // the whole change attempt. Confirm is intra-flow navigation
+                // — back ← pops to the previous step.
                 ToolbarItem(placement: .topBarLeading) {
                     switch step {
-                    case .verify:
+                    case .setNew:
                         Button { onFinish() } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 17, weight: .semibold))
                         }
                         .accessibilityLabel(Text("Cancel"))
-                    case .setNew:
-                        Button { step = .verify } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .accessibilityLabel(Text("Back"))
                     case .confirmNew:
                         Button { step = .setNew } label: {
                             Image(systemName: "chevron.left")

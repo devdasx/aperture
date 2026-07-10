@@ -429,7 +429,7 @@ struct WalletDetailView: View {
         // (`allowsBiometrics: true`), so a passcode-only user is NOT shown
         // a raw Face ID prompt — they see the keypad and may use Face ID
         // only if they enabled it (2026-06-19 user direction).
-        .fullScreenCover(isPresented: $isShowingPasscodeGate) {
+        .sheet(isPresented: $isShowingPasscodeGate) {
             NavigationStack {
                 PinCodeView(
                     mode: .verify,
@@ -458,6 +458,8 @@ struct WalletDetailView: View {
                 }
             }
             .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingIconPicker) {
