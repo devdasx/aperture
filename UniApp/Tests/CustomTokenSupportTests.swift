@@ -102,5 +102,6 @@ struct CustomTokenSupportTests {
         #expect(symbol == "SUN")
         #expect(name == "Sun Token")
         #expect(chains == [.tron])
+        #expect(row.logoContract(on: .tron, customTokens: [CustomTokenSnapshot(from: record)]) == usdtTronContract)
     }
 }

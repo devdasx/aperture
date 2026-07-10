@@ -122,6 +122,20 @@ extension ReceiveAsset {
               let chain = canonicalChainForLogo else {
             return nil
         }
+        return Self.registryContract(symbol: symbol, chain: chain)
+    }
+
+    func logoContract(on chain: SupportedChain, customTokens: [CustomTokenSnapshot]) -> String? {
+        guard case let .token(symbol, _, _) = self else { return nil }
+        if let registryContract = Self.registryContract(symbol: symbol, chain: chain) {
+            return registryContract
+        }
+        return customTokens.first {
+            $0.chain == chain && $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame
+        }?.contract
+    }
+
+    private static func registryContract(symbol: String, chain: SupportedChain) -> String? {
         if chain.family == .evm {
             return EVMTokenRegistry.tokens(for: chain)
                 .first(where: { $0.symbol == symbol })?

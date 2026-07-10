@@ -153,14 +153,15 @@ struct ReceiveAssetListView: View {
         Section {
             ForEach(tokens) { asset in
                 if case let .token(symbol, name, chains) = asset {
+                    let logoChain = asset.canonicalChainForLogo ?? chains.first ?? .ethereum
                     Button {
                         onSelectToken(asset)
                     } label: {
                         AssetPickerAssetRow(
                             fullName: name,
                             ticker: symbol,
-                            logoChain: asset.canonicalChainForLogo ?? chains.first ?? .ethereum,
-                            logoContract: asset.canonicalContract,
+                            logoChain: logoChain,
+                            logoContract: asset.logoContract(on: logoChain, customTokens: customTokenSnapshots),
                             totals: holdings.aggregate(symbol: symbol),
                             currencyCode: currencyCode
                         )
