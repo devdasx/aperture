@@ -63,6 +63,7 @@ struct AddCustomTokenSheet: View {
     @State private var isExportingCSV: Bool = false
     @State private var csvExportDocument = CustomTokenCSVDocument()
     @State private var csvAlert: CSVAlert?
+    @State private var isShowingCSVHelp: Bool = false
     @State private var includedTokenAlert: IncludedTokenAlert?
     @State private var isScanningContract: Bool = false
 
@@ -186,6 +187,13 @@ struct AddCustomTokenSheet: View {
                 )
             }
         }
+        .sheet(isPresented: $isShowingCSVHelp) {
+            CustomTokenCSVHelpSheet()
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
         .fullScreenCover(isPresented: $isScanningContract) {
             UniQRScannerSheet(
                 title: "Scan contract",
@@ -256,29 +264,31 @@ struct AddCustomTokenSheet: View {
     private var csvOptionsMenu: some View {
         Menu {
             Section {
-                Text("Adds custom tokens from a CSV file to this wallet.")
                 Button {
                     isImportingCSV = true
                 } label: {
-                    Label("Import token list CSV", systemImage: "square.and.arrow.down")
+                    Label("Import CSV", systemImage: "square.and.arrow.down")
                 }
+            } header: {
+                Text("Add tokens from a file")
             }
 
             Section {
-                Text("Exports this wallet's custom tokens to a CSV file you can back up or edit.")
                 Button {
                     prepareCSVExport()
                 } label: {
-                    Label("Export custom tokens CSV", systemImage: "square.and.arrow.up")
+                    Label("Export CSV", systemImage: "square.and.arrow.up")
                 }
+            } header: {
+                Text("Save this token list")
             }
 
             Section {
-                Text("CSV format: chain, contract, symbol, name, decimals, metadata_from_chain.")
-                Text("Example: tron,TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t,USDT,Tether USD,6,true")
-                Text("Use chain IDs like solana, tron, ethereum, base, arbitrum, polygon, bnbChain, optimism, avalanche, zkSync, scroll, celo, or opBNB.")
-            } header: {
-                Text("CSV help")
+                Button {
+                    isShowingCSVHelp = true
+                } label: {
+                    Label("CSV guide", systemImage: "questionmark.circle")
+                }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -1019,6 +1029,211 @@ private struct ContractAddressInputField: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(accessibilityLabel))
+    }
+}
+
+// MARK: - CSV help
+
+private struct CustomTokenCSVHelpSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private struct Column: Identifiable {
+        let name: String
+        let detail: LocalizedStringKey
+
+        var id: String { name }
+    }
+
+    private let columns: [Column] = [
+        Column(name: "chain", detail: "The exact supported network identifier."),
+        Column(name: "contract", detail: "The EVM or TRON contract address, or Solana mint."),
+        Column(name: "symbol", detail: "The short ticker shown in the wallet, such as USDT."),
+        Column(name: "name", detail: "The full token name. Wrap names containing commas in double quotes."),
+        Column(name: "decimals", detail: "The token's on-chain decimal precision, from 0 to 255."),
+        Column(name: "metadata_from_chain", detail: "Use true when metadata came from the network; otherwise use false.")
+    ]
+
+    private var exampleCSV: String {
+        [
+            CustomTokenCSV.header,
+            "tron,TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t,USDT,Tether USD,6,true",
+            "solana,Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB,USDT,Tether USD,6,true",
+            "ethereum,0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,USDC,USD Coin,6,true"
+        ].joined(separator: "\n")
+    }
+
+    private var supportedChainIDs: String {
+        CustomTokenSupport.chains.map(\.rawValue).joined(separator: ", ")
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: UniSpacing.xl) {
+                    intro
+
+                    sectionTitle("Example file")
+                    csvPreview
+
+                    sectionTitle("How to use it")
+                    workflow
+
+                    sectionTitle("Columns")
+                    columnReference
+
+                    sectionTitle("Supported network IDs")
+                    VStack(alignment: .leading, spacing: UniSpacing.s) {
+                        Text(verbatim: supportedChainIDs)
+                            .font(UniTypography.footnote)
+                            .foregroundStyle(UniColors.Text.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        UniFootnote(
+                            text: "Use these identifiers exactly. Rows for networks unavailable in the current wallet are reported and skipped.",
+                            color: UniColors.Text.tertiary
+                        )
+                    }
+                }
+                .padding(.horizontal, UniSpacing.m)
+                .padding(.vertical, UniSpacing.l)
+            }
+            .background(UniColors.Background.primary)
+            .navigationTitle("CSV guide")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .tint(UniColors.Button.text)
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private var intro: some View {
+        HStack(alignment: .top, spacing: UniSpacing.m) {
+            Image(systemName: "tablecells")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(UniColors.Icon.accent)
+                .frame(width: 44, height: 44)
+                .background(UniColors.Fill.tertiary, in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                UniHeadline(text: "Move custom token lists")
+                UniFootnote(
+                    text: "Export the current wallet's custom tokens as a template, edit one token per row, then import the UTF-8 CSV file into another wallet.",
+                    color: UniColors.Text.secondary
+                )
+            }
+        }
+    }
+
+    private var csvPreview: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "doc.text")
+                    .foregroundStyle(UniColors.Icon.secondary)
+                Text("aperture-custom-tokens.csv")
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.primary)
+                Spacer()
+                Text("UTF-8")
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+            }
+            .padding(UniSpacing.m)
+
+            Divider().overlay(UniColors.Separator.regular)
+
+            ScrollView(.horizontal, showsIndicators: true) {
+                Text(verbatim: exampleCSV)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .foregroundStyle(UniColors.Text.primary)
+                    .textSelection(.enabled)
+                    .padding(UniSpacing.m)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .fill(UniColors.Input.background)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .stroke(UniColors.Input.border, lineWidth: 1)
+        }
+    }
+
+    private var workflow: some View {
+        VStack(spacing: UniSpacing.m) {
+            workflowRow(
+                number: 1,
+                title: "Keep the header first",
+                detail: "Do not rename or reorder the header row."
+            )
+            workflowRow(
+                number: 2,
+                title: "Add one token per row",
+                detail: "Use the token's real network, address, symbol, name, and decimals."
+            )
+            workflowRow(
+                number: 3,
+                title: "Import and review",
+                detail: "Aperture adds valid rows, skips duplicates, and reports invalid rows."
+            )
+        }
+    }
+
+    private var columnReference: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(columns.enumerated()), id: \.element.id) { index, column in
+                VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                    Text(verbatim: column.name)
+                        .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text(column.detail)
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(UniSpacing.m)
+
+                if index < columns.count - 1 {
+                    Divider()
+                        .overlay(UniColors.Separator.regular)
+                        .padding(.leading, UniSpacing.m)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .fill(UniColors.Card.background)
+        )
+    }
+
+    private func sectionTitle(_ title: LocalizedStringKey) -> some View {
+        UniCaption(text: title, color: UniColors.Text.tertiary)
+    }
+
+    private func workflowRow(
+        number: Int,
+        title: LocalizedStringKey,
+        detail: LocalizedStringKey
+    ) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.m) {
+            Image(systemName: "\(number).circle.fill")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(UniColors.Icon.accent)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                UniHeadline(text: title)
+                UniFootnote(text: detail, color: UniColors.Text.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
