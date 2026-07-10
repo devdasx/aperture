@@ -92,44 +92,52 @@ struct SendAmountView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                if model.isMultiRecipient {
-                    SendAmountMultiList(model: model, selectionTapCount: $selectionTapCount)
-                } else {
-                    SendAmountHero(
-                        model: model,
-                        selectionTapCount: $selectionTapCount
-                    )
-                }
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: UniSpacing.l) {
+                    if model.isMultiRecipient {
+                        SendAmountMultiList(model: model, selectionTapCount: $selectionTapCount)
+                    } else {
+                        SendAmountHero(
+                            model: model,
+                            selectionTapCount: $selectionTapCount,
+                            onReview: reviewDraft
+                        )
+                        .frame(minHeight: max(0, proxy.size.height - UniSpacing.m), alignment: .top)
+                    }
 
-                // The network fee is intentionally NOT shown in the compose
-                // body (per user direction). It lives ONLY in the options
-                // menu (dots → "Edit network fee", which opens the fee
-                // sheet), and is restated at confirmation on the Review
-                // screen. The fee is still FETCHED below (`loadFee` /
-                // `feeRefreshKey` / `recomputeUTXOFee`) so the sheet,
-                // validation, and Review have it — it's just not rendered
-                // here. Honest (Rule #16): discoverable in the menu, shown
-                // at the moment of commitment in Review.
+                    // The network fee is intentionally NOT shown in the compose
+                    // body (per user direction). It lives ONLY in the options
+                    // menu (dots → "Edit network fee", which opens the fee
+                    // sheet), and is restated at confirmation on the Review
+                    // screen. The fee is still FETCHED below (`loadFee` /
+                    // `feeRefreshKey` / `recomputeUTXOFee`) so the sheet,
+                    // validation, and Review have it — it's just not rendered
+                    // here. Honest (Rule #16): discoverable in the menu, shown
+                    // at the moment of commitment in Review.
 
-                if let reserve = reserveNote {
-                    reserveBanner(reserve)
-                }
+                    if let reserve = reserveNote {
+                        reserveBanner(reserve)
+                    }
 
-                if let blocking = model.blockingError, model.totalCrypto > 0 {
-                    blockingBanner(blocking)
+                    if let blocking = model.blockingError, model.totalCrypto > 0 {
+                        blockingBanner(blocking)
+                    }
                 }
+                .padding(.horizontal, UniSpacing.l)
+                .padding(.top, UniSpacing.m)
+                .padding(.bottom, model.isMultiRecipient ? UniSpacing.xxxl + UniSpacing.xl : 0)
             }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.m)
-            .padding(.bottom, UniSpacing.xxxl + UniSpacing.xl)
         }
         .scrollDismissesKeyboard(.interactively)
         .scrollIndicators(.hidden)
         .background(UniColors.Background.primary)
         .uniHaptic(.selection, trigger: selectionTapCount)
-        .uniBottomActionBar { reviewBar }
+        .uniBottomActionBar {
+            if model.isMultiRecipient {
+                reviewBar
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -345,18 +353,24 @@ struct SendAmountView: View {
 
     private var reviewBar: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
-            UniButton(
-                title: "Review",
-                variant: .primary,
-                isEnabled: model.canReview,
-                action: {
-                    guard let draft = model.makeDraft() else { return }
-                    onReview(draft)
-                }
-            )
+            reviewButton
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
         }
+    }
+
+    private var reviewButton: some View {
+        UniButton(
+            title: "Review",
+            variant: .primary,
+            isEnabled: model.canReview,
+            action: reviewDraft
+        )
+    }
+
+    private func reviewDraft() {
+        guard let draft = model.makeDraft() else { return }
+        onReview(draft)
     }
 
     // MARK: - Local-first reads (off the render path)

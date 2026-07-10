@@ -13,6 +13,7 @@ struct SendAmountHero: View {
 
     @Bindable var model: SendComposeModel
     @Binding var selectionTapCount: Int
+    let onReview: () -> Void
 
     /// Largest the amount renders when the value is short (≈ one or two
     /// glyphs). Cash-App-class confidence; the design's calm is the size
@@ -95,6 +96,17 @@ struct SendAmountHero: View {
             // Available balance.
             availableLine
 
+            Spacer(minLength: UniSpacing.m)
+
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                UniButton(
+                    title: "Review",
+                    variant: .primary,
+                    isEnabled: model.canReview,
+                    action: onReview
+                )
+            }
+
             UniNumberKeypad(
                 isEnabled: true,
                 leadingKey: .decimal("."),
@@ -106,9 +118,8 @@ struct SendAmountHero: View {
                 onLeadingKey: appendDecimalSeparator
             )
             .padding(.horizontal, 36)
-            .padding(.top, UniSpacing.xl)
         }
-        .padding(.vertical, UniSpacing.m)
+        .padding(.top, UniSpacing.m)
         .frame(maxWidth: .infinity)
     }
 
