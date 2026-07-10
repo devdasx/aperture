@@ -447,15 +447,6 @@ struct WalletDetailView: View {
                     showsNavigationControls: false,
                     accessContext: .viewWalletSecrets
                 )
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { isShowingPasscodeGate = false } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .accessibilityLabel(Text("Cancel"))
-                    }
-                }
             }
             .uniAppEnvironment()
             .uniSheetDetents([.large])

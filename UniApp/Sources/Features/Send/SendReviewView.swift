@@ -402,18 +402,6 @@ struct SendReviewView: View {
                     contract: draft.tokenContract
                 )
             )
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        isShowingPinVerify = false
-                        phase = .review
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .accessibilityLabel(Text("Cancel"))
-                }
-            }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
         .uniAppEnvironment()

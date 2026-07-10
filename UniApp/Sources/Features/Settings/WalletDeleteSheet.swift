@@ -148,15 +148,6 @@ struct WalletDeleteSheet: View {
                     showsNavigationControls: false,
                     accessContext: .removeWallet
                 )
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { isShowingPasscodeGate = false } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .accessibilityLabel(Text("Cancel"))
-                    }
-                }
             }
             .uniAppEnvironment()
             .uniSheetDetents([.large])

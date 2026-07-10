@@ -90,15 +90,6 @@ struct ResetApertureFlow: View {
                     showsNavigationControls: false,
                     accessContext: .resetAperture
                 )
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { isShowingPinGate = false } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .accessibilityLabel(Text("Cancel"))
-                    }
-                }
             }
             .uniAppEnvironment()
             .uniSheetDetents([.large])

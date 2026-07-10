@@ -556,15 +556,6 @@ struct PinChangeVerifyFlow: View {
                 showsNavigationControls: false,
                 accessContext: .changePasscode
             )
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { onCancel() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .accessibilityLabel(Text("Cancel"))
-                }
-            }
         }
     }
 }
@@ -643,9 +634,9 @@ struct PinDisableVerifyFlow: View {
     let onCancel: () -> Void
 
     var body: some View {
-        // Wrap in NavigationStack so the close affordance lives in
-        // a native toolbar slot. Disable-passcode is a single-step
-        // verify — close × cancels and returns to Security settings.
+        // Wrap in NavigationStack so the unified passcode surface keeps the
+        // same navigation environment as the other sheet-hosted verify gates.
+        // The sheet itself owns dismissal through the native swipe-down gesture.
         NavigationStack {
             PinCodeView(
                 mode: .verify,
@@ -654,15 +645,6 @@ struct PinDisableVerifyFlow: View {
                 showsNavigationControls: false,
                 accessContext: .turnOffPasscode
             )
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { onCancel() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .accessibilityLabel(Text("Cancel"))
-                }
-            }
         }
     }
 }
