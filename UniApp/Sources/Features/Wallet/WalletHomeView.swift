@@ -650,20 +650,14 @@ struct WalletHomeView: View {
                     }
                 }
                 .onChange(of: currencyCode) { _, _ in
-                    syncObservationScopes()
                     // Labels react immediately (the hero + unheld rows
                     // read `currencyCode` directly)…
                     scheduleDisplayRowsRebuild(after: 50_000_000)
-                    scheduleChainStateReconcile(after: 120_000_000)
-                    // …and the VALUES re-price right behind them
-                    // (2026-06-13): a fast re-price of the persisted
-                    // balances into the new currency (one price batch,
-                    // no chain rescan — see `WalletRefreshCoordinator
-                    // .repriceWallet` for the pricing ladder), then a
-                    // full refresh that cancel-and-replaces any
-                    // pipeline still pricing in the previous currency.
+                    // …and the VALUES project from cached fiat through
+                    // FX immediately, then refine with live token prices.
                     currencyChangeTask?.cancel()
                     currencyChangeTask = Task { await repriceForCurrencyChange() }
+                    syncObservationScopes()
                 }
                 .onChange(of: balanceRowsRevision) { _, _ in
                     scheduleDisplayRowsRebuild()
@@ -2849,117 +2843,68 @@ struct WalletHomeView: View {
         firstRefreshSkeletonRunId = nil
     }
 
-    /// Currency-change re-price (2026-06-13, **deep fix 2026-06-13b**).
-    ///
-    /// **The bug this replaces.** The previous version re-priced via
-    /// `WalletRefreshCoordinator.repriceWallet`, which writes the new
-    /// `fiatValueCached` / `fiatCurrencyCode` through a background
-    /// repository actor context. GRDB reliably propagates *inserts*
-    /// from another context into an observing GRDB observation (that's why a
-    /// first scan / import shows balances), but it does **not**
-    /// reliably refresh already-materialized to-many CHILD objects
-    /// when another context UPDATES their scalar fields — the main
-    /// view's `activeWallet.addresses[].balances` kept their old JOD
-    /// values until the context was recreated (app relaunch). Because
-    /// `totalFiat` sums **only** rows whose `fiatCurrencyCode` equals
-    /// the active currency, every still-JOD row dropped out → the hero
-    /// read `$0.00`, a refresh "did nothing" (same stale objects), and
-    /// only a cold launch (fresh context, fresh fetch from the store)
-    /// healed it. Exactly the user's report.
-    ///
-    /// **The fix.** Re-price by mutating the LIVE GRDB observation objects on
-    /// the MAIN context, then `save()`. The view's own context owns
-    /// these objects, so `totalFiat` and the per-row display see the
-    /// new currency the instant the save returns — zero cross-context
-    /// lag, no relaunch. Prices are fetched off-main through the full
-    /// `TokenPricingEngine` ladder (live Coinbase / CoinGecko →
-    /// per-currency cache → balance-derived FX cross), then applied
-    /// on-main. Quantities don't change when the currency does, so no
-    /// chain rescan is needed; the user can pull-to-refresh for fresh
-    /// on-chain balances. (Dropping the old trailing background refresh
-    /// also removes a hazard: a rate-limited scan firing right after a
-    /// currency switch could write `fiatValueCached: 0` and re-zero the
-    /// hero.)
+    /// Currency-change re-price. Project persisted fiat through an FX
+    /// cross first, then refine through `TokenPricingEngine`. The first
+    /// pass updates cached balances from e.g. JOD to USD without waiting
+    /// for a per-token market-price batch, so the card does not rebuild
+    /// from zero during a fiat switch.
     private func repriceForCurrencyChange() async {
         let code = (CurrencyPreference.currency(for: currencyCode)?.code
             ?? CurrencyPreference.defaultCode).uppercased()
-        guard let walletId = activeWallet?.id else { return }
+        guard let walletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw) else { return }
 
-        // Snapshot the live balance objects + the symbols to price,
-        // on the main actor (the view is `@MainActor`-isolated).
-        let rows = allHeldRows.map(\.balance)
-        guard !rows.isEmpty else { return }
-        let symbols = Array(Set(rows.map { $0.tokenSymbol.uppercased() }))
-
-        // Fetch unit prices in the new currency (off-main hop).
         await TokenPricingEngine.shared.configure(database: AppDatabase.shared)
+        let projectionRepository = WalletFiatProjectionRepository(database: AppDatabase.shared)
+        let sourceCurrencies = (try? projectionRepository.sourceCurrencies(
+            walletId: walletId,
+            targetCurrencyCode: code
+        )) ?? []
+
+        var crosses: [String: Decimal] = [:]
+        for source in sourceCurrencies.sorted() {
+            guard let cross = await TokenPricingEngine.shared.crossRate(from: source, to: code) else { continue }
+            crosses[source] = cross
+        }
+        guard !Task.isCancelled else { return }
+        guard (activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)) == walletId else { return }
+
+        let projectedCount = (try? projectionRepository.projectWalletBalances(
+            walletId: walletId,
+            targetCurrencyCode: code,
+            ratesBySourceCurrency: crosses
+        )) ?? 0
+        if projectedCount > 0 {
+            _ = try? ChainStateRepository(database: AppDatabase.shared)
+                .rebuild(walletId: walletId, fiatCurrencyCode: code)
+            rebuildBalanceMemos()
+            rebuildFilterInputs()
+            rebuildDisplayRows()
+        }
+
+        let symbols = (try? projectionRepository.tokenSymbols(walletId: walletId)) ?? []
+        guard !symbols.isEmpty else { return }
         let prices = await TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
+            symbols: Array(symbols),
             currencyCode: code
         )
         guard !Task.isCancelled else { return }
-        guard activeWallet?.id == walletId else { return }
+        guard (activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)) == walletId else { return }
 
-        // For any row the ladder couldn't price directly, fetch one FX
-        // cross per old currency so its existing fiat can be
-        // re-denominated rather than dropped to zero.
-        var crosses: [String: Decimal] = [:]
-        for row in rows where prices[row.tokenSymbol.uppercased()] == nil {
-            let from = row.fiatCurrencyCode.uppercased()
-            guard from != code, row.fiatValueCached > 0, crosses[from] == nil else { continue }
-            crosses[from] = await TokenPricingEngine.shared.crossRate(from: from, to: code)
+        let unitPrices = prices.reduce(into: [String: Decimal]()) { result, entry in
+            result[entry.key.uppercased()] = entry.value.amount
         }
-        guard !Task.isCancelled else { return }
-        guard activeWallet?.id == walletId else { return }
-
-        // Apply on the MAIN context's own objects, then save once.
-        var changed = 0
-        for row in rows {
-            let amount = WalletFormatting.decimalAmount(
-                rawBalance: row.rawBalance,
-                decimals: row.decimals
-            )
-            var newFiat: Decimal?
-            if let price = prices[row.tokenSymbol.uppercased()] {
-                newFiat = amount * price.amount
-            } else if row.fiatCurrencyCode.uppercased() != code,
-                      row.fiatValueCached > 0,
-                      let cross = crosses[row.fiatCurrencyCode.uppercased()] {
-                newFiat = row.fiatValueCached * cross
-            }
-            guard let newFiat else { continue }  // can't price → leave honest in old currency
-            row.fiatValueCached = newFiat
-            row.fiatCurrencyCode = code
-            changed += 1
+        let liveChanged = (try? projectionRepository.applyUnitPrices(
+            walletId: walletId,
+            targetCurrencyCode: code,
+            unitPricesBySymbol: unitPrices
+        )) ?? 0
+        if liveChanged > 0 || projectedCount > 0 {
+            _ = try? ChainStateRepository(database: AppDatabase.shared)
+                .rebuild(walletId: walletId, fiatCurrencyCode: code)
+            rebuildBalanceMemos()
+            rebuildFilterInputs()
+            rebuildDisplayRows()
         }
-        if changed > 0 {
-            try? AppDatabase.shared.write { db in
-                for row in rows {
-                    try db.execute(
-                        sql: """
-                        UPDATE token_balances
-                        SET fiat_value_cached = ?,
-                            fiat_value_cached_numeric = ?,
-                            fiat_currency_code = ?,
-                            updated_at_ms = ?
-                        WHERE id = ?
-                        """,
-                        arguments: [
-                            row.fiatValueCached.databaseText,
-                            row.fiatValueCached.databaseDouble,
-                            row.fiatCurrencyCode,
-                            Date.databaseMilliseconds,
-                            row.id.uuidString
-                        ]
-                    )
-                }
-            }
-        }
-        _ = try? ChainStateRepository(database: AppDatabase.shared)
-            .rebuild(walletId: walletId, fiatCurrencyCode: code)
-        // Value-only updates don't move the count proxies — rebuild the
-        // memoized display projections explicitly.
-        rebuildDisplayRows()
     }
 
     /// Resolve the wallet id a refresh should run against. Prefers

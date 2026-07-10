@@ -99,6 +99,7 @@ final class ChainStateRepository {
         syncState: ChainSyncState
     ) throws {
         let chainRaw = chain.rawValue
+        let targetCurrencyCode = fiatCurrencyCode.uppercased()
         let addressRows = try Row.fetchAll(
             db,
             sql: "SELECT id FROM wallet_addresses WHERE wallet_id = ? AND chain_raw = ?",
@@ -128,7 +129,9 @@ final class ChainStateRepository {
             let contract: String? = balance["token_contract"]
             let rawBalance: String = balance["raw_balance"]
             let decimals: Int = balance["decimals"]
-            let fiat = Decimal(string: balance["fiat_value_cached"] as String) ?? 0
+            let cachedCurrency: String = balance["fiat_currency_code"]
+            let cachedFiat = Decimal(string: balance["fiat_value_cached"] as String) ?? 0
+            let fiat = cachedCurrency.uppercased() == targetCurrencyCode ? cachedFiat : 0
             totalFiat += fiat
             let amount = Self.decimalAmount(rawBalance: rawBalance, decimals: decimals) ?? 0
             if symbol.caseInsensitiveCompare(chain.ticker) == .orderedSame && contract == nil {
@@ -223,7 +226,7 @@ final class ChainStateRepository {
                 totalFiat.databaseText,
                 totalFiat.databaseDouble,
                 tokenCount,
-                fiatCurrencyCode.uppercased(),
+                targetCurrencyCode,
                 sent,
                 received,
                 selfTransfers,
@@ -571,5 +574,188 @@ final class ChainStateRepository {
             hasEncryptedKey: (row["encrypted_private_key"] as Data?) != nil,
             syncStateRaw: row["sync_state_raw"]
         )
+    }
+}
+
+final class WalletFiatProjectionRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase = .shared) {
+        self.database = database
+    }
+
+    func sourceCurrencies(walletId: UUID, targetCurrencyCode: String) throws -> Set<String> {
+        let target = targetCurrencyCode.uppercased()
+        return try database.read { db in
+            let rows = try String.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT UPPER(b.fiat_currency_code)
+                FROM token_balances b
+                JOIN wallet_addresses a ON a.id = b.address_id
+                WHERE a.wallet_id = ?
+                  AND UPPER(b.fiat_currency_code) != ?
+                  AND b.fiat_value_cached_numeric > 0
+                """,
+                arguments: [walletId.uuidString, target]
+            )
+            return Set(rows.map { $0.uppercased() })
+        }
+    }
+
+    func tokenSymbols(walletId: UUID) throws -> Set<String> {
+        try database.read { db in
+            let rows = try String.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT UPPER(b.token_symbol)
+                FROM token_balances b
+                JOIN wallet_addresses a ON a.id = b.address_id
+                WHERE a.wallet_id = ?
+                """,
+                arguments: [walletId.uuidString]
+            )
+            return Set(rows.map { $0.uppercased() }.filter { !$0.isEmpty })
+        }
+    }
+
+    @discardableResult
+    func projectWalletBalances(
+        walletId: UUID,
+        targetCurrencyCode: String,
+        ratesBySourceCurrency: [String: Decimal]
+    ) throws -> Int {
+        let target = targetCurrencyCode.uppercased()
+        let rates = ratesBySourceCurrency.reduce(into: [String: Decimal]()) { result, entry in
+            result[entry.key.uppercased()] = entry.value
+        }
+        return try database.write { db in
+            let rows = try Self.balanceRows(db: db, walletId: walletId)
+            let now = Date.databaseMilliseconds
+            var changed = 0
+            for row in rows {
+                let source = row.fiatCurrencyCode.uppercased()
+                guard source != target else { continue }
+
+                let projectedFiat: Decimal
+                if row.fiatValueCached > 0 {
+                    guard let rate = rates[source] else { continue }
+                    projectedFiat = row.fiatValueCached * rate
+                } else {
+                    projectedFiat = 0
+                }
+
+                try Self.updateBalanceFiat(
+                    db: db,
+                    rowId: row.id,
+                    fiatValue: projectedFiat,
+                    currencyCode: target,
+                    updatedAtMs: now
+                )
+                changed += 1
+            }
+            return changed
+        }
+    }
+
+    @discardableResult
+    func applyUnitPrices(
+        walletId: UUID,
+        targetCurrencyCode: String,
+        unitPricesBySymbol: [String: Decimal]
+    ) throws -> Int {
+        let target = targetCurrencyCode.uppercased()
+        let prices = unitPricesBySymbol.reduce(into: [String: Decimal]()) { result, entry in
+            result[entry.key.uppercased()] = entry.value
+        }
+        guard !prices.isEmpty else { return 0 }
+
+        return try database.write { db in
+            let rows = try Self.balanceRows(db: db, walletId: walletId)
+            let now = Date.databaseMilliseconds
+            var changed = 0
+            for row in rows {
+                guard let price = prices[row.tokenSymbol.uppercased()],
+                      let amount = Self.decimalAmount(rawBalance: row.rawBalance, decimals: row.decimals)
+                else { continue }
+                let fiat = amount * price
+                guard row.fiatCurrencyCode.uppercased() != target || row.fiatValueCached != fiat else { continue }
+                try Self.updateBalanceFiat(
+                    db: db,
+                    rowId: row.id,
+                    fiatValue: fiat,
+                    currencyCode: target,
+                    updatedAtMs: now
+                )
+                changed += 1
+            }
+            return changed
+        }
+    }
+
+    private struct BalanceRow {
+        let id: String
+        let tokenSymbol: String
+        let rawBalance: String
+        let decimals: Int
+        let fiatValueCached: Decimal
+        let fiatCurrencyCode: String
+
+        init(row: Row) {
+            id = row["id"]
+            tokenSymbol = row["token_symbol"]
+            rawBalance = row["raw_balance"]
+            decimals = row["decimals"]
+            fiatValueCached = Decimal(string: row["fiat_value_cached"] as String) ?? 0
+            fiatCurrencyCode = row["fiat_currency_code"]
+        }
+    }
+
+    private static func balanceRows(db: Database, walletId: UUID) throws -> [BalanceRow] {
+        try Row.fetchAll(
+            db,
+            sql: """
+            SELECT b.id, b.token_symbol, b.raw_balance, b.decimals,
+                   b.fiat_value_cached, b.fiat_currency_code
+            FROM token_balances b
+            JOIN wallet_addresses a ON a.id = b.address_id
+            WHERE a.wallet_id = ?
+            """,
+            arguments: [walletId.uuidString]
+        ).map(BalanceRow.init(row:))
+    }
+
+    private static func updateBalanceFiat(
+        db: Database,
+        rowId: String,
+        fiatValue: Decimal,
+        currencyCode: String,
+        updatedAtMs: Int64
+    ) throws {
+        try db.execute(
+            sql: """
+            UPDATE token_balances
+            SET fiat_value_cached = ?,
+                fiat_value_cached_numeric = ?,
+                fiat_currency_code = ?,
+                updated_at_ms = ?
+            WHERE id = ?
+            """,
+            arguments: [
+                fiatValue.databaseText,
+                fiatValue.databaseDouble,
+                currencyCode,
+                updatedAtMs,
+                rowId
+            ]
+        )
+    }
+
+    private static func decimalAmount(rawBalance: String, decimals: Int) -> Decimal? {
+        guard let raw = Decimal(string: rawBalance), decimals >= 0 else { return nil }
+        guard decimals > 0 else { return raw }
+        var divisor: Decimal = 1
+        for _ in 0..<decimals { divisor *= 10 }
+        return raw / divisor
     }
 }

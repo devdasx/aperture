@@ -356,6 +356,92 @@ import Testing
         #expect(state.hasEncryptedKey)
     }
 
+    @Test("chain summaries ignore balances cached in another fiat currency")
+    func chainSummariesIgnoreStaleFiatCurrencies() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertWatchWallet(database, chains: [.ethereum])
+        let addressID = try firstAddressID(walletID: walletID, chain: .ethereum, database: database)
+
+        try TransactionRepository(database: database).upsertBalance(
+            addressId: addressID,
+            tokenSymbol: "ETH",
+            tokenContract: nil,
+            decimals: 18,
+            rawBalance: "1000000000000000000",
+            fiatValueCached: 70,
+            fiatCurrencyCode: "JOD"
+        )
+
+        let chainRepo = ChainStateRepository(database: database)
+        try chainRepo.rebuild(walletId: walletID, fiatCurrencyCode: "USD")
+
+        let state = try #require(try chainRepo.chainState(walletId: walletID, chain: .ethereum))
+        #expect(state.nativeBalanceRaw == "1")
+        #expect(state.nativeFiat == 0)
+        #expect(state.totalFiat == 0)
+        #expect(state.tokenCount == 0)
+
+        let summary = try database.read { db in
+            try WalletHomeProjection.summary(db: db, walletId: walletID, currencyCode: "USD")
+        }
+        #expect(summary.totalFiat == 0)
+        #expect(summary.positiveBalanceRowCount == 1)
+    }
+
+    @Test("wallet fiat projection converts cached balances before token price refresh")
+    func walletFiatProjectionConvertsCachedBalancesBeforeLivePrices() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertWatchWallet(database, chains: [.ethereum])
+        let addressID = try firstAddressID(walletID: walletID, chain: .ethereum, database: database)
+        let txRepo = TransactionRepository(database: database)
+        try txRepo.upsertBalance(
+            addressId: addressID,
+            tokenSymbol: "ETH",
+            tokenContract: nil,
+            decimals: 18,
+            rawBalance: "1000000000000000000",
+            fiatValueCached: 70,
+            fiatCurrencyCode: "JOD"
+        )
+
+        let projection = WalletFiatProjectionRepository(database: database)
+        #expect(try projection.sourceCurrencies(walletId: walletID, targetCurrencyCode: "USD") == Set(["JOD"]))
+        #expect(try projection.projectWalletBalances(
+            walletId: walletID,
+            targetCurrencyCode: "USD",
+            ratesBySourceCurrency: ["JOD": 2]
+        ) == 1)
+
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT fiat_currency_code FROM token_balances WHERE address_id = ?",
+            arguments: [addressID.uuidString],
+            database: database
+        ) == "USD")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT fiat_value_cached FROM token_balances WHERE address_id = ?",
+            arguments: [addressID.uuidString],
+            database: database
+        ) == "140")
+
+        let chainRepo = ChainStateRepository(database: database)
+        try chainRepo.rebuild(walletId: walletID, fiatCurrencyCode: "USD")
+        var state = try #require(try chainRepo.chainState(walletId: walletID, chain: .ethereum))
+        #expect(state.totalFiat == 140)
+        #expect(state.nativeFiat == 140)
+
+        #expect(try projection.applyUnitPrices(
+            walletId: walletID,
+            targetCurrencyCode: "USD",
+            unitPricesBySymbol: ["ETH": 1500]
+        ) == 1)
+        try chainRepo.rebuild(walletId: walletID, fiatCurrencyCode: "USD")
+        state = try #require(try chainRepo.chainState(walletId: walletID, chain: .ethereum))
+        #expect(state.totalFiat == 1500)
+        #expect(state.nativeFiat == 1500)
+    }
+
     @Test("optimistic outgoing debits persisted balances and cached UTXOs")
     func optimisticOutgoingDebitAndUTXOCache() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
