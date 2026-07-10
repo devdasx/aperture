@@ -506,16 +506,20 @@ struct PinCodeView: View {
     // MARK: - Keypad input
 
     private var keypad: some View {
-        PasscodeKeypad(
+        UniNumberKeypad(
             isEnabled: canAcceptKeypadInput,
-            showsBiometricKey: shouldOfferBiometricUnlock,
-            isBiometricLoading: isBiometricPromptActive,
-            biometricSymbol: biometricSymbol,
-            biometricLabel: biometricActionTitle,
+            leadingKey: shouldOfferBiometricUnlock
+                ? .systemImage(
+                    name: biometricSymbol,
+                    label: biometricActionTitle,
+                    isLoading: isBiometricPromptActive
+                )
+                : .empty,
+            isLeadingKeyEnabled: shouldOfferBiometricUnlock && !isBiometricPromptActive,
             canDelete: !digits.isEmpty,
             onDigit: appendDigit,
             onDelete: deleteDigit,
-            onBiometric: startBiometricUnlock
+            onLeadingKey: startBiometricUnlock
         )
         .padding(.horizontal, 36)
         .padding(.bottom, 28)
@@ -753,18 +757,23 @@ private struct PasscodeAccessPill: View {
     }
 }
 
-// MARK: - Passcode keypad
+// MARK: - Unified number keypad
 
-private struct PasscodeKeypad: View {
+struct UniNumberKeypad: View {
+    enum LeadingKey {
+        case empty
+        case decimal(String)
+        case systemImage(name: String, label: String, isLoading: Bool = false)
+    }
+
     let isEnabled: Bool
-    let showsBiometricKey: Bool
-    let isBiometricLoading: Bool
-    let biometricSymbol: String
-    let biometricLabel: String
+    let leadingKey: LeadingKey
+    let isLeadingKeyEnabled: Bool
+    var showsDigitLetters: Bool = true
     let canDelete: Bool
     let onDigit: (Int) -> Void
     let onDelete: () -> Void
-    let onBiometric: () -> Void
+    let onLeadingKey: () -> Void
 
     var body: some View {
         VStack(spacing: 18) {
@@ -773,7 +782,7 @@ private struct PasscodeKeypad: View {
             digitRow([7, 8, 9])
 
             HStack(spacing: 0) {
-                biometricKey
+                leadingButton
                 digitButton(0)
                 deleteButton
             }
@@ -804,11 +813,11 @@ private struct PasscodeKeypad: View {
                     .kerning(1.4)
                     .foregroundStyle(UniColors.Text.secondary)
                     .frame(height: 11)
-                    .opacity(letters(for: digit).isEmpty ? 0 : 1)
+                    .opacity(showsDigitLetters && !letters(for: digit).isEmpty ? 1 : 0)
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(PasscodeKeyButtonStyle())
+        .buttonStyle(UniNumberKeyButtonStyle())
         .disabled(!isEnabled)
         .accessibilityLabel(Text(verbatim: String(digit)))
     }
@@ -828,32 +837,46 @@ private struct PasscodeKeypad: View {
     }
 
     @ViewBuilder
-    private var biometricKey: some View {
-        if showsBiometricKey {
+    private var leadingButton: some View {
+        switch leadingKey {
+        case .empty:
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: UniNumberKeyButtonStyle.keyHeight)
+                .accessibilityHidden(true)
+        case .decimal(let label):
             Button {
-                onBiometric()
+                onLeadingKey()
+            } label: {
+                Text(verbatim: label)
+                    .font(.system(size: 31, weight: .regular, design: .rounded))
+                    .foregroundStyle(isEnabled && isLeadingKeyEnabled ? UniColors.Text.primary : UniColors.Text.tertiary)
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(UniNumberKeyButtonStyle())
+            .disabled(!isEnabled || !isLeadingKeyEnabled)
+            .accessibilityLabel(Text("Decimal separator"))
+        case .systemImage(let name, let label, let isLoading):
+            Button {
+                onLeadingKey()
             } label: {
                 Group {
-                    if isBiometricLoading {
+                    if isLoading {
                         ProgressView()
                             .controlSize(.regular)
                             .tint(UniColors.Text.tertiary)
                     } else {
-                        Image(systemName: biometricSymbol)
+                        Image(systemName: name)
                             .font(.system(size: 24, weight: .regular))
                             .foregroundStyle(UniColors.Text.tertiary)
                     }
                 }
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(PasscodeKeyButtonStyle())
-            .disabled(!isEnabled || isBiometricLoading)
-            .accessibilityLabel(Text(verbatim: biometricLabel))
-        } else {
-            Color.clear
-                .frame(maxWidth: .infinity)
-                .frame(height: PasscodeKeyButtonStyle.keyHeight)
-                .accessibilityHidden(true)
+            .buttonStyle(UniNumberKeyButtonStyle())
+            .disabled(!isEnabled || !isLeadingKeyEnabled || isLoading)
+            .accessibilityLabel(Text(verbatim: label))
         }
     }
 
@@ -866,13 +889,13 @@ private struct PasscodeKeypad: View {
                 .foregroundStyle(canDelete && isEnabled ? UniColors.Text.primary : UniColors.Text.tertiary)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(PasscodeKeyButtonStyle())
+        .buttonStyle(UniNumberKeyButtonStyle())
         .disabled(!isEnabled || !canDelete)
         .accessibilityLabel(Text("Delete"))
     }
 }
 
-private struct PasscodeKeyButtonStyle: ButtonStyle {
+struct UniNumberKeyButtonStyle: ButtonStyle {
     static let keyHeight: CGFloat = 72
 
     func makeBody(configuration: Configuration) -> some View {

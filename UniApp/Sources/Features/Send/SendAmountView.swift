@@ -52,10 +52,6 @@ struct SendAmountView: View {
     /// immediately on appear (the unconditional `.task`) and thereafter
     /// only on material change — no double-fetch on entry (FIX 7).
     @State private var didInitialFeeLoad = false
-    /// The amount field should be ready to type when the amount step opens.
-    @State private var didRequestInitialAmountFocus = false
-    @FocusState private var amountFocused: Bool
-
     /// Direction key for the compose sheets (Rule #12 §G / #15): rebuild
     /// the sheet content only when crossing the LTR ↔ RTL boundary, the one
     /// case iOS's locked `semanticContentAttribute` requires it.
@@ -103,7 +99,6 @@ struct SendAmountView: View {
                 } else {
                     SendAmountHero(
                         model: model,
-                        amountFocused: $amountFocused,
                         selectionTapCount: $selectionTapCount
                     )
                 }
@@ -147,7 +142,6 @@ struct SendAmountView: View {
         .task { await resolvePrices() }
         .task { await model.loadFee() }
         .task { await model.loadUTXOs(walletId: activeWallet?.id) }
-        .task { await focusInitialAmountField() }
         // Re-fetch the fee when a material input changes (recipient count,
         // or — for UTXO chains — the selected coins / amount that drive the
         // vsize-dependent fee). The unconditional `.task { loadFee() }`
@@ -266,15 +260,6 @@ struct SendAmountView: View {
             text += " (\(WalletFormatting.fiat(amount * price, currencyCode: model.currencyCode, hidden: hideBalances)))"
         }
         return text
-    }
-
-    @MainActor
-    private func focusInitialAmountField() async {
-        guard !didRequestInitialAmountFocus else { return }
-        didRequestInitialAmountFocus = true
-        try? await Task.sleep(for: .milliseconds(300))
-        guard !Task.isCancelled, !model.isMultiRecipient else { return }
-        amountFocused = true
     }
 
     // MARK: - Options menu (the dots — gated by capability)

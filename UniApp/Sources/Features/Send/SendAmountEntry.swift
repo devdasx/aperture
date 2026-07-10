@@ -12,7 +12,6 @@ struct SendAmountHero: View {
     @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     @Bindable var model: SendComposeModel
-    var amountFocused: FocusState<Bool>.Binding
     @Binding var selectionTapCount: Int
 
     /// Largest the amount renders when the value is short (≈ one or two
@@ -55,22 +54,8 @@ struct SendAmountHero: View {
                             .minimumScaleFactor(0.4)
                             .contentTransition(.numericText())
                     }
-                    TextField("0", text: $model.primaryAmountText)
-                        .font(.system(size: size, weight: .semibold, design: .default).monospacedDigit())
-                        // Over-balance → red, so the user sees WHICH value is
-                        // the problem (FIX 3), not just the banner below.
-                        .foregroundStyle(model.isOverBalance ? UniColors.Feedback.Error.foreground : UniColors.Text.primary)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.center)
-                        .focused(amountFocused)
-                        // The decimal pad has no Return key — native dismiss
-                        // accessory bar keyed to this field's focus (Rule #3).
-                        .numericDoneToolbar(amountFocused)
-                        .lineLimit(1)
-                        .minimumScaleFactor(minSize / idealSize)
+                    amountDisplay(size: size)
                         .layoutPriority(1)
-                        .animation(.snappy(duration: 0.2), value: model.isOverBalance)
-                        .environment(\.layoutDirection, .leftToRight)
                     if model.entryUnit == .crypto {
                         Text(verbatim: model.assetSymbol)
                             .font(.system(size: flankSize(size), weight: .semibold, design: .default).monospacedDigit())
@@ -109,6 +94,19 @@ struct SendAmountHero: View {
 
             // Available balance.
             availableLine
+
+            UniNumberKeypad(
+                isEnabled: true,
+                leadingKey: .decimal("."),
+                isLeadingKeyEnabled: canAppendDecimal,
+                showsDigitLetters: true,
+                canDelete: !model.primaryAmountText.isEmpty,
+                onDigit: appendDigit,
+                onDelete: deleteDigit,
+                onLeadingKey: appendDecimalSeparator
+            )
+            .padding(.horizontal, 36)
+            .padding(.top, UniSpacing.xl)
         }
         .padding(.vertical, UniSpacing.m)
         .frame(maxWidth: .infinity)
@@ -143,6 +141,89 @@ struct SendAmountHero: View {
         let advanceRatio: CGFloat = 0.62
         let fitted = availableWidth / (glyphBudget * advanceRatio)
         return min(idealSize, max(minSize, fitted))
+    }
+
+    private func amountDisplay(size: CGFloat) -> some View {
+        HStack(alignment: .center, spacing: UniSpacing.xxs) {
+            Text(verbatim: displayedAmountText)
+                .font(.system(size: size, weight: .semibold, design: .default).monospacedDigit())
+                .foregroundStyle(displayedAmountColor)
+                .lineLimit(1)
+                .minimumScaleFactor(minSize / idealSize)
+                .contentTransition(.numericText())
+
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(UniColors.Text.primary)
+                .frame(width: 2, height: max(28, size * 1.18))
+                .accessibilityHidden(true)
+        }
+        .animation(.snappy(duration: 0.2), value: model.isOverBalance)
+        .animation(.snappy(duration: 0.18), value: model.primaryAmountText)
+        .environment(\.layoutDirection, .leftToRight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Amount"))
+        .accessibilityValue(Text(verbatim: displayedAmountText))
+    }
+
+    private var displayedAmountText: String {
+        model.primaryAmountText.isEmpty ? "0" : model.primaryAmountText
+    }
+
+    private var displayedAmountColor: Color {
+        if model.isOverBalance { return UniColors.Feedback.Error.foreground }
+        if model.primaryAmountText.isEmpty { return UniColors.Text.tertiary }
+        return UniColors.Text.primary
+    }
+
+    private var canAppendDecimal: Bool {
+        guard maximumFractionDigits > 0 else { return false }
+        return !model.primaryAmountText.contains(".") && !model.primaryAmountText.contains(",")
+    }
+
+    private var maximumFractionDigits: Int {
+        model.entryUnit == .fiat ? 2 : model.effectiveDecimals
+    }
+
+    private func appendDigit(_ digit: Int) {
+        UniHapticEngine.shared.play(.contextualImpact(.tap))
+        var text = model.primaryAmountText
+        if text == "0" {
+            text = String(digit)
+        } else if text == "0.", digit == 0 || fractionLength(in: text) < maximumFractionDigits {
+            text.append(String(digit))
+        } else if fractionLength(in: text) < maximumFractionDigits || !text.contains(".") {
+            text.append(String(digit))
+        }
+        model.primaryAmountText = sanitizedAmountText(text)
+    }
+
+    private func appendDecimalSeparator() {
+        guard canAppendDecimal else { return }
+        UniHapticEngine.shared.play(.contextualImpact(.tap))
+        let current = model.primaryAmountText
+        model.primaryAmountText = current.isEmpty ? "0." : "\(current)."
+    }
+
+    private func deleteDigit() {
+        guard !model.primaryAmountText.isEmpty else { return }
+        UniHapticEngine.shared.play(.contextualImpact(.tap))
+        var text = model.primaryAmountText
+        text.removeLast()
+        model.primaryAmountText = text
+    }
+
+    private func sanitizedAmountText(_ text: String) -> String {
+        let allowed = text.filter { $0.isNumber || $0 == "." }
+        guard let dotIndex = allowed.firstIndex(of: ".") else { return allowed }
+        let whole = allowed[..<dotIndex]
+        let fractionStart = allowed.index(after: dotIndex)
+        let fraction = allowed[fractionStart...].prefix(maximumFractionDigits)
+        return "\(whole).\(fraction)"
+    }
+
+    private func fractionLength(in text: String) -> Int {
+        guard let dotIndex = text.firstIndex(of: ".") else { return 0 }
+        return text.distance(from: text.index(after: dotIndex), to: text.endIndex)
     }
 
     /// The flanking symbol / ticker size, tied proportionally to the
@@ -349,10 +430,9 @@ private struct SendAmountRow: View {
     /// Zero-based position in `model.amounts`.
     let index: Int
 
-    /// This row's own decimal-pad focus — drives the native Done accessory
-    /// (the decimal pad has no Return key, Rule #3). Per-row so the toolbar
-    /// only shows for the row currently editing; only one keyboard is up at
-    /// a time, so the per-row bars never collide.
+    /// This row's own decimal-pad focus for the rare multi-recipient entry
+    /// mode. The single-recipient amount screen uses the unified in-app
+    /// keypad instead of the system keyboard.
     @FocusState private var fieldFocused: Bool
 
     private var status: SendComposeModel.RecipientFundingStatus {
@@ -388,9 +468,6 @@ private struct SendAmountRow: View {
                     .foregroundStyle(amountColor)
                     .keyboardType(.decimalPad)
                     .focused($fieldFocused)
-                    // The decimal pad has no Return key — native dismiss
-                    // accessory bar keyed to this row's focus (Rule #3).
-                    .numericDoneToolbar($fieldFocused)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .layoutPriority(1)
