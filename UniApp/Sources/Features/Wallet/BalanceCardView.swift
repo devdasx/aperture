@@ -13,6 +13,7 @@ struct BalanceCardView: View {
     let totalFiat: Decimal
     let currencyCode: String
     let lastUpdated: Date?
+    let showsFirstRefreshBalanceSkeleton: Bool
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
 
@@ -26,6 +27,7 @@ struct BalanceCardView: View {
         totalFiat: Decimal,
         currencyCode: String,
         lastUpdated: Date?,
+        showsFirstRefreshBalanceSkeleton: Bool = false,
         onSwitchWallet: @escaping () -> Void,
         onAddFunds: @escaping () -> Void
     ) {
@@ -34,6 +36,7 @@ struct BalanceCardView: View {
         self.totalFiat = totalFiat
         self.currencyCode = currencyCode
         self.lastUpdated = lastUpdated
+        self.showsFirstRefreshBalanceSkeleton = showsFirstRefreshBalanceSkeleton
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
     }
@@ -143,17 +146,25 @@ struct BalanceCardView: View {
             .accessibilityLabel(Text(isHidden ? "Show balance" : "Hide balance"))
     }
 
+    @ViewBuilder
     private var balanceNumber: some View {
-        Group {
-            if isHidden {
-                maskedBalance()
-            } else {
-                composedBalance()
+        if showsFirstRefreshBalanceSkeleton {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(UniColors.Skeleton.base)
+                .frame(width: 184, height: 44)
+                .unredacted()
+        } else {
+            Group {
+                if isHidden {
+                    maskedBalance()
+                } else {
+                    composedBalance()
+                }
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .environment(\.layoutDirection, .leftToRight)
         }
-        .lineLimit(1)
-        .minimumScaleFactor(0.5)
-        .environment(\.layoutDirection, .leftToRight)
     }
 
     private func maskedBalance() -> Text {

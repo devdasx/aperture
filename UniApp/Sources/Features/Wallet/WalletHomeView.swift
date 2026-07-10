@@ -2827,6 +2827,7 @@ private struct FirstRefreshBalanceCardSkeleton: View {
             totalFiat: .zero,
             currencyCode: currencyCode,
             lastUpdated: nil,
+            showsFirstRefreshBalanceSkeleton: true,
             onSwitchWallet: {},
             onAddFunds: {}
         )
