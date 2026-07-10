@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Picker for the three `ThemePreference` options — System, Light, Dark.
+/// Picker for System plus the three Aperture appearances: Cloud, Midnight,
+/// and true-black Dark.
 ///
 /// Selection writes through `@GRDBStorage("themePreference")`, which
 /// `UniAppApp` reads and binds to `.preferredColorScheme(_:)`. Implements T-006.
@@ -8,7 +9,7 @@ struct AppearancePickerView: View {
     @GRDBStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
 
     private var current: ThemePreference {
-        ThemePreference(rawValue: themeRaw) ?? .system
+        ThemePreference.stored(themeRaw)
     }
 
     var body: some View {
@@ -56,11 +57,20 @@ struct AppearancePickerView: View {
     }
 }
 
-#Preview("Light") {
+#Preview("Cloud") {
     NavigationStack {
         AppearancePickerView()
     }
     .preferredColorScheme(.light)
+    .environment(\.apertureAppearance, .cloud)
+}
+
+#Preview("Midnight") {
+    NavigationStack {
+        AppearancePickerView()
+    }
+    .preferredColorScheme(.dark)
+    .environment(\.apertureAppearance, .midnight)
 }
 
 #Preview("Dark") {
@@ -68,4 +78,5 @@ struct AppearancePickerView: View {
         AppearancePickerView()
     }
     .preferredColorScheme(.dark)
+    .environment(\.apertureAppearance, .dark)
 }

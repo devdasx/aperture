@@ -136,7 +136,7 @@ struct SettingsView: View {
     @GRDBStorage("settingsDeepLink") private var settingsDeepLink: String = ""
 
     private var theme: ThemePreference {
-        ThemePreference(rawValue: themeRaw) ?? .system
+        ThemePreference.stored(themeRaw)
     }
 
     private var languageRowTrailing: LocalizedStringKey {

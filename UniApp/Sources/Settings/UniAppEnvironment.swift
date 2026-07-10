@@ -17,12 +17,13 @@ struct UniAppEnvironmentModifier: ViewModifier {
     @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalances: Bool = false
 
     private var theme: ThemePreference {
-        ThemePreference(rawValue: themeRaw) ?? .system
+        ThemePreference.stored(themeRaw)
     }
 
     func body(content: Content) -> some View {
         content
             .preferredColorScheme(theme.colorScheme)
+            .environment(\.apertureAppearance, theme.apertureAppearance)
             .environment(\.locale, LanguagePreference.locale(for: languageCode) ?? .current)
             .environment(\.layoutDirection, LanguagePreference.layoutDirection(for: languageCode))
             .environment(\.balancePrivacyEnabled, hideBalances)

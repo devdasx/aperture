@@ -43,7 +43,7 @@ struct UniToggle<Label: View>: View {
 
     var body: some View {
         Toggle(isOn: $isOn, label: label)
-            .tint(UniColors.Toggle.tint)
+            .tint(UniColors.Toggle.trackOn)
             .uniHaptic(.toggle, trigger: hapticTrigger)
             .onChange(of: isOn) { _, _ in
                 guard hasAppeared else { return }

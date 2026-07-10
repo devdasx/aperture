@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// User-selectable appearance preference. Stored under `themePreference`
-/// in `@GRDBStorage`. Resolves to a `ColorScheme?` for `.preferredColorScheme`
-/// (`nil` means "follow the system").
-///
-/// Implements `TODO` T-006.
+/// User-selectable appearance preference. System follows iOS and resolves
+/// light to Cloud and dark to Midnight. Dark is the explicit true-black OLED
+/// appearance.
 enum ThemePreference: String, CaseIterable, Identifiable, Sendable {
     case system
-    case light
+    case cloud
+    case midnight
     case dark
 
     var id: String { rawValue }
@@ -18,13 +17,29 @@ enum ThemePreference: String, CaseIterable, Identifiable, Sendable {
     /// shape as the Language and Currency defaults.
     static let defaultRaw: String = ThemePreference.system.rawValue
 
+    /// Reads persisted values while preserving compatibility with installs
+    /// that stored the previous `light` case.
+    static func stored(_ rawValue: String) -> ThemePreference {
+        if rawValue == "light" { return .cloud }
+        return ThemePreference(rawValue: rawValue) ?? .system
+    }
+
     /// The value to pass to `.preferredColorScheme(_:)`. `nil` lets iOS
     /// follow the system Dark/Light setting.
     var colorScheme: ColorScheme? {
         switch self {
         case .system: return nil
-        case .light:  return .light
-        case .dark:   return .dark
+        case .cloud: return .light
+        case .midnight, .dark: return .dark
+        }
+    }
+
+    var apertureAppearance: ApertureAppearance {
+        switch self {
+        case .system: return .system
+        case .cloud: return .cloud
+        case .midnight: return .midnight
+        case .dark: return .dark
         }
     }
 
@@ -32,8 +47,9 @@ enum ThemePreference: String, CaseIterable, Identifiable, Sendable {
     var label: LocalizedStringKey {
         switch self {
         case .system: return "System"
-        case .light:  return "Light"
-        case .dark:   return "Dark"
+        case .cloud: return "Cloud"
+        case .midnight: return "Midnight"
+        case .dark: return "Dark"
         }
     }
 
@@ -41,8 +57,9 @@ enum ThemePreference: String, CaseIterable, Identifiable, Sendable {
     var symbolName: String {
         switch self {
         case .system: return "circle.lefthalf.filled"
-        case .light:  return "sun.max"
-        case .dark:   return "moon"
+        case .cloud: return "cloud"
+        case .midnight: return "moon.stars"
+        case .dark: return "moon.fill"
         }
     }
 }

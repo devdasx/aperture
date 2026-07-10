@@ -33,7 +33,7 @@ struct OnboardingSettingsView: View {
     @State private var isShowingPrivacyPolicy: Bool = false
 
     private var theme: ThemePreference {
-        ThemePreference(rawValue: themeRaw) ?? .system
+        ThemePreference.stored(themeRaw)
     }
 
     private var languageRowTrailing: LocalizedStringKey {
