@@ -108,8 +108,8 @@ enum WalletSupportedRowBuilders {
     /// (`EVMTokenRegistry`, `SolanaTokenRegistry`, `TronTokenRegistry`,
     /// `NearTokenRegistry`, `AptosTokenRegistry`, `SuiTokenRegistry`,
     /// `PolkadotTokenRegistry`, `XRPLTokenRegistry`,
-    /// `TonTokenRegistry`, `KavaTokenRegistry`). Each entry pairs
-    /// with the active wallet's current balance (or zero placeholder).
+    /// `TonTokenRegistry`). Each entry pairs with the active wallet's
+    /// current balance (or zero placeholder).
     static func tokenRows(
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
         currencyCode: String,

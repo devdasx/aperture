@@ -25,9 +25,20 @@ struct ChainBalance: Hashable, Sendable {
 actor WalletDataRefreshCoordinator {
     static let shared = WalletDataRefreshCoordinator()
 
+    /// BUG-015: both modes always refresh prices so new balances get fiat
+    /// immediately. History (Subscan / Electrum history / explorers) is the
+    /// only heavy work gated by `.full`.
     enum RefreshMode: String, Sendable {
-        case full
+        /// Balances + unit prices + UTXOs. No transaction-history fetches.
         case balancesOnly
+        /// Balances + prices + history for every wired chain.
+        case full
+
+        /// Always true — prices are not optional on any refresh mode.
+        var includesPrices: Bool { true }
+
+        /// History is full-mode only (expensive explorer / Electrum history).
+        var includesHistory: Bool { self == .full }
     }
 
     private let enabledEVMChains: [SupportedChain] = [.ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync, .polygon, .bnbChain, .avalanche, .celo, .opBNB]
@@ -120,8 +131,11 @@ actor WalletDataRefreshCoordinator {
             database: database
         )
         let normalizedCurrency = currencyCode.uppercased()
-        let includePrices = mode == .full
-        let includeHistory = mode == .full
+        // BUG-015: never skip prices on balances-only — new deposits must
+        // resolve fiat (disk USD×FX or live) without waiting for a full
+        // history pass. History stays full-mode only.
+        let includePrices = mode.includesPrices
+        let includeHistory = mode.includesHistory
         var failedChains: Set<SupportedChain> = []
         var attemptedChains: Set<SupportedChain> = []
         var refreshedChains: Set<SupportedChain> = []
@@ -216,7 +230,8 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     currencyCode: normalizedCurrency,
                     database: database,
-                    includePrices: includePrices
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
         }
@@ -2160,9 +2175,13 @@ private actor SolanaBalanceHistoryScanner {
         let occurredAt = blockTime.map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? Date()
         let meta = root["meta"] as? [String: Any] ?? [:]
         let failed = SolanaJSON.isNonNull(meta["err"])
-        let fee = SolanaJSON.int64(meta["fee"]).flatMap {
-            EVMHexQuantity.displayAmount(rawBalance: String($0), decimals: SupportedChain.solana.nativeDecimals)
-        }
+        let feeLamports = SolanaJSON.int64(meta["fee"]) ?? 0
+        let fee = feeLamports > 0
+            ? EVMHexQuantity.displayAmount(
+                rawBalance: String(feeLamports),
+                decimals: SupportedChain.solana.nativeDecimals
+            )
+            : nil
 
         let transaction = root["transaction"] as? [String: Any] ?? [:]
         let message = transaction["message"] as? [String: Any] ?? [:]
@@ -2181,7 +2200,8 @@ private actor SolanaBalanceHistoryScanner {
             slot: slot,
             occurredAt: occurredAt,
             status: failed ? .failed : .confirmed,
-            fee: fee
+            feeLamports: feeLamports,
+            feeDisplay: fee
         ) {
             events.append(native)
         }
@@ -2209,7 +2229,8 @@ private actor SolanaBalanceHistoryScanner {
         slot: Int64?,
         occurredAt: Date,
         status: TransactionStatus,
-        fee: String?
+        feeLamports: Int64,
+        feeDisplay: String?
     ) -> SolanaHistoryEvent? {
         guard let ownerIndex = accountKeys.firstIndex(of: owner),
               let pre = SolanaJSON.int64Array(meta["preBalances"]),
@@ -2219,11 +2240,17 @@ private actor SolanaBalanceHistoryScanner {
             return nil
         }
         let delta = Decimal(post[ownerIndex]) - Decimal(pre[ownerIndex])
-        guard delta != 0 else { return nil }
-
-        let direction: TransactionDirection = delta > 0 ? .incoming : .outgoing
-        let amount = delta < 0 ? -delta : delta
-        let raw = NSDecimalNumber(decimal: amount).stringValue
+        // Solana fee payer is always account key 0. Only then does the
+        // balance delta include the fee (BUG-014).
+        let ownerIsFeePayer = ownerIndex == 0
+        guard let resolved = SolanaNativeActivityAmount.resolve(
+            balanceDeltaLamports: delta,
+            feeLamports: feeLamports,
+            ownerIsFeePayer: ownerIsFeePayer
+        ) else {
+            return nil
+        }
+        let raw = NSDecimalNumber(decimal: resolved.amountLamports).stringValue
         guard let displayAmount = EVMHexQuantity.displayAmount(
             rawBalance: raw,
             decimals: SupportedChain.solana.nativeDecimals
@@ -2233,7 +2260,7 @@ private actor SolanaBalanceHistoryScanner {
 
         return SolanaHistoryEvent(
             txHash: txHash,
-            direction: direction,
+            direction: resolved.direction,
             amount: displayAmount,
             tokenSymbol: SupportedChain.solana.ticker,
             tokenContract: nil,
@@ -2247,7 +2274,8 @@ private actor SolanaBalanceHistoryScanner {
                 post: post,
                 accountKeys: accountKeys
             ),
-            fee: fee
+            // Fee only meaningful when this address paid it.
+            fee: ownerIsFeePayer ? feeDisplay : nil
         )
     }
 
@@ -2381,6 +2409,41 @@ private struct SolanaHistoryEvent: Sendable {
     let status: TransactionStatus
     let counterparty: String
     let fee: String?
+}
+
+/// BUG-014: pure SOL activity amount math.
+///
+/// Solana `preBalances`/`postBalances` deltas for the fee payer include
+/// the network fee. Activity already stores fee separately, so outgoing
+/// native amount must be `max(0, |delta| − fee)` — same idea as Bitcoin
+/// Electrum (`spent − received − fee`). Token (SPL) amounts are unchanged
+/// (fee is always paid in SOL).
+enum SolanaNativeActivityAmount {
+    struct Resolved: Sendable, Equatable {
+        let direction: TransactionDirection
+        /// Absolute amount in lamports (not including fee when subtracted).
+        let amountLamports: Decimal
+    }
+
+    /// - Parameters:
+    ///   - balanceDeltaLamports: `post − pre` for the owner (signed).
+    ///   - feeLamports: `meta.fee` (always ≥ 0).
+    ///   - ownerIsFeePayer: fee payer is account key index 0 on Solana.
+    static func resolve(
+        balanceDeltaLamports: Decimal,
+        feeLamports: Int64,
+        ownerIsFeePayer: Bool
+    ) -> Resolved? {
+        guard balanceDeltaLamports != 0 else { return nil }
+        let direction: TransactionDirection = balanceDeltaLamports > 0 ? .incoming : .outgoing
+        var amount = balanceDeltaLamports < 0 ? -balanceDeltaLamports : balanceDeltaLamports
+        if direction == .outgoing, ownerIsFeePayer, feeLamports > 0 {
+            amount = max(0, amount - Decimal(feeLamports))
+        }
+        // Drop pure-fee rows (no transfer) so activity doesn't show "0 SOL".
+        guard amount > 0 else { return nil }
+        return Resolved(direction: direction, amountLamports: amount)
+    }
 }
 
 private struct SolanaGetBalanceResult: Decodable {
@@ -2991,26 +3054,50 @@ enum EVMHexQuantity {
     }
 
     static func decimalAmount(rawBalance: String, decimals: Int) -> Decimal? {
-        guard let raw = Decimal(string: rawBalance) else { return nil }
-        guard decimals > 0 else { return raw }
-        var divisor = Decimal(1)
-        var multiplier = Decimal(10)
-        var power = decimals
-        while power > 0 {
-            if power & 1 == 1 { divisor *= multiplier }
-            power >>= 1
-            if power > 0 { multiplier *= multiplier }
+        // BUG-025: build display via integer-string first, then parse Decimal
+        // for UI math. Full-width raw strings stay exact in `displayAmount`.
+        guard let display = displayAmount(rawBalance: rawBalance, decimals: decimals) else {
+            return nil
         }
-        return raw / divisor
+        return Decimal(string: display, locale: Locale(identifier: "en_US_POSIX"))
     }
 
+    /// Raw integer base units → display string with `decimals` places.
+    /// Digit-wise (no Decimal product) so balances wider than 38
+    /// significant digits remain exact on screen (BUG-025).
     static func displayAmount(rawBalance: String, decimals: Int) -> String? {
-        guard let amount = decimalAmount(rawBalance: rawBalance, decimals: decimals) else { return nil }
-        return decimalString(amount)
+        let trimmed = rawBalance.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.allSatisfy(\.isNumber) else { return nil }
+        let raw = stripLeadingZeros(trimmed)
+        let scale = max(0, decimals)
+        if scale == 0 { return raw }
+
+        if raw == "0" { return "0" }
+
+        if raw.count <= scale {
+            let pad = String(repeating: "0", count: scale - raw.count)
+            let frac = pad + raw
+            return "0." + frac
+        }
+        let split = raw.index(raw.endIndex, offsetBy: -scale)
+        let intPart = String(raw[..<split])
+        let fracPart = String(raw[split...])
+        // Trim trailing zeros in the fractional part for readability, but
+        // keep at least one digit after the point only when needed.
+        let trimmedFrac = fracPart.reversed().drop(while: { $0 == "0" }).reversed()
+        if trimmedFrac.isEmpty {
+            return intPart
+        }
+        return intPart + "." + String(trimmedFrac)
     }
 
     static func decimalString(_ value: Decimal) -> String {
-        NSDecimalNumber(decimal: value).stringValue
+        ComposeDecimal.plainDecimalString(value)
+    }
+
+    private static func stripLeadingZeros(_ digits: String) -> String {
+        let stripped = digits.drop { $0 == "0" }
+        return stripped.isEmpty ? "0" : String(stripped)
     }
 }
 
@@ -3036,6 +3123,13 @@ actor WalletBackgroundWorkCoordinator {
 
     private var jobs: [String: JobSlot] = [:]
 
+    /// Refresh spendable balances (and prices). Awaits only the balances
+    /// pipeline so pull-to-refresh can end when balances land.
+    ///
+    /// BUG-015 / PTR UX: always uses `.balancesOnly` (balances + prices,
+    /// no history). User-initiated pulls then kick off a **background**
+    /// `.full` pass for history / Electrum history / explorers so the
+    /// spinner does not wait on those RPCs.
     func refreshBalances(
         walletId: UUID,
         currencyCode: String,
@@ -3054,7 +3148,19 @@ actor WalletBackgroundWorkCoordinator {
                 currencyCode: currencyCode,
                 database: database,
                 userInitiated: userInitiated,
-                mode: userInitiated ? .full : .balancesOnly,
+                mode: .balancesOnly,
+                trigger: trigger
+            )
+        }
+
+        // History keeps running after the balances await returns (PTR ends).
+        // Do not cancel mid-flight history when a non-user job is coalescing;
+        // only user pulls replace via startFullRefresh's job key.
+        if userInitiated {
+            startFullRefresh(
+                walletId: walletId,
+                currencyCode: currencyCode,
+                database: database,
                 trigger: trigger
             )
         }

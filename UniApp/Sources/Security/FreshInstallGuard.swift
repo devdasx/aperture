@@ -18,6 +18,12 @@ import os.log
 /// deliberately treats a missing sandbox marker as a zero-data install even if
 /// iOS or a local restore left some files behind.
 ///
+/// **BUG-008 (fail-closed):** the install marker is written **only after**
+/// SQLite store reset succeeds **and** Keychain purge has run **and** the
+/// sandbox marker file is confirmed on disk. If SQLite reset fails, the
+/// marker stays absent so the next launch retries the full wipe — never
+/// skip cleanup after a partial failure.
+///
 /// **Why this is safe.** The Keychain items we delete are visible only to this
 /// app's Keychain access group. We do NOT touch Keychain items belonging to
 /// other apps; iOS scopes those away from this process. The purge covers both
@@ -104,27 +110,64 @@ enum FreshInstallGuard {
         category: "FreshInstallGuard"
     )
 
-    /// Idempotent. Call once from `UniAppApp.init()`. Returns `true`
-    /// iff a destructive fresh-install wipe actually ran.
+    /// Idempotent. Call once from `UniAppApp.init()`.
+    ///
+    /// - Returns: `true` only when a **complete** fresh-install wipe finished
+    ///   (SQLite reset + Keychain purge + install marker confirmed on disk).
+    ///   Returns `false` when the marker was already present (steady state),
+    ///   or when a wipe was **attempted but did not complete** (fail-closed —
+    ///   marker stays absent so the next launch retries).
     @discardableResult
     static func purgeKeychainIfFreshInstall() -> Bool {
         let hasContainerMarker = hasContainerInstallMarker()
         guard !hasContainerMarker else {
+            // Steady install: keep markers healthy; never wipe.
             ensureCurrentInstallMarkers()
             return false
         }
 
+        // ── Fresh install / missing sandbox marker ─────────────────────
+        // Order is intentional (BUG-008):
+        //   1) Reset SQLite (must succeed)
+        //   2) Purge Keychain
+        //   3) Write markers only after 1+2, and only if marker is verifiable
+        log.log("Fresh install detected — resetting Aperture local data")
+
         do {
             try resetStoreFilesForFreshInstall()
         } catch {
-            log.error("Fresh-install SQLite reset failed: \(String(describing: error), privacy: .public)")
+            log.error(
+                "Fresh-install SQLite reset failed — NOT writing install marker (will retry next launch): \(String(describing: error), privacy: .public)"
+            )
+            // Still strip Keychain so resurrected secrets are not left
+            // sitting next to a half-reset store. Marker stays absent.
+            let deletedCount = purgeAllKnownKeychainServicesForDatabaseReplacement()
+            log.log(
+                "Fresh-install Keychain purge after SQLite failure — \(deletedCount, privacy: .public) entries cleared; marker withheld"
+            )
+            return false
         }
 
-        log.log("Fresh install detected — resetting Aperture local data")
         let deletedCount = purgeAllKnownKeychainServicesForDatabaseReplacement()
-        ensureCurrentInstallMarkers()
 
-        log.log("Fresh-install cleanup complete — \(deletedCount, privacy: .public) Keychain entries cleared")
+        do {
+            try writeInstallMarkersOrThrow()
+        } catch {
+            log.error(
+                "Fresh-install marker write failed — NOT treating wipe as complete (will retry next launch): \(String(describing: error), privacy: .public)"
+            )
+            return false
+        }
+
+        // Belt-and-braces: never report success without a readable sandbox marker.
+        guard hasContainerInstallMarker() else {
+            log.error("Fresh-install marker missing after write — fail closed, will retry next launch")
+            return false
+        }
+
+        log.log(
+            "Fresh-install cleanup complete — \(deletedCount, privacy: .public) Keychain entries cleared; install marker written"
+        )
         return true
     }
 
@@ -143,9 +186,27 @@ enum FreshInstallGuard {
         return FileManager.default.fileExists(atPath: marker.path)
     }
 
+    /// Best-effort marker refresh for an already-marked install.
     private static func ensureCurrentInstallMarkers() {
-        if let marker = installMarkerURL(createDirectory: true) {
-            _ = FileManager.default.createFile(atPath: marker.path, contents: Data(), attributes: nil)
+        try? writeInstallMarkersOrThrow()
+    }
+
+    /// Writes sandbox + Keychain install markers. Throws if the sandbox
+    /// marker cannot be created (caller must fail closed).
+    private static func writeInstallMarkersOrThrow() throws {
+        guard let marker = installMarkerURL(createDirectory: true) else {
+            throw FreshInstallGuardError.markerDirectoryUnavailable
+        }
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: marker.path) {
+            let created = fm.createFile(atPath: marker.path, contents: Data(), attributes: nil)
+            if !created && !fm.fileExists(atPath: marker.path) {
+                throw FreshInstallGuardError.markerFileWriteFailed(marker.path)
+            }
+        }
+        // Confirm readable after create (createFile can return true without a durable file on some edge failures).
+        guard fm.fileExists(atPath: marker.path) else {
+            throw FreshInstallGuardError.markerFileWriteFailed(marker.path)
         }
         ensureKeychainInstallMarker()
     }
@@ -160,7 +221,11 @@ enum FreshInstallGuard {
         ) else { return nil }
         let directory = appSupport.appendingPathComponent("Aperture", isDirectory: true)
         if createDirectory {
-            try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            do {
+                try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            } catch {
+                return nil
+            }
         }
         return directory.appendingPathComponent(installMarkerFileName, isDirectory: false)
     }
@@ -237,6 +302,11 @@ enum FreshInstallGuard {
         return deletedItems
     }
 
+    private enum FreshInstallGuardError: Error, Equatable {
+        case markerDirectoryUnavailable
+        case markerFileWriteFailed(String)
+    }
+
     /// Test-only. Resets the marker so a subsequent
     /// `purgeKeychainIfFreshInstall()` call performs the wipe. Used
     /// by the smoke test below in DEBUG builds.
@@ -256,6 +326,11 @@ enum FreshInstallGuard {
 
     static func _setStoreResetHookForTesting(_ hook: (() throws -> Void)?) {
         storeResetHookForTesting = hook
+    }
+
+    /// Test-only: whether the sandbox install marker file exists.
+    static func _hasContainerInstallMarkerForTesting() -> Bool {
+        hasContainerInstallMarker()
     }
     #endif
 }

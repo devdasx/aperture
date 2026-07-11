@@ -8,11 +8,11 @@ import Foundation
 /// chain's registered publicnode endpoint:**
 /// ETH 1 (0x1), BNB 56 (0x38), Polygon 137 (0x89), Arbitrum 42161
 /// (0xa4b1), Base 8453 (0x2105), Optimism 10 (0xa), Avalanche-C 43114
-/// (0xa86a), Scroll 534352 (0x82750), Celo 42220 (0xa4ec), Kava EVM 2222
-/// (0x8ae), opBNB 204 (0xcc). zkSync Era = 324 (0x144) — the documented
-/// mainnet id (the publicnode zkSync endpoint did not answer eth_chainId
-/// at verify time; 324 is the canonical constant per the zkSync docs +
-/// the Ethereum chain registry).
+/// (0xa86a), Scroll 534352 (0x82750), Celo 42220 (0xa4ec), opBNB 204
+/// (0xcc). zkSync Era = 324 (0x144) — the documented mainnet id (the
+/// publicnode zkSync endpoint did not answer eth_chainId at verify time;
+/// 324 is the canonical constant per the zkSync docs + the Ethereum
+/// chain registry).
 ///
 /// Doc URLs: https://ethereum.org/en/developers/docs/apis/json-rpc/
 /// (eth_chainId), https://chainlist.org, https://docs.zksync.io.

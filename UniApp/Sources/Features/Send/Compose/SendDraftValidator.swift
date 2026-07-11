@@ -18,7 +18,7 @@ enum SendValidationError: Error, Hashable, Sendable {
     case belowActivationMinimum(minimum: Decimal)
     /// XRP destination requires a destination tag and none was set.
     case destinationTagRequired
-    /// TON comment / Stellar memo / Cosmos memo required by recipient.
+    /// TON comment / Stellar memo required by recipient.
     case memoRequired
     /// Memo exceeds the chain's byte cap.
     case memoTooLong(maxBytes: Int)

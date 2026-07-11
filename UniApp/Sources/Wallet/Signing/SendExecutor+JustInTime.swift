@@ -429,41 +429,4 @@ extension SendExecutor {
         }
     }
 
-    // MARK: - Cosmos (Kava)
-
-    /// `GET /cosmos/auth/v1beta1/accounts/{addr}` → account_number +
-    /// sequence (vesting accounts nest these under base_vesting_account.
-    /// base_account). Doc: cosmos-sdk auth module.
-    nonisolated func refreshCosmos(draft: SendDraft) async throws -> TransactionSigner.JustInTimeData {
-        do {
-            let data = try await RPCClient.shared.callREST(
-                chain: draft.chain, path: "/cosmos/auth/v1beta1/accounts/\(draft.fromAddress)"
-            )
-            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  let account = root["account"] as? [String: Any] else {
-                throw SigningError.justInTimeRefreshFailed("Kava account unavailable")
-            }
-            // BaseAccount fields, possibly nested in a vesting wrapper.
-            let base: [String: Any]
-            if let baseAccount = account["base_account"] as? [String: Any] {
-                base = baseAccount
-            } else if let vesting = account["base_vesting_account"] as? [String: Any],
-                      let baseAccount = vesting["base_account"] as? [String: Any] {
-                base = baseAccount
-            } else {
-                base = account
-            }
-            guard let accountNumberStr = base["account_number"] as? String,
-                  let accountNumber = UInt64(accountNumberStr) else {
-                throw SigningError.justInTimeRefreshFailed("Kava account number unavailable")
-            }
-            // A brand-new (never-seen) account has sequence "0".
-            let sequence = (base["sequence"] as? String).flatMap(UInt64.init) ?? 0
-            return TransactionSigner.JustInTimeData(
-                cosmosAccountNumber: accountNumber, cosmosSequence: sequence
-            )
-        } catch let rpc as RPCError {
-            throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)
-        }
-    }
 }

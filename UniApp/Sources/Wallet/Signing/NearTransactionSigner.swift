@@ -73,6 +73,8 @@ enum NearTransactionSigner {
 
             // The transfer amount is a decimal STRING in the token's own
             // decimals (NEP-141 ft_transfer arg is a u128 string).
+            // BUG-025: NEP-141 amount is a decimal integer string (u128) —
+            // built without Decimal's 38-digit limit.
             let amountString = SigningAmount.baseUnitsString(display: recipient.amount, decimals: draft.effectiveDecimals)
 
             let storageArgs = try jsonArgs(["account_id": recipient.address])
@@ -80,7 +82,7 @@ enum NearTransactionSigner {
             storageCall.methodName = "storage_deposit"
             storageCall.args = storageArgs
             storageCall.gas = storageDepositGas
-            guard let storageDeposit = SigningAmount.u128LittleEndian(Decimal(string: storageDepositYocto) ?? 0) else {
+            guard let storageDeposit = SigningAmount.u128LittleEndian(baseUnitsString: storageDepositYocto) else {
                 throw SigningError.malformedDraft("could not encode NEAR storage deposit")
             }
             storageCall.deposit = storageDeposit
@@ -91,7 +93,7 @@ enum NearTransactionSigner {
             transferCall.methodName = "ft_transfer"
             transferCall.args = try jsonArgs(transferArgs)
             transferCall.gas = ftTransferGas
-            guard let oneYoctoData = SigningAmount.u128LittleEndian(Decimal(string: oneYocto) ?? 1) else {
+            guard let oneYoctoData = SigningAmount.u128LittleEndian(baseUnitsString: oneYocto) else {
                 throw SigningError.malformedDraft("could not encode NEAR 1 yocto deposit")
             }
             transferCall.deposit = oneYoctoData

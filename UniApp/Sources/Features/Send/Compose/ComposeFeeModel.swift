@@ -24,7 +24,7 @@ enum ComposeFeeModel: String, Codable, Hashable, Sendable, CaseIterable {
 
     /// EIP-1559 (type 0x02): maxFeePerGas + maxPriorityFeePerGas ×
     /// gasLimit. Default for Ethereum/Arbitrum/Avalanche/Polygon/
-    /// Celo/Kava-EVM (and zkSync's simple path). Source: eth_feeHistory.
+    /// Celo (and zkSync's simple path). Source: eth_feeHistory.
     case evm1559
 
     /// Legacy (type 0x00): single gasPrice × gasLimit. BNB Chain
@@ -78,10 +78,6 @@ enum ComposeFeeModel: String, Codable, Hashable, Sendable, CaseIterable {
     /// tip. Source: payment_queryInfo on a dummy-signed extrinsic.
     case polkadotWeight
 
-    /// Cosmos SDK (Kava Cosmos): gasLimit × gasPrice (ukava), gas from
-    /// simulate. Source: chain-registry fee tiers + cosmos simulate.
-    case cosmosGas
-
     /// Aptos: gas_unit_price × max_gas_amount (octas), estimated via
     /// `/v1/estimate_gas_price` + `/v1/transactions/simulate`.
     case aptosGas
@@ -94,10 +90,10 @@ enum ComposeFeeModel: String, Codable, Hashable, Sendable, CaseIterable {
     }
 
     /// Whether the model exposes slow/normal/fast *speed* tiers that
-    /// meaningfully change inclusion. NEAR/Aptos/TON/Polkadot/Cosmos
-    /// have a single deterministic network fee (the only lever is a
-    /// tip on Polkadot, or none) — the UI should present one fee, not
-    /// three, to avoid implying a priority market that doesn't exist.
+    /// meaningfully change inclusion. NEAR/Aptos/TON/Polkadot have a
+    /// single deterministic network fee (the only lever is a tip on
+    /// Polkadot, or none) — the UI should present one fee, not three,
+    /// to avoid implying a priority market that doesn't exist.
     var hasSpeedTiers: Bool {
         switch self {
         case .nearGas, .tonFixed, .aptosGas:
@@ -118,8 +114,6 @@ enum ComposeMemoKind: String, Codable, Hashable, Sendable {
     case none
     /// Free-form UTF-8 text memo (TRON raw_data.data, +1 TRX fee).
     case textMemo
-    /// Cosmos `TxBody.memo` (≤512 chars).
-    case cosmosMemo
     /// XRP `DestinationTag` (uint32) — commonly required by recipient services.
     case destinationTag
     /// TON text comment (0x00000000-prefixed cell), service-required.
@@ -135,7 +129,7 @@ enum ComposeMemoKind: String, Codable, Hashable, Sendable {
     /// Whether recipient services commonly REQUIRE this field for deposits.
     var recipientServiceOftenRequires: Bool {
         switch self {
-        case .destinationTag, .tonComment, .splMemo, .stellarMemo, .cosmosMemo, .textMemo:
+        case .destinationTag, .tonComment, .splMemo, .stellarMemo, .textMemo:
             return true
         case .none, .nearFtMemo:
             return false

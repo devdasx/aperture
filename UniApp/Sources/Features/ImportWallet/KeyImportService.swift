@@ -7,7 +7,6 @@ enum KeyFormat: Hashable, Sendable {
     case evmHex
     case solanaBase58
     case xrpSeed
-    case cosmosHex
     case ed25519Hex
     case extendedPublicKey(prefix: ExtendedKeyPrefix)
     case unknown
@@ -18,9 +17,7 @@ enum KeyFormat: Hashable, Sendable {
 }
 
 /// Contract for chain-aware key / address operations used by the
-/// import flow. Implementations are stub-first today (see
-/// `StubKeyImportService`) so the UI ships while per-family parsers
-/// land incrementally as T-024 through T-031.
+/// import flow. Production uses `WalletCoreKeyImportService` only.
 protocol KeyImportService: Sendable {
     /// Heuristic guess at the format of a raw user-input string, for
     /// the chain they have selected. Returns `nil` if the string
@@ -62,28 +59,25 @@ enum KeyImportError: Error, Hashable, Sendable {
     case derivationFailed
 }
 
-/// Detection-only `KeyImportService` conformance.
-///
-/// **2026-06-18 — derivation is now REAL via `WalletCoreKeyImportService`.**
-/// The original "stub-first" plan (T-024..T-031: hand-roll per-family
-/// secp256k1 / ed25519 / bech32 / StrKey) was superseded by integrating Trust
-/// Wallet Core, which ships all of it battle-tested (Rule #3 §B). The
-/// production path is `WalletCoreKeyImportService` for EVERY family —
-/// mnemonic, single private key, AND watch-only xpub/ypub/zpub.
-///
-/// What survives here and is still used in production is `detectFormat` — pure
-/// shape heuristics (no crypto) that WalletCoreKeyImportService delegates to
-/// for input classification — plus `validateAddress` and the `stubAddressPrefix`
-/// sentinel the scanners filter on. The `deriveAddress(...)` / `deriveAddresses(...)`
-/// bodies remain only to satisfy the protocol and return clearly-marked mock
-/// values (never real); nothing in the live import flow calls them, and any
-/// address carrying `stubAddressPrefix` is skipped before it ever hits the
-/// network (Rule #16 — a placeholder can never masquerade as a real address).
-struct StubKeyImportService: KeyImportService {
+// MARK: - Format detection (shape only — no derivation)
 
-    // MARK: - Format detection (shape-only heuristics)
+/// Pure shape heuristics for private-key / seed input classification.
+///
+/// **BUG-024.** This is intentionally **not** a `KeyImportService`.
+/// It never derives addresses. Production derivation is exclusively
+/// `WalletCoreKeyImportService`. WalletCore still delegates format
+/// detection here (shape-only, no crypto).
+enum KeyImportFormatDetector {
 
-    func detectFormat(_ raw: String, on chain: SupportedChain) -> KeyFormat? {
+    /// Historical sentinel that marked placeholder addresses from the
+    /// retired stub derivation path. Production never emits this;
+    /// review UI / scanners still filter it as defense-in-depth
+    /// (Rule #16 — a placeholder must never look spendable).
+    static let stubAddressPrefix = "[STUB]"
+
+    /// Heuristic guess at the format of a raw user-input string for
+    /// the selected chain. Returns `nil` only for empty input.
+    static func detectFormat(_ raw: String, on chain: SupportedChain) -> KeyFormat? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -102,7 +96,7 @@ struct StubKeyImportService: KeyImportService {
         case .evm:
             // 32-byte hex with or without 0x prefix.
             let body = trimmed.hasPrefix("0x") ? String(trimmed.dropFirst(2)) : trimmed
-            if body.count == 64, body.allSatisfy(isHex) {
+            if body.count == 64, body.allSatisfy(\.isHexDigit) {
                 return .evmHex
             }
         case .ed25519:
@@ -112,7 +106,7 @@ struct StubKeyImportService: KeyImportService {
                 return .solanaBase58
             }
             // ed25519 hex (32-byte private key) is 64 hex chars.
-            if trimmed.count == 64, trimmed.allSatisfy(isHex) {
+            if trimmed.count == 64, trimmed.allSatisfy(\.isHexDigit) {
                 return .ed25519Hex
             }
         case .ripple:
@@ -121,177 +115,46 @@ struct StubKeyImportService: KeyImportService {
                trimmed.allSatisfy(isBase58) {
                 return .xrpSeed
             }
-        case .cosmos, .aptos, .near, .polkadot, .ton, .tron:
+        case .aptos, .near, .polkadot, .ton, .tron:
             // Generic 32-byte hex catch-all for chains we haven't
             // chain-family-specialized yet.
             let body = trimmed.hasPrefix("0x") ? String(trimmed.dropFirst(2)) : trimmed
-            if body.count == 64, body.allSatisfy(isHex) {
-                return chain.family == .cosmos ? .cosmosHex : .ed25519Hex
+            if body.count == 64, body.allSatisfy(\.isHexDigit) {
+                return .ed25519Hex
             }
         }
 
         return .unknown
     }
 
-    // MARK: - Address derivation (non-production mock — see type doc)
+    // MARK: - Private helpers
 
-    // T-024..T-031 (real per-family derivation) are DONE — delivered by
-    // `WalletCoreKeyImportService` via Trust Wallet Core (secp256k1 + BIP-32/44
-    // + base58check for Bitcoin/EVM/Cosmos/TRON, ed25519/SCALE/StrKey for
-    // Solana/NEAR/Aptos/Sui/Stellar/TON/Polkadot, and getPublicKeyFromExtended
-    // for watch-only xpub/ypub/zpub). The bodies below are not on any live
-    // path; they return clearly-marked mock values only to satisfy the
-    // protocol, and `stubAddressPrefix` keeps any such value out of the
-    // network (Rule #16).
-    func deriveAddress(fromPrivateKey raw: String, on chain: SupportedChain) async throws -> String {
-        guard detectFormat(raw, on: chain) != nil else {
-            throw KeyImportError.invalidFormat
-        }
-        return mockAddress(for: chain, salt: raw)
-    }
-
-    func validateAddress(_ raw: String, on chain: SupportedChain) -> Bool {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        // Stub: minimum-length per family.
-        switch chain.family {
-        case .bitcoin:  return trimmed.count >= 26 && trimmed.count <= 90
-        case .evm:      return trimmed.hasPrefix("0x") && trimmed.count == 42 && String(trimmed.dropFirst(2)).allSatisfy(isHex)
-        case .ed25519, .ripple, .cosmos, .aptos, .near, .polkadot, .ton, .tron:
-            return trimmed.count >= 26
-        }
-    }
-
-    func deriveAddresses(fromExtendedKey raw: String, on chain: SupportedChain) async throws -> [String] {
-        guard chain.supportsExtendedPublicKey else {
-            throw KeyImportError.unsupported
-        }
-        guard let prefix = extendedKeyPrefix(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw KeyImportError.invalidFormat
-        }
-        // Stub: return 5 mock addresses so the review screen has
-        // something to show. Real BIP-32 derivation lives in T-024.
-        return (0..<5).map { i in
-            "[STUB \(prefix.rawValue) #\(i)] " + mockAddress(for: chain, salt: "\(raw)-\(i)")
-        }
-    }
-
-    func deriveAddresses(fromSeed seed: Data) async throws -> [SupportedChain: String] {
-        // Hybrid: real BIP-44 derivation for chains where CryptoKit
-        // ships the underlying primitive (Solana, NEAR — both ed25519
-        // via Curve25519 + Base58 / hex). Stub for everything else
-        // until the per-chain crypto lands (T-024..T-031). Stub
-        // addresses are clearly marked with a `[STUB]` prefix so the
-        // user / reviewer can never confuse them for real ones
-        // (Rule #2 §A.7).
-        var addresses: [SupportedChain: String] = [:]
-        let salt = seed.prefix(8).map { String(format: "%02x", $0) }.joined()
-        for chain in SupportedChain.allCases {
-            switch chain {
-            case .solana:
-                addresses[chain] = Ed25519Derivation.solanaAddress(seed: seed)
-            case .near:
-                addresses[chain] = Ed25519Derivation.nearImplicitAccount(seed: seed)
-            default:
-                addresses[chain] = mockAddress(for: chain, salt: salt)
-            }
-        }
-        return addresses
-    }
-
-    /// Whether `deriveAddresses(fromSeed:)` will produce a real,
-    /// on-chain-valid address for `chain` (vs. a `[STUB]` placeholder).
-    /// The review UI uses this to label each row honestly.
-    static func usesRealDerivation(for chain: SupportedChain) -> Bool {
-        switch chain {
-        case .solana, .near: return true
-        default:             return false
-        }
-    }
-
-    /// Mnemonic-based fallback. The stub returns the seed-based result
-    /// so callers that use this path get the same hybrid behavior as
-    /// before. Production callers should use `WalletCoreKeyImportService`.
-    func deriveAddresses(mnemonic: [String], passphrase: String) async -> [SupportedChain: String] {
-        let seed = BIP39.deriveSeed(words: mnemonic, passphrase: passphrase)
-        return (try? await deriveAddresses(fromSeed: seed)) ?? [:]
-    }
-
-    // MARK: - Helpers
-
-    /// Sentinel prefix that marks every address `StubKeyImportService`
-    /// emits as a placeholder. Real per-chain derivation (Solana, NEAR
-    /// today via `Ed25519Derivation`) bypasses this entirely. The
-    /// review UI splits the prefix off and renders the row in its
-    /// "Derivation pending" state so the user can never confuse a
-    /// stub for a real address (Rule #2 §A.7).
-    static let stubAddressPrefix = "[STUB]"
-
-    private func mockAddress(for chain: SupportedChain, salt: String) -> String {
-        // Deterministic mock address per (chain, salt) prefixed with
-        // an unambiguous sentinel. The body still has a shape that
-        // resembles the chain's address so existing UI components
-        // (truncation, monospaced rendering) don't have to special-case
-        // anything beyond the prefix check.
-        let digest = simpleHash(salt + chain.rawValue)
-        let body: String
-        switch chain.family {
-        case .bitcoin:
-            body = "bc1q\(digest.prefix(38))"
-        case .evm:
-            body = "0x\(digest.prefix(40))"
-        case .ed25519:
-            body = String(digest.prefix(44))
-        case .ripple:
-            body = "r\(digest.prefix(33))"
-        case .cosmos:
-            body = "kava1\(digest.prefix(38))"
-        case .aptos:
-            body = "0x\(digest.prefix(64))"
-        case .near:
-            body = "\(digest.prefix(20)).near"
-        case .polkadot:
-            body = "1\(digest.prefix(46))"
-        case .ton:
-            body = "EQ\(digest.prefix(46))"
-        case .tron:
-            body = "T\(digest.prefix(33))"
-        }
-        return Self.stubAddressPrefix + body
-    }
-
-    private func simpleHash(_ input: String) -> String {
-        // Non-cryptographic, deterministic mock hash — for stub addresses
-        // only. The real implementation in T-024..T-031 uses CryptoKit
-        // primitives (SHA256, keccak256, etc.).
-        var hash: UInt64 = 14695981039346656037
-        for byte in input.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1099511628211
-        }
-        let hex = String(format: "%016llx", hash)
-        // Pad to a usable length by repeating.
-        return String(repeating: hex, count: 8)
-    }
-
-    private func extendedKeyPrefix(_ raw: String) -> KeyFormat.ExtendedKeyPrefix? {
+    private static func extendedKeyPrefix(_ raw: String) -> KeyFormat.ExtendedKeyPrefix? {
         if raw.hasPrefix("xpub") { return .xpub }
         if raw.hasPrefix("ypub") { return .ypub }
         if raw.hasPrefix("zpub") { return .zpub }
         return nil
     }
 
-    /// The Bitcoin base58 alphabet — excludes 0, O, I, and l, which
-    /// the previous predicate (`isLetter || isNumber`) wrongly accepted.
+    /// The Bitcoin base58 alphabet — excludes 0, O, I, and l.
     private static let base58Alphabet: Set<Character> = Set(
         "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
     )
 
-    private func isBase58(_ c: Character) -> Bool {
-        Self.base58Alphabet.contains(c)
+    private static func isBase58(_ c: Character) -> Bool {
+        base58Alphabet.contains(c)
     }
+}
 
-    private func isHex(_ c: Character) -> Bool {
-        c.isHexDigit
-    }
+// MARK: - Retired type name (API compatibility for prefix constant only)
+
+/// **BUG-024.** Former stub `KeyImportService` that could emit `[STUB]`
+/// fake addresses. Derivation was removed; only the historical prefix
+/// constant remains for UI defense-in-depth filtering.
+///
+/// Do **not** reintroduce derivation methods here. Use
+/// `WalletCoreKeyImportService` for any key → address work.
+enum StubKeyImportService {
+    /// Same sentinel as `KeyImportFormatDetector.stubAddressPrefix`.
+    static let stubAddressPrefix = KeyImportFormatDetector.stubAddressPrefix
 }

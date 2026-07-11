@@ -85,22 +85,94 @@ actor BitcoinElectrumBalanceScanner {
         try txRepo.flush()
 
         let chainRepo = ChainStateRepository(database: database)
-        let discoveredAddresses = scans
-            .filter(\.hasActivity)
-            .map {
-                ChainStateRepository.DiscoveredAddress(
-                    address: $0.address,
-                    derivationPath: $0.path,
-                    isUsed: true
-                )
-            }
+        // BUG-016: persist every scanned address (path aligned), not only
+        // those with activity — so we never re-derive a quiet gap blindly.
+        let discoveredAddresses = scans.map {
+            ChainStateRepository.DiscoveredAddress(
+                address: $0.address,
+                derivationPath: $0.path,
+                isUsed: $0.hasActivity
+            )
+        }
         _ = try chainRepo.upsertDiscoveredAddresses(
             walletId: walletId,
             chain: .bitcoin,
             addresses: discoveredAddresses
         )
 
-        let utxos = scans.flatMap { scan in
+        // Extend receive/change gaps when the last window had history.
+        let active = Set(scans.filter(\.hasActivity).map(\.address))
+        let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database)
+        var extensionTargets = (try? BitcoinFamilyAddressBook.markUsedAndExtendIfNeeded(
+            walletId: walletId,
+            chain: .bitcoin,
+            activeAddresses: active,
+            words: words,
+            database: database
+        )) ?? []
+
+        // Scan newly extended addresses until a quiet gap (bounded loops).
+        var allScans = scans
+        var loopGuard = 0
+        while !extensionTargets.isEmpty, loopGuard < 10 {
+            loopGuard += 1
+            let electrumTargets = extensionTargets.compactMap {
+                try? BitcoinElectrumScanTarget(address: $0.address, path: $0.path)
+            }
+            guard !electrumTargets.isEmpty else { break }
+            guard let extResult = try? await BitcoinElectrumClient.scanFirst(
+                servers: BitcoinElectrumServer.defaults,
+                targets: electrumTargets,
+                includeHistory: includeHistory
+            ) else { break }
+            allScans.append(contentsOf: extResult.scans)
+            let extDiscovered = extResult.scans.map {
+                ChainStateRepository.DiscoveredAddress(
+                    address: $0.address,
+                    derivationPath: $0.path,
+                    isUsed: $0.hasActivity
+                )
+            }
+            _ = try? chainRepo.upsertDiscoveredAddresses(
+                walletId: walletId,
+                chain: .bitcoin,
+                addresses: extDiscovered
+            )
+            let extActive = Set(extResult.scans.filter(\.hasActivity).map(\.address))
+            extensionTargets = (try? BitcoinFamilyAddressBook.markUsedAndExtendIfNeeded(
+                walletId: walletId,
+                chain: .bitcoin,
+                activeAddresses: extActive,
+                words: words,
+                database: database
+            )) ?? []
+            // Only re-scan if we actually created net-new addresses beyond
+            // what we just scanned.
+            let scannedSet = Set(extResult.scans.map(\.address))
+            extensionTargets = extensionTargets.filter { !scannedSet.contains($0.address) }
+        }
+
+        // Recompute totals including gap extensions.
+        let totalSatsAll = allScans.reduce(Int64(0)) { partial, scan in
+            let (sum, overflow) = partial.addingReportingOverflow(scan.totalSats)
+            return overflow ? Int64.max : sum
+        }
+        if totalSatsAll != totalSats {
+            let fiatAll = fiatValue(sats: totalSatsAll, prices: priceMap)
+            try txRepo.upsertBalance(
+                addressId: plan.primaryAddressId,
+                tokenSymbol: SupportedChain.bitcoin.ticker,
+                tokenContract: nil,
+                decimals: SupportedChain.bitcoin.nativeDecimals,
+                rawBalance: String(totalSatsAll),
+                fiatValueCached: fiatAll,
+                fiatCurrencyCode: currencyCode,
+                save: false
+            )
+            try txRepo.flush()
+        }
+
+        let utxos = allScans.flatMap { scan in
             scan.utxos.map { utxo in
                 ChainStateRepository.AddressedUTXO(
                     address: scan.address,
@@ -126,7 +198,7 @@ actor BitcoinElectrumBalanceScanner {
         )
 
         log.debug(
-            "Bitcoin Electrum scan succeeded via \(result.serverDescription, privacy: .public): \(scans.count, privacy: .public) addresses, \(utxos.count, privacy: .public) utxos"
+            "Bitcoin Electrum scan succeeded via \(result.serverDescription, privacy: .public): \(allScans.count, privacy: .public) addresses, \(utxos.count, privacy: .public) utxos"
         )
     }
 
@@ -493,7 +565,8 @@ actor BitcoinPathSearchAddressStore {
 }
 
 private actor BitcoinWalletScanTargetRepository {
-    private let gapLimit = 50
+    /// BUG-016: BIP44/84 gap limit 20 on receive and change.
+    private let gapLimit = BitcoinFamilyAddressBook.gapLimit
     private let database: AppDatabase
 
     init(database: AppDatabase) {
@@ -528,13 +601,23 @@ private actor BitcoinWalletScanTargetRepository {
         switch wallet.kind {
         case .created, .importedMnemonic:
             if !wallet.hasPassphrase,
-               let words = loadMnemonic(walletId: wallet.id),
-               let derived = try? BitcoinHDAddressDeriver.deriveFromMnemonic(
-                    words,
-                    gapLimit: gapLimit
-               ) {
-                for target in derived {
-                    append(address: target.address, path: target.path)
+               let words = loadMnemonic(walletId: wallet.id) {
+                // Persist + extend gap windows from the address book, then
+                // scan every known path (no re-derive on every refresh).
+                _ = try? BitcoinFamilyAddressBook.ensureGapCoverage(
+                    walletId: walletId,
+                    chain: .bitcoin,
+                    words: words,
+                    database: database
+                )
+                if let persisted = try? BitcoinFamilyAddressBook.persistedAddresses(
+                    walletId: walletId,
+                    chain: .bitcoin,
+                    database: database
+                ) {
+                    for item in persisted {
+                        append(address: item.address, path: item.path)
+                    }
                 }
             }
         case .importedKey:

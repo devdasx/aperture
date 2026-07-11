@@ -44,14 +44,22 @@ struct SendTokenDescriptorTests {
         #expect(tron.decimals == 6)
     }
 
-    @Test("Send excludes Polkadot Asset Hub tokens until a signing path exists")
-    func polkadotAssetHubTokensAreNotOfferedForSend() {
+    @Test("BUG-011 Send offers Polkadot Asset Hub tokens with numeric asset ids")
+    func polkadotAssetHubTokensAreOfferedForSend() throws {
         let assets = [
             CatalogAsset(
-                id: "dot.1337",
+                id: "dot.1984",
                 chain: .polkadot,
                 symbol: "USDT",
                 name: "Tether USD",
+                contract: "1984",
+                decimals: 6
+            ),
+            CatalogAsset(
+                id: "dot.1337",
+                chain: .polkadot,
+                symbol: "USDC",
+                name: "USD Coin",
                 contract: "1337",
                 decimals: 6
             )
@@ -62,7 +70,28 @@ struct SendTokenDescriptorTests {
             catalogAssets: assets
         )
 
-        #expect(rows.isEmpty)
+        #expect(rows.count == 2)
+        let usdt = try #require(
+            rows.compactMap { row -> SendTokenDescriptor? in
+                guard case let .token(symbol, _, tokens) = row, symbol == "USDT" else { return nil }
+                return tokens.first
+            }.first
+        )
+        #expect(usdt.chain == .polkadot)
+        #expect(usdt.contract == "1984")
+        #expect(usdt.isSendSupported)
+        #expect(usdt.decimals == 6)
+
+        // Non-numeric contract still hidden (not a real Asset Hub asset id).
+        let junk = SendTokenDescriptor(
+            symbol: "FAKE",
+            name: "Fake",
+            chain: .polkadot,
+            contract: "not-an-id",
+            decimals: 6,
+            source: .catalog
+        )
+        #expect(!junk.isSendSupported)
     }
 
     @MainActor

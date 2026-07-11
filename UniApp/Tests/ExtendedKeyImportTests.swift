@@ -69,7 +69,7 @@ struct ExtendedKeyImportTests {
         #expect(addresses[2] == "1MNF5RSaabFwcbtJirJwKnDytsXXEsVsNb")
         // Every address is a real legacy P2PKH, never a "[STUB …]" placeholder.
         #expect(addresses.allSatisfy { $0.hasPrefix("1") })
-        #expect(addresses.allSatisfy { !$0.hasPrefix(StubKeyImportService.stubAddressPrefix) })
+        #expect(addresses.allSatisfy { !$0.hasPrefix(KeyImportFormatDetector.stubAddressPrefix) })
         // Real addresses are unique per index.
         #expect(Set(addresses).count == addresses.count)
     }

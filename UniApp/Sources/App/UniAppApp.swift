@@ -309,14 +309,20 @@ private struct AppRoot: View {
         LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"
     }
 
+    /// BUG-020 / P0-001: blocking recovery after silent store quarantine.
+    /// `recoveryPresentationID` forces a body refresh when the gate mutates
+    /// (shared `@Observable` singleton + `@State` can miss a tick).
+    @State private var recoveryPresentationID = 0
+
+    private var recoveryGate: DatabaseRecoveryGate { DatabaseRecoveryGate.shared }
+
     var body: some View {
         ZStack {
-            // Content root: splash, then `RootGate` — and nothing
-            // else, ever. The lock no longer replaces this tree; it
-            // overlays it from the detached window, so every
-            // NavigationStack, sheet, and fullScreenCover survives a
-            // lock/unlock cycle (2026-06-13 fix).
+            // Content root: splash, then either recovery (blocking) or
+            // `RootGate`. Recovery must never sit under onboarding as a
+            // quiet banner — wallets would look “vanished” (P0-001).
             activeSurface
+                .id(recoveryPresentationID)
         }
         // `.smooth(duration: 0.55)` spring on the splash → content
         // crossfade. SwiftUI crossfades the if/else branches via the
@@ -327,6 +333,7 @@ private struct AppRoot: View {
         // `.transitioning` middle state is gone.
         .environment(\.appPhase, isShowingSplash ? .splash : .onboarding)
         .onAppear {
+            recoveryGate.refresh(from: AppDatabase.shared)
             lockController.refreshLaunchLockState()
             mountLockOverlayWindowIfNeeded()
             syncLockOverlay(lockVisible: isLockSurfaceVisible)
@@ -363,14 +370,35 @@ private struct AppRoot: View {
                     // AudioConverterService console noise on real devices and
                     // simulators. User-initiated haptics stay lazy.
                     isShowingSplash = false
+                    recoveryGate.refresh(from: AppDatabase.shared)
                     // Let the lock overlay take over: on a locked
                     // cold launch `AppLockView` becomes visible the
                     // instant the splash hands off (opaque, no
                     // fade-in — so the splash → home crossfade
                     // running underneath can never peek through).
+                    // Recovery replaces lock/home until acknowledged.
                     lockController.isSplashActive = false
                 }
             )
+            .transition(.opacity)
+        } else if recoveryGate.shouldBlockApp {
+            // P0-001: never route to RootGate (empty onboarding that looks
+            // like a fresh install) until the user has seen recovery.
+            DatabaseRecoveryView(
+                incident: recoveryGate.incident ?? AppDatabase.shared.recoveryIncident,
+                isEphemeralStore: recoveryGate.isEphemeralStore || AppDatabase.shared.isInMemoryFallback,
+                onAcknowledged: {
+                    if AppDatabase.shared.isInMemoryFallback {
+                        // Session dismiss only — writes stay refused forever
+                        // while `isInMemoryFallback` is true.
+                        recoveryGate.dismissEphemeralWarningForSession()
+                    } else {
+                        recoveryGate.acknowledgeAndContinue()
+                    }
+                    recoveryPresentationID &+= 1
+                }
+            )
+            .id(rootDirectionKey)
             .transition(.opacity)
         } else {
             RootGate(logoNamespace: logoNamespace, phase: .onboarding)

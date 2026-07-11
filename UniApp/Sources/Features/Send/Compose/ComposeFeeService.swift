@@ -76,8 +76,6 @@ struct ComposeFeeService: Sendable {
             return try await nearQuote(ctx)
         case .polkadotWeight:
             return try await polkadotQuote(ctx)
-        case .cosmosGas:
-            return try await cosmosQuote(ctx)
         case .aptosGas:
             return try await aptosQuote(ctx)
         }

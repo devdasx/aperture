@@ -67,10 +67,10 @@ enum BitcoinTransactionSigner {
         guard let primary = recipients.first else {
             throw SigningError.malformedDraft("no recipient")
         }
-        guard let byteFeeDec = draft.fee.byteFeeRate, byteFeeDec > 0 else {
-            throw SigningError.malformedDraft("no fee rate")
-        }
-        let byteFee = NSDecimalNumber(decimal: byteFeeDec).int64Value
+        // BUG-017: never truncate fractional sat/vB (or sat/byte) with
+        // `int64Value` — that underpays (1.9 → 1). Ceil for every
+        // Bitcoin-family chain (BTC/BCH/LTC/DOGE share this signer).
+        let byteFee = try integerByteFee(from: draft.fee.byteFeeRate)
         let changeAddress = draft.changeAddress ?? draft.fromAddress
 
         // Primary recipient amount in sats (base units; Bitcoin family
@@ -240,9 +240,24 @@ enum BitcoinTransactionSigner {
     }
 
     /// Display amount → sats (base units) at `decimals`.
+    /// BUG-025: integer-string path (still fits Int64 for BTC-family).
     private static func sats(_ display: Decimal, decimals: Int) -> Int64 {
-        let base = ComposeDecimal.toBaseUnits(display, decimals: decimals)
-        return NSDecimalNumber(decimal: base).int64Value
+        SigningAmount.int64(display: display, decimals: decimals) ?? 0
+    }
+
+    /// BUG-017: integer fee rate for wallet-core `byteFee`.
+    /// Rounds **up** so a custom rate like 1.9 sat/vB never signs as 1.
+    /// Rejects non-positive rates after ceil (relay floor / malformed draft).
+    static func integerByteFee(from rate: Decimal?) throws -> Int64 {
+        guard let rate, rate > 0 else {
+            throw SigningError.malformedDraft("no fee rate")
+        }
+        let ceiled = ComposeDecimal.ceilToInteger(rate)
+        let byteFee = NSDecimalNumber(decimal: ceiled).int64Value
+        guard byteFee > 0 else {
+            throw SigningError.malformedDraft("fee rate must be at least 1 sat/vB after rounding up")
+        }
+        return byteFee
     }
 
     /// Map wallet-core's `CommonSigningError` to an honest reason string

@@ -4,11 +4,16 @@ import Foundation
 /// SYMBOL in the user's currency" calls `unitPrices(symbols:currencyCode:)`
 /// or `crossRate(from:to:)`.
 ///
-/// Wallet balance/history fetching is disabled elsewhere. This actor remains
-/// intentionally live because market prices, token fiat estimates, currency
-/// conversion, and FX are still part of the app.
+/// **BUG-009 / USD-first storage:** live token prices are always fetched and
+/// persisted in **USD** in `cached_prices`. FX rates (1 USD → local) are also
+/// persisted (symbol `USD`, fiat = target). Display currency is derived as
+/// `usdPrice × fxRate`, so switching USD → JOD / EUR never blanks the
+/// portfolio when balances exist.
 actor TokenPricingEngine {
     static let shared = TokenPricingEngine()
+
+    /// Canonical quote currency for persisted token unit prices.
+    static let storageCurrency = "USD"
 
     struct ResolvedPrice: Sendable {
         let amount: Decimal
@@ -76,12 +81,37 @@ actor TokenPricingEngine {
         }
         guard !missing.isEmpty else { return resolved }
 
-        let diskFallbacks = await diskCachedPrices(symbols: missing, currency: currency)
+        // Prefer USD disk cache + FX conversion before network (currency switch).
+        let diskUSD = await diskCachedPrices(symbols: missing, currency: Self.storageCurrency)
+        let diskTarget = await diskCachedPrices(symbols: missing, currency: currency)
         let convertedFallbacks = await diskConvertedPrices(symbols: missing, currency: currency)
-        let usdRate = await usdRate(to: currency) ?? (currency == "USD" ? FXRate(rate: 1, source: "USD", fetchedAt: now) : nil)
+        let usdRate = await usdRate(to: currency)
+            ?? (currency == Self.storageCurrency
+                ? FXRate(rate: 1, source: "USD", fetchedAt: now)
+                : nil)
+
+        // Apply disk USD × FX immediately so UI never goes blank while live
+        // providers refresh.
+        if let usdRate {
+            for symbol in missing {
+                if let usd = diskUSD[symbol], usd.amount > 0 {
+                    let converted = ResolvedPrice(
+                        amount: usd.amount * usdRate.rate,
+                        source: usd.source + " · " + usdRate.source,
+                        isStale: true
+                    )
+                    resolved[symbol] = converted
+                    priceMemory[cacheKey(symbol: symbol, currency: currency)] = CachedPrice(
+                        price: converted,
+                        fetchedAt: now
+                    )
+                }
+            }
+        }
+        resolved.merge(diskTarget) { current, _ in current }
+        resolved.merge(convertedFallbacks) { current, _ in current }
+
         guard let usdRate else {
-            resolved.merge(diskFallbacks) { current, _ in current }
-            resolved.merge(convertedFallbacks) { current, _ in current }
             return resolved
         }
 
@@ -106,7 +136,20 @@ actor TokenPricingEngine {
         usdPrices.merge(binance) { current, _ in current }
         usdPrices.merge(coinbase) { current, _ in current }
 
-        var liveResolved: [String: ResolvedPrice] = [:]
+        // BUG-009: always persist live token prices in USD (source of truth).
+        var liveUSD: [String: ResolvedPrice] = [:]
+        for (underlying, usd) in usdPrices where usd.price > 0 {
+            liveUSD[underlying] = ResolvedPrice(amount: usd.price, source: usd.source, isStale: false)
+        }
+        // Also map requested aliases (WETH → same USD as ETH) for disk keys.
+        for (requested, underlying) in underlyingByRequested {
+            if let usd = usdPrices[underlying] {
+                liveUSD[requested] = ResolvedPrice(amount: usd.price, source: usd.source, isStale: false)
+            }
+        }
+        await persistLivePrices(liveUSD, currency: Self.storageCurrency, now: now)
+
+        var liveDisplay: [String: ResolvedPrice] = [:]
         for symbol in missing {
             var price: ResolvedPrice?
 
@@ -129,19 +172,22 @@ actor TokenPricingEngine {
             }
 
             if price == nil {
-                price = diskFallbacks[symbol] ?? convertedFallbacks[symbol]
+                price = resolved[symbol] // keep disk USD×FX / target fallbacks
             }
 
             if let price {
                 resolved[symbol] = price
                 priceMemory[cacheKey(symbol: symbol, currency: currency)] = CachedPrice(price: price, fetchedAt: now)
                 if !price.isStale {
-                    liveResolved[symbol] = price
+                    liveDisplay[symbol] = price
                 }
             }
         }
 
-        await persistLivePrices(liveResolved, currency: currency, now: now)
+        // Also keep a non-USD display cache for convenience (not the source of truth).
+        if currency != Self.storageCurrency {
+            await persistLivePrices(liveDisplay, currency: currency, now: now)
+        }
         return resolved
     }
 
@@ -326,6 +372,14 @@ actor TokenPricingEngine {
             return cached
         }
 
+        // Disk-first: symbol USD / fiat = local means "units of local per 1 USD".
+        // Currency switch must not blank the portfolio while live FX is in flight.
+        let diskRate = await diskFXRate(to: code)
+        if let diskRate, now.timeIntervalSince(diskRate.fetchedAt) < fxTTL {
+            fxMemory[code] = diskRate
+            return diskRate
+        }
+
         async let coinbaseTask = fetchCoinbaseFX(to: code)
         async let openERTask = fetchOpenERFX(to: code)
         async let frankfurterTask = fetchFrankfurterFX(to: code)
@@ -335,8 +389,49 @@ actor TokenPricingEngine {
         let rate = coinbaseRate ?? openERRate ?? frankfurterRate
         if let rate {
             fxMemory[code] = rate
+            // BUG-009: always persist FX so rebuild/home can convert offline.
+            await persistFXRate(rate, to: code)
+            return rate
         }
-        return rate
+        // Stale disk FX is better than nil (avoids $0 portfolio on switch).
+        if let diskRate {
+            fxMemory[code] = diskRate
+            return diskRate
+        }
+        return nil
+    }
+
+    /// Units of `currencyCode` per 1 USD, loaded from `cached_prices`.
+    private func diskFXRate(to currencyCode: String) async -> FXRate? {
+        guard let database = persistenceDatabase else { return nil }
+        let code = currencyCode.uppercased()
+        guard
+            let row = try? PriceCacheRepository(database: database)
+                .price(symbol: Self.storageCurrency, fiat: code),
+            row.price > 0
+        else { return nil }
+        return FXRate(
+            rate: row.price,
+            source: "Local FX cache",
+            fetchedAt: row.fetchedAt
+        )
+    }
+
+    /// Persist 1 USD → local currency as `cached_prices(symbol: USD, fiat: local)`.
+    private func persistFXRate(_ rate: FXRate, to currencyCode: String) async {
+        guard let database = persistenceDatabase, rate.rate > 0 else { return }
+        let code = currencyCode.uppercased()
+        guard code != Self.storageCurrency else { return }
+        try? PriceCacheRepository(database: database).upsert(
+            symbol: Self.storageCurrency,
+            fiat: code,
+            price: rate.rate,
+            source: rate.source
+        )
+        try? PriceSnapshotRepository(database: database).record(
+            [(symbol: Self.storageCurrency, currencyCode: code, price: rate.rate, source: rate.source)],
+            at: rate.fetchedAt
+        )
     }
 
     // MARK: - Persistence

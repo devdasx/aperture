@@ -20,8 +20,8 @@ import CryptoKit
 ///   parallel.
 /// - **Solana**: a single `getTransaction` (jsonParsed,
 ///   `maxSupportedTransactionVersion: 0`) — returns every field.
-/// - **The 9 others** (XRPL, TRON, TON, NEAR, Aptos, Cosmos/Kava,
-///   Polkadot, Stellar, Sui): a `.generic` labeled key-value list.
+/// - **The others** (XRPL, TRON, TON, NEAR, Aptos, Polkadot, Stellar,
+///   Sui): a `.generic` labeled key-value list.
 ///
 /// **Honesty (Rule #16 / #26).** Returns `nil` on failure — never
 /// fabricates. A chain whose detail can't be hydrated falls back to a
@@ -89,8 +89,6 @@ enum TransactionDetailService {
             return await near(hash: hash, address: address, counterparty: counterparty, client: client)
         case .aptos:
             return await aptos(hash: hash, client: client)
-        case .cosmos:
-            return await cosmos(chain: chain, hash: hash, client: client)
         case .polkadot:
             return await polkadot(idOrHash: hash)
         default:
@@ -1011,79 +1009,6 @@ enum TransactionDetailService {
         return nil
     }
 
-    // MARK: - Cosmos / Kava (.generic)
-
-    /// Cosmos SDK gRPC-gateway `GET /cosmos/tx/v1beta1/txs/{HASH}` (hash
-    /// UPPERCASE hex). code 0 = success.
-    private static func cosmos(chain: SupportedChain, hash: String, client: RPCClient) async -> TransactionDetail? {
-        let upper = hash.uppercased().replacingOccurrences(of: "0X", with: "")
-        guard let data = try? await client.callREST(chain: chain, path: "/cosmos/tx/v1beta1/txs/\(upper)"),
-              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return nil
-        }
-        let txResponse = root["tx_response"] as? [String: Any] ?? [:]
-        let tx = root["tx"] as? [String: Any] ?? [:]
-        let code = intValue(txResponse["code"]) ?? 0
-        let height = int64Value(txResponse["height"])
-        let blockTime = (txResponse["timestamp"] as? String).flatMap { isoFractional.date(from: $0) ?? iso8601.date(from: $0) }
-
-        // fee: auth_info.fee.amount[0] (denom, amount).
-        let authInfo = tx["auth_info"] as? [String: Any] ?? [:]
-        let feeObj = authInfo["fee"] as? [String: Any] ?? [:]
-        let feeEntry = (feeObj["amount"] as? [[String: Any]])?.first
-        let feeAmount = (feeEntry?["amount"] as? String).flatMap { Decimal(string: $0) }
-        let feeDenom = feeEntry?["denom"] as? String
-        // Scale by the FEE DENOM's decimals, NOT chain.nativeDecimals:
-        // ethermint (EVM) txs on Kava pay the fee in `akava` (18 decimals),
-        // while native Cosmos txs pay in the micro-denom `ukava` (6). Using
-        // the chain's 6 for an `akava` fee over-states it 1e12× — live-
-        // verified 2026-06-16: 590070631410000 akava is 0.00059 KAVA, not
-        // 590,070,631 KAVA (finding #2). The raw "Fee" string below keeps the
-        // amount + denom verbatim regardless.
-        let feeNative = feeAmount.map { $0 / scale(decimals: cosmosDenomDecimals(feeDenom)) }
-
-        var fields: [DetailField] = []
-        appendIf(&fields, "Code", String(code))
-        appendIf(&fields, "Height", height.map(String.init))
-        if let messages = tx["body"] as? [String: Any],
-           let msgs = messages["messages"] as? [[String: Any]],
-           let firstType = msgs.first?["@type"] as? String {
-            fields.append(DetailField("Message", firstType))
-        }
-        if let memo = (tx["body"] as? [String: Any])?["memo"] as? String, !memo.isEmpty {
-            fields.append(DetailField("Memo", memo))
-        }
-        appendIf(&fields, "Gas used", int64Value(txResponse["gas_used"]).map(String.init))
-        appendIf(&fields, "Gas wanted", int64Value(txResponse["gas_wanted"]).map(String.init))
-        if let feeAmount, let feeDenom { fields.append(DetailField("Fee", "\(feeAmount) \(feeDenom)")) }
-        appendIf(&fields, "Gas limit", int64Value(feeObj["gas_limit"]).map(String.init))
-
-        return TransactionDetail(
-            hash: hash, chain: chain,
-            status: code == 0 ? .confirmed : .failed,
-            blockNumber: height, blockTime: blockTime, confirmations: nil,
-            feeNative: feeNative, feeTicker: chain.ticker,
-            explorerURL: TransactionExplorer.url(for: hash, chain: chain),
-            payload: .generic(fields)
-        )
-    }
-
-    /// Decimals for a Cosmos fee denom. The SDK convention is a single-letter
-    /// SI prefix on the base denom: `a` = atto (1e-18, ethermint/EVM gas
-    /// denoms like `akava`), `u` = micro (1e-6, the standard Cosmos staking
-    /// denom like `ukava`), `n` = nano (1e-9), `p` = pico (1e-12). Defaults to
-    /// 6 (the micro-denom Cosmos default) when the prefix isn't recognized.
-    private static func cosmosDenomDecimals(_ denom: String?) -> Int {
-        guard let denom, let first = denom.first else { return 6 }
-        switch first {
-        case "a": return 18 // atto — akava and other ethermint gas denoms
-        case "p": return 12 // pico
-        case "n": return 9  // nano
-        case "u": return 6  // micro — ukava and standard Cosmos denoms
-        default:  return 6
-        }
-    }
-
     // MARK: - Polkadot (.generic)
 
     /// Keyless Statescan (Subscan hard-requires a key). The stored txHash
@@ -1374,7 +1299,7 @@ enum TransactionDetailService {
     /// thread-safe, so the `nonisolated(unsafe)` opt-out is sound.
     nonisolated(unsafe) private static let iso8601 = ISO8601DateFormatter()
 
-    /// ISO-8601 WITH fractional seconds (Cosmos `tx_response.timestamp`).
+    /// ISO-8601 WITH fractional seconds (e.g. some REST `timestamp` fields).
     nonisolated(unsafe) private static let isoFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

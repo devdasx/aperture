@@ -286,9 +286,23 @@ enum MarketChartRange: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var coinGeckoDays: String {
+    /// Target lookback window for this UI range (BUG-013).
+    var windowDuration: TimeInterval {
         switch self {
-        case .oneHour, .oneDay: return "1"
+        case .oneHour: return 60 * 60
+        case .oneDay: return 24 * 60 * 60
+        case .oneWeek: return 7 * 24 * 60 * 60
+        case .oneMonth: return 30 * 24 * 60 * 60
+        case .oneYear: return 365 * 24 * 60 * 60
+        }
+    }
+
+    /// CoinGecko `days=` for multi-day charts. **Not used for 1H** — 1H
+    /// uses `/market_chart/range` so it is never aliased to a full day.
+    var coinGeckoDays: String? {
+        switch self {
+        case .oneHour: return nil
+        case .oneDay: return "1"
         case .oneWeek: return "7"
         case .oneMonth: return "30"
         case .oneYear: return "365"
@@ -315,13 +329,76 @@ enum MarketChartRange: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Coinbase Exchange candle granularities (seconds). Must fit the
+    /// window in ≤300 candles (API hard cap).
     var coinbaseGranularity: Int {
         switch self {
-        case .oneHour: return 60
-        case .oneDay: return 900
-        case .oneWeek: return 21_600
-        case .oneMonth, .oneYear: return 86_400
+        case .oneHour: return 60          // 60 × 1m
+        case .oneDay: return 900          // 96 × 15m
+        case .oneWeek: return 3_600       // 168 × 1h
+        case .oneMonth: return 21_600     // 120 × 6h
+        case .oneYear: return 86_400      // ≤300 daily (API max); clip to year
         }
+    }
+}
+
+/// Shared post-processing + provider param helpers for market charts.
+/// Every provider path must end in `clip(_:to:now:)` so a winner that
+/// over-fetches (e.g. CoinGecko `days=1`, Coinbase unbounded candles)
+/// cannot paint a 24h series into the 1H zone.
+enum MarketChartSampling {
+    /// Keep samples inside the range window. Prefers absolute `now`; if
+    /// every point is older (stale snapshot / clock skew), falls back to
+    /// the last point as the window end.
+    static func clip(
+        _ points: [MarketPoint],
+        to range: MarketChartRange,
+        now: Date = Date()
+    ) -> [MarketPoint] {
+        let sorted = points
+            .filter { $0.timestamp.isFinite && $0.price.isFinite && $0.price > 0 }
+            .sorted { $0.timestamp < $1.timestamp }
+        guard !sorted.isEmpty else { return [] }
+
+        let absoluteCutoff = now.timeIntervalSince1970 - range.windowDuration
+        let absolute = sorted.filter { $0.timestamp >= absoluteCutoff }
+        if !absolute.isEmpty { return absolute }
+
+        let end = sorted.last!.timestamp
+        let relativeCutoff = end - range.windowDuration
+        return sorted.filter { $0.timestamp >= relativeCutoff }
+    }
+
+    static func span(of points: [MarketPoint]) -> TimeInterval? {
+        guard let first = points.first?.timestamp,
+              let last = points.last?.timestamp,
+              last > first else { return nil }
+        return last - first
+    }
+
+    /// True when the series covers the zone without looking like a
+    /// longer chart (e.g. 1H must not be ~24h).
+    static func isSpanPlausible(
+        for range: MarketChartRange,
+        points: [MarketPoint],
+        now: Date = Date()
+    ) -> Bool {
+        let clipped = clip(points, to: range, now: now)
+        guard clipped.count >= 2, let span = span(of: clipped) else {
+            return !clipped.isEmpty
+        }
+        // At least a few samples into the window, never more than ~15% over.
+        return span <= range.windowDuration * 1.15
+            && span >= range.windowDuration * 0.05
+    }
+
+    /// Coinbase requires ISO-8601 start/end; without them the API returns
+    /// up to 300 candles of unbounded history (5h of 1m bars for "1H").
+    static func coinbaseTimeBounds(
+        range: MarketChartRange,
+        now: Date = Date()
+    ) -> (start: Date, end: Date) {
+        (now.addingTimeInterval(-range.windowDuration), now)
     }
 }
 
@@ -1570,8 +1647,10 @@ private actor MarketDataService {
         do {
             let conversion = try await usdConversion(to: normalized)
             let points = try await fetchCoinGeckoChart(symbol: symbol, range: range, usdRate: conversion.rate)
-            if !points.isEmpty {
-                return MarketChartResponse(points: points, currencyCode: conversion.currencyCode, source: "CoinGecko · \(conversion.source)")
+            // Providers already clip; re-clip here so any future path stays honest.
+            let clipped = MarketChartSampling.clip(points, to: range)
+            if !clipped.isEmpty {
+                return MarketChartResponse(points: clipped, currencyCode: conversion.currencyCode, source: "CoinGecko · \(conversion.source)")
             }
         } catch {
             errors.append(error)
@@ -1580,8 +1659,9 @@ private actor MarketDataService {
         do {
             let conversion = try await usdConversion(to: normalized)
             let points = try await fetchBinanceChart(symbol: symbol, range: range, usdRate: conversion.rate)
-            if !points.isEmpty {
-                return MarketChartResponse(points: points, currencyCode: conversion.currencyCode, source: "Binance · \(conversion.source)")
+            let clipped = MarketChartSampling.clip(points, to: range)
+            if !clipped.isEmpty {
+                return MarketChartResponse(points: clipped, currencyCode: conversion.currencyCode, source: "Binance · \(conversion.source)")
             }
         } catch {
             errors.append(error)
@@ -1590,8 +1670,9 @@ private actor MarketDataService {
         do {
             let conversion = try await usdConversion(to: normalized)
             let points = try await fetchCoinbaseChart(symbol: symbol, range: range, usdRate: conversion.rate)
-            if !points.isEmpty {
-                return MarketChartResponse(points: points, currencyCode: conversion.currencyCode, source: "Coinbase · \(conversion.source)")
+            let clipped = MarketChartSampling.clip(points, to: range)
+            if !clipped.isEmpty {
+                return MarketChartResponse(points: clipped, currencyCode: conversion.currencyCode, source: "Coinbase · \(conversion.source)")
             }
         } catch {
             errors.append(error)
@@ -1830,21 +1911,35 @@ private actor MarketDataService {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "api.coingecko.com"
-        components.path = "/api/v3/coins/\(descriptor.coinGeckoId)/market_chart"
-        components.queryItems = [
-            URLQueryItem(name: "vs_currency", value: "usd"),
-            URLQueryItem(name: "days", value: range.coinGeckoDays)
-        ]
+
+        // BUG-013: never request days=1 for 1H — that returns ~24h of 5m
+        // points and paints a day chart under the "1H" label. Use the
+        // range endpoint for a true last-hour window; multi-day charts
+        // keep `days=` (CoinGecko auto-picks resolution).
+        if range == .oneHour {
+            let end = Int(Date().timeIntervalSince1970)
+            let start = end - Int(range.windowDuration)
+            components.path = "/api/v3/coins/\(descriptor.coinGeckoId)/market_chart/range"
+            components.queryItems = [
+                URLQueryItem(name: "vs_currency", value: "usd"),
+                URLQueryItem(name: "from", value: "\(start)"),
+                URLQueryItem(name: "to", value: "\(end)")
+            ]
+        } else {
+            guard let days = range.coinGeckoDays else { throw URLError(.badURL) }
+            components.path = "/api/v3/coins/\(descriptor.coinGeckoId)/market_chart"
+            components.queryItems = [
+                URLQueryItem(name: "vs_currency", value: "usd"),
+                URLQueryItem(name: "days", value: days)
+            ]
+        }
+
         let row = try await decode(CoingeckoChart.self, from: components.url!)
         let points = row.prices.compactMap { pair -> MarketPoint? in
             guard pair.count >= 2 else { return nil }
             return MarketPoint(date: Date(timeIntervalSince1970: pair[0] / 1000), price: pair[1] * usdRate)
         }
-        if range == .oneHour {
-            let cutoff = Date().addingTimeInterval(-60 * 60).timeIntervalSince1970
-            return points.filter { $0.timestamp >= cutoff }
-        }
-        return points
+        return MarketChartSampling.clip(points, to: range)
     }
 
     private func fetchBinanceChart(symbol: String, range: MarketChartRange, usdRate: Double) async throws -> [MarketPoint] {
@@ -1862,10 +1957,11 @@ private actor MarketDataService {
             URLQueryItem(name: "limit", value: "\(range.binanceLimit)")
         ]
         let rows = try await decode([BinanceKline].self, from: components.url!)
-        return rows.compactMap { row in
+        let points = rows.compactMap { row -> MarketPoint? in
             guard let close = Double(row.close) else { return nil }
             return MarketPoint(date: Date(timeIntervalSince1970: row.openTime / 1000), price: close * usdRate)
         }
+        return MarketChartSampling.clip(points, to: range)
     }
 
     private func fetchCoinbaseChart(symbol: String, range: MarketChartRange, usdRate: Double) async throws -> [MarketPoint] {
@@ -1873,17 +1969,25 @@ private actor MarketDataService {
               let product = descriptor.coinbaseProduct else {
             throw URLError(.badURL)
         }
+        let bounds = MarketChartSampling.coinbaseTimeBounds(range: range)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
         var components = URLComponents()
         components.scheme = "https"
         components.host = "api.exchange.coinbase.com"
         components.path = "/products/\(product)/candles"
         components.queryItems = [
-            URLQueryItem(name: "granularity", value: "\(range.coinbaseGranularity)")
+            URLQueryItem(name: "granularity", value: "\(range.coinbaseGranularity)"),
+            // BUG-013: without start/end Coinbase returns up to 300 bars of
+            // unbounded history (e.g. 5h of 1m candles under the 1H label).
+            URLQueryItem(name: "start", value: iso.string(from: bounds.start)),
+            URLQueryItem(name: "end", value: iso.string(from: bounds.end))
         ]
         let rows = try await decode([CoinbaseCandle].self, from: components.url!)
-        return rows
+        let points = rows
             .sorted { $0.timestamp < $1.timestamp }
             .map { MarketPoint(date: Date(timeIntervalSince1970: $0.timestamp), price: $0.close * usdRate) }
+        return MarketChartSampling.clip(points, to: range)
     }
 
     private func fetchCoinbaseStats(product: String) async throws -> CoinbaseStats {

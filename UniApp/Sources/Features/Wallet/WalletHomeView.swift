@@ -2488,7 +2488,7 @@ struct WalletHomeView: View {
     /// the rollup line so "3 chains · 5 tokens" refers to what's *held*
     /// rather than what's *supported* (the latter falls back via
     /// `WalletHomeHeader.totalChainsSupported` when no balance exists
-    /// yet, so the user sees "26 chains supported" on a fresh wallet
+    /// yet, so the user sees "N chains supported" on a fresh wallet
     /// instead of "0 chains · 0 tokens").
     private var chainsHeldCount: Int {
         Set(balances.map { $0.chain }).count
@@ -2593,6 +2593,10 @@ struct WalletHomeView: View {
     /// outcome (failed chains, if any) is published on
     /// `WalletRefreshState.shared`, which this view observes to render the
     /// honest network-error surfaces.
+    ///
+    /// **Pull-to-refresh (BUG-015):** the spinner tracks **balances**
+    /// (and prices applied with them) only. History / Electrum history /
+    /// explorers continue in the background after the await returns.
     @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
         guard let walletId = await resolveRefreshWalletId() else { return }
@@ -2601,6 +2605,7 @@ struct WalletHomeView: View {
         }
         if !userInitiated {
             Task {
+                // Balances + prices first, then non-blocking full (history).
                 await WalletBackgroundWorkCoordinator.shared.refreshBalances(
                     walletId: walletId,
                     currencyCode: currencyCode,
@@ -2628,6 +2633,8 @@ struct WalletHomeView: View {
             isRefreshing = false
         }
 
+        // Awaits balancesOnly (balances + prices). Coordinator then starts
+        // a background full refresh for history without holding the spinner.
         await WalletBackgroundWorkCoordinator.shared.refreshBalances(
             walletId: walletId,
             currencyCode: currencyCode,
@@ -2757,13 +2764,15 @@ struct WalletHomeView: View {
             targetCurrencyCode: code,
             ratesBySourceCurrency: crosses
         )) ?? 0
-        if projectedCount > 0 {
-            _ = try? ChainStateRepository(database: AppDatabase.shared)
-                .rebuild(walletId: walletId, fiatCurrencyCode: code)
-            rebuildBalanceMemos()
-            rebuildFilterInputs()
-            rebuildDisplayRows()
-        }
+
+        // BUG-009: always rebuild after a currency switch. Rebuild converts via
+        // USD unit prices × FX (or keeps last non-zero fiat) — never leave
+        // chain_states stamped with total_fiat = 0 while balances exist.
+        _ = try? ChainStateRepository(database: AppDatabase.shared)
+            .rebuild(walletId: walletId, fiatCurrencyCode: code)
+        rebuildBalanceMemos()
+        rebuildFilterInputs()
+        rebuildDisplayRows()
 
         let pnlFXRate: Decimal?
         if code == "USD" {
@@ -2781,6 +2790,7 @@ struct WalletHomeView: View {
 
         let symbols = (try? projectionRepository.tokenSymbols(walletId: walletId)) ?? []
         guard !symbols.isEmpty else { return }
+        // unitPrices always persists token quotes in USD and FX rates in DB.
         let prices = await TokenPricingEngine.shared.unitPrices(
             symbols: Array(symbols),
             currencyCode: code
@@ -2796,7 +2806,9 @@ struct WalletHomeView: View {
             targetCurrencyCode: code,
             unitPricesBySymbol: unitPrices
         )) ?? 0
-        if liveChanged > 0 || projectedCount > 0 {
+        // Refine chain totals after live USD×FX pricing (always rebuild so
+        // even a pure FX cache hit updates the portfolio summary).
+        if liveChanged > 0 || projectedCount > 0 || !unitPrices.isEmpty {
             _ = try? ChainStateRepository(database: AppDatabase.shared)
                 .rebuild(walletId: walletId, fiatCurrencyCode: code)
             rebuildBalanceMemos()
@@ -3011,6 +3023,12 @@ private struct BalanceCardLiveSection: View {
     /// scanners write `TokenBalanceRecord`, the local reconciliation task
     /// rebuilds `ChainStateRecord`, and the card sums those persisted
     /// per-chain rows for the active wallet/currency.
+    ///
+    /// BUG-009: when the user just switched currency, chain_states may still
+    /// carry the previous `fiat_currency_code` until rebuild finishes. Prefer
+    /// matching-currency rows/summary; if none exist yet, fall back to any
+    /// last-known total for this wallet so the hero never flashes $0 while
+    /// balances are non-zero.
     private var totalFiat: Decimal {
         guard let walletId else { return 0 }
         if let summary = portfolioSummaries.first(where: {
@@ -3020,11 +3038,16 @@ private struct BalanceCardLiveSection: View {
             return summary.totalFiat
         }
 
+        let matching = chainStateRecords.filter {
+            $0.walletId == walletId
+            && $0.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
+        }
+        if !matching.isEmpty {
+            return matching.reduce(Decimal.zero) { $0 + $1.totalFiat }
+        }
+
         return chainStateRecords
-            .filter {
-                $0.walletId == walletId
-                && $0.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
-            }
+            .filter { $0.walletId == walletId }
             .reduce(Decimal.zero) { $0 + $1.totalFiat }
     }
 

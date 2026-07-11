@@ -17,7 +17,7 @@ import UIKit
 /// chips; the Send sheet chrome itself owns any system presentation material.
 ///
 /// **Multi-recipient.** Chains whose protocol can pay many recipients in
-/// one transaction (UTXO, Solana, Stellar, TON, Cosmos, Sui, Polkadot,
+/// one transaction (UTXO, Solana, Stellar, TON, Sui, Polkadot,
 /// Aptos — see `ChainSendCapability`) get the add-more-addresses list,
 /// each card independently validated/resolved. Single-recipient chains
 /// (EVM, TRON, XRPL, NEAR) keep one card.

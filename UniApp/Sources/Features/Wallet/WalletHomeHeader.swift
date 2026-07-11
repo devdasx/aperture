@@ -26,7 +26,7 @@ struct WalletHomeHeader: View {
     let tokenCount: Int
     /// Total chains the wallet has addresses derived for (a fresh
     /// HD wallet has all 24 supported chains here). Used as the
-    /// fallback "26 chains supported" line when `hasAnyBalance` is
+    /// fallback "N chains supported" line when `hasAnyBalance` is
     /// false — calmer than rendering "0 chains · 0 tokens" while the
     /// scanner is still working / the wallet is empty.
     let totalChainsSupported: Int
@@ -59,7 +59,7 @@ struct WalletHomeHeader: View {
 
             balanceLabel
 
-            // rollupLine ("1 chain · 1 token" / "26 chains
+            // rollupLine ("1 chain · 1 token" / "N chains
             // supported" / "Refreshing…" / "Last synced X ago")
             // removed 2026-06-09 per user direction. Balance card
             // now hosts only the hero number — the chart sitting
@@ -161,7 +161,7 @@ struct WalletHomeHeader: View {
             .font(UniTypography.footnote)
             .foregroundStyle(UniColors.Text.tertiary)
         } else if totalChainsSupported > 0 {
-            // Fresh wallet, no balances scanned yet. "26 chains
+            // Fresh wallet, no balances scanned yet. "N chains
             // supported" reads as calm capability rather than
             // "0 chains · 0 tokens" which reads as failure.
             Text("^[\(totalChainsSupported) chain](inflect: true) supported")

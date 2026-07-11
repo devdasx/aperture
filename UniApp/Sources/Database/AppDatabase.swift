@@ -8,7 +8,11 @@ final class AppDatabase: @unchecked Sendable {
 
     let pool: DatabasePool
     let storeURL: URL
+    /// True when the open store is under a temporary / non-durable path.
+    /// **BUG-020 / P0-001:** user-facing writes are refused while this is set.
     let isInMemoryFallback: Bool
+    /// Non-nil when this process opened via quarantine/replace or ephemeral fallback.
+    let recoveryIncident: DatabaseRecoveryIncident?
 
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "database")
     private static let transitionWipeMarkerFileName = ".aperture-grdb-transition-v1"
@@ -18,29 +22,41 @@ final class AppDatabase: @unchecked Sendable {
         storeURL = opened.url
         pool = opened.pool
         isInMemoryFallback = opened.isFallback
+        recoveryIncident = opened.recoveryIncident
 
         WalletSecretCrypto.configure(database: self)
         ChainKeyVault.configure(database: self)
         DiagnosticsLogStore.shared.configure(database: self)
-        if let recoveryReason = opened.recoveryReason {
+        if let recovery = opened.recoveryIncident {
             DiagnosticsLogStore.shared.record(
                 .warning,
                 category: "database",
-                message: "GRDB database recovered",
-                metadata: ["store": opened.url.path, "reason": recoveryReason]
+                message: "GRDB database recovered — user acknowledgement required",
+                metadata: [
+                    "store": opened.url.path,
+                    "reason": recovery.reason,
+                    "kind": recovery.kind.rawValue,
+                    "quarantine": recovery.quarantineDirectoryPath ?? "",
+                    "fallback": opened.isFallback ? "true" : "false",
+                ]
             )
         }
         DiagnosticsLogStore.shared.record(
             .info,
             category: "database",
             message: "GRDB database opened",
-            metadata: ["store": opened.url.path, "fallback": opened.isFallback ? "true" : "false"]
+            metadata: [
+                "store": opened.url.path,
+                "fallback": opened.isFallback ? "true" : "false",
+                "recoveryPending": opened.recoveryIncident?.needsUserAcknowledgement == true ? "true" : "false",
+            ]
         )
     }
 
     init(testStoreURL url: URL, seedSingletonRows: Bool = true) throws {
         storeURL = url
         isInMemoryFallback = false
+        recoveryIncident = nil
         try Self.prepareDirectory(for: url)
         try Self.deleteSQLiteFiles(at: url)
         pool = try Self.openPool(at: url)
@@ -57,19 +73,48 @@ final class AppDatabase: @unchecked Sendable {
         try Self.markExcludedFromBackup(url)
     }
 
-    @MainActor
-    func bootstrap() {
-        do {
+    /// Test / diagnostics helper: open an existing store URL as an ephemeral
+    /// (write-restricted) database without running recovery UI side effects.
+    init(ephemeralTestStoreURL url: URL) throws {
+        storeURL = url
+        isInMemoryFallback = true
+        recoveryIncident = DatabaseRecoveryIncident(
+            kind: .ephemeralFallback,
+            reason: "test-ephemeral",
+            quarantineDirectoryPath: nil,
+            storePath: url.path,
+            createdAtMs: Date.databaseMilliseconds,
+            acknowledged: false
+        )
+        try Self.prepareDirectory(for: url)
+        pool = try Self.openPool(at: url)
+        try Self.migrator.migrate(pool)
         try pool.write { db in
-            try AppDatabase.ensureSingletonRows(db)
+            try Self.ensureSingletonRows(db)
         }
         WalletSecretCrypto.configure(database: self)
         ChainKeyVault.configure(database: self)
         DiagnosticsLogStore.shared.configure(database: self)
-        AppPreferenceStore.shared.configure(database: self)
-        ActiveWalletPointer.configure(database: self)
+    }
+
+    @MainActor
+    func bootstrap() {
+        do {
+            // Bootstrap may run on an ephemeral store; use unrestricted pool
+            // writes so singleton rows exist for preferences. User paths go
+            // through `write` and are refused when `isInMemoryFallback`.
+            try pool.write { db in
+                try AppDatabase.ensureSingletonRows(db)
+            }
+            WalletSecretCrypto.configure(database: self)
+            ChainKeyVault.configure(database: self)
+            DiagnosticsLogStore.shared.configure(database: self)
+            AppPreferenceStore.shared.configure(database: self)
+            ActiveWalletPointer.configure(database: self)
+            DatabaseRecoveryGate.shared.refresh(from: self)
             Task(priority: .utility) {
                 do {
+                    // Seeding catalog on ephemeral is OK (rebuilt next launch).
                     try AssetCatalogSeeder.seed(database: self)
                     SigningKeyProvider.configure(database: self)
                     DiagnosticsLogStore.shared.record(.debug, category: "database", message: "GRDB bootstrap finished")
@@ -98,8 +143,21 @@ final class AppDatabase: @unchecked Sendable {
         try pool.read(block)
     }
 
+    /// User-data writes. **BUG-020 / P0-001:** refused when the open store is
+    /// ephemeral (`isInMemoryFallback`) so wallets are never created on a
+    /// temp file that can vanish after reboot.
     func write<T>(_ block: (Database) throws -> T) throws -> T {
-        try pool.write(block)
+        try ensureUserWritesAllowed()
+        return try pool.write(block)
+    }
+
+    /// Whether wallet create/import/secret/sign persistence may proceed.
+    var allowsUserWrites: Bool { !isInMemoryFallback }
+
+    func ensureUserWritesAllowed() throws {
+        guard allowsUserWrites else {
+            throw AppDatabaseError.writesDisabledEphemeralStore
+        }
     }
 
     func tableCount(_ table: String) throws -> Int {
@@ -150,9 +208,11 @@ final class AppDatabase: @unchecked Sendable {
         let url: URL
         let pool: DatabasePool
         let isFallback: Bool
-        let recoveryReason: String?
+        let recoveryIncident: DatabaseRecoveryIncident?
     }
 
+    /// Open the primary store, or recover with an explicit user-facing
+    /// incident (never a silent empty launch — BUG-020 / P0-001).
     private static func openBestEffortStore() -> OpenedStore {
         do {
             let url = try defaultStoreURL()
@@ -160,13 +220,38 @@ final class AppDatabase: @unchecked Sendable {
             try runFreshGRDBTransitionWipeIfNeeded(storeURL: url)
             do {
                 let pool = try bootstrapPool(at: url)
-                return OpenedStore(url: url, pool: pool, isFallback: false, recoveryReason: nil)
+                // Healthy permanent store — drop stale ephemeral recovery markers.
+                DatabaseRecoveryIncident.clearIfPermanentStoreHealthy()
+                // Still show UI if a prior quarantine recovery is unacknowledged.
+                if let pending = DatabaseRecoveryIncident.loadPending(),
+                   pending.needsUserAcknowledgement,
+                   pending.kind == .quarantinedAndReplaced {
+                    return OpenedStore(url: url, pool: pool, isFallback: false, recoveryIncident: pending)
+                }
+                return OpenedStore(url: url, pool: pool, isFallback: false, recoveryIncident: nil)
             } catch {
                 let reason = String(describing: error)
-                try? quarantineSQLiteFiles(at: url, reason: reason)
+                let quarantineURL = try? quarantineSQLiteFiles(at: url, reason: reason)
+                // Secrets in the quarantined file are no longer addressable from
+                // a new empty DB; purge legacy Keychain material so we never
+                // mix old keys with a blank store.
                 FreshInstallGuard.purgeAllKnownKeychainServicesForDatabaseReplacement()
                 let pool = try bootstrapPool(at: url)
-                return OpenedStore(url: url, pool: pool, isFallback: false, recoveryReason: reason)
+                let incident = DatabaseRecoveryIncident(
+                    kind: .quarantinedAndReplaced,
+                    reason: reason,
+                    quarantineDirectoryPath: quarantineURL?.path,
+                    storePath: url.path,
+                    createdAtMs: Date.databaseMilliseconds,
+                    acknowledged: false
+                )
+                DatabaseRecoveryIncident.record(
+                    kind: .quarantinedAndReplaced,
+                    reason: reason,
+                    quarantineDirectory: quarantineURL,
+                    storeURL: url
+                )
+                return OpenedStore(url: url, pool: pool, isFallback: false, recoveryIncident: incident)
             }
         } catch {
             let fallbackReason = String(describing: error)
@@ -174,17 +259,51 @@ final class AppDatabase: @unchecked Sendable {
             do {
                 try prepareDirectory(for: fallbackURL)
                 let pool = try bootstrapPool(at: fallbackURL)
-                return OpenedStore(url: fallbackURL, pool: pool, isFallback: true, recoveryReason: fallbackReason)
+                let incident = DatabaseRecoveryIncident(
+                    kind: .ephemeralFallback,
+                    reason: fallbackReason,
+                    quarantineDirectoryPath: nil,
+                    storePath: fallbackURL.path,
+                    createdAtMs: Date.databaseMilliseconds,
+                    acknowledged: false
+                )
+                DatabaseRecoveryIncident.record(
+                    kind: .ephemeralFallback,
+                    reason: fallbackReason,
+                    quarantineDirectory: nil,
+                    storeURL: fallbackURL
+                )
+                return OpenedStore(
+                    url: fallbackURL,
+                    pool: pool,
+                    isFallback: true,
+                    recoveryIncident: incident
+                )
             } catch {
                 let lastResortURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent("aperture-last-resort-\(UUID().uuidString).sqlite", isDirectory: false)
                 try? prepareDirectory(for: lastResortURL)
                 if let pool = try? bootstrapPool(at: lastResortURL) {
+                    let combined = "\(fallbackReason); fallback failed: \(String(describing: error))"
+                    let incident = DatabaseRecoveryIncident(
+                        kind: .ephemeralFallback,
+                        reason: combined,
+                        quarantineDirectoryPath: nil,
+                        storePath: lastResortURL.path,
+                        createdAtMs: Date.databaseMilliseconds,
+                        acknowledged: false
+                    )
+                    DatabaseRecoveryIncident.record(
+                        kind: .ephemeralFallback,
+                        reason: combined,
+                        quarantineDirectory: nil,
+                        storeURL: lastResortURL
+                    )
                     return OpenedStore(
                         url: lastResortURL,
                         pool: pool,
                         isFallback: true,
-                        recoveryReason: "\(fallbackReason); fallback failed: \(String(describing: error))"
+                        recoveryIncident: incident
                     )
                 }
                 Darwin.exit(EXIT_FAILURE)
@@ -209,7 +328,10 @@ final class AppDatabase: @unchecked Sendable {
             .appendingPathComponent("aperture-recovered-\(UUID().uuidString).sqlite", isDirectory: false)
     }
 
-    private static func quarantineSQLiteFiles(at url: URL, reason: String) throws {
+    /// Move the broken store (+ WAL/SHM/journal) into `CorruptStore-<ms>/`.
+    /// Returns the quarantine directory when any file was moved; otherwise nil.
+    @discardableResult
+    private static func quarantineSQLiteFiles(at url: URL, reason: String) throws -> URL? {
         let fm = FileManager.default
         let directory = url.deletingLastPathComponent()
         let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
@@ -226,9 +348,20 @@ final class AppDatabase: @unchecked Sendable {
 
         if movedAnyFile {
             let reasonURL = quarantineDirectory.appendingPathComponent("reason.txt", isDirectory: false)
-            try reason.write(to: reasonURL, atomically: true, encoding: .utf8)
+            let body = """
+            Aperture quarantined this wallet database because it could not be opened safely.
+
+            Technical reason:
+            \(reason)
+
+            Do not rename these files. Export this folder from the recovery screen
+            and keep it with your recovery phrase if support asks for it.
+            """
+            try body.write(to: reasonURL, atomically: true, encoding: .utf8)
+            return quarantineDirectory
         } else {
             try? fm.removeItem(at: quarantineDirectory)
+            return nil
         }
     }
 
@@ -1082,6 +1215,17 @@ extension String {
     }
 }
 
-private enum AppDatabaseError: Error {
+enum AppDatabaseError: Error, Equatable, Sendable {
     case integrityCheckFailed(String)
+    /// BUG-020 / P0-001: open store is temporary — refuse wallet writes.
+    case writesDisabledEphemeralStore
+
+    var userMessage: String {
+        switch self {
+        case .integrityCheckFailed:
+            return "Wallet data on this device could not be verified."
+        case .writesDisabledEphemeralStore:
+            return "Aperture cannot save wallets right now — permanent storage is unavailable. Free disk space, reinstall, or restore from your recovery phrase on a healthy device."
+        }
+    }
 }

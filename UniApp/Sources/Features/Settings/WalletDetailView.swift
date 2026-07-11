@@ -55,6 +55,8 @@ struct WalletDetailView: View {
         let walletName: String
         let words: [String]
         let avatar: WalletAvatarSpec?
+        /// P0-003: BIP-39 passphrase flag for the iCloud blob.
+        let hasPassphrase: Bool
         let startingMethod: WalletBackupMethod
     }
 
@@ -363,6 +365,7 @@ struct WalletDetailView: View {
             ExportRecoveryPhraseFlow(
                 walletId: wallet.id,
                 walletName: wallet.name,
+                hasPassphrase: wallet.hasPassphrase,
                 onClose: { isShowingPhrase = false }
             )
             .uniAppEnvironment()
@@ -398,6 +401,7 @@ struct WalletDetailView: View {
                 walletName: presentation.walletName,
                 words: presentation.words,
                 avatar: presentation.avatar, // carry the user's chosen disc into the backup
+                hasPassphrase: presentation.hasPassphrase,
                 startingMethod: presentation.startingMethod,
                 onClose: {
                     walletBackupPresentation = nil
@@ -926,6 +930,7 @@ struct WalletDetailView: View {
             walletName: wallet.name,
             words: words,
             avatar: wallet.avatarSpec,
+            hasPassphrase: wallet.hasPassphrase,
             startingMethod: method
         )
     }

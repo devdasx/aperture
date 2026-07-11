@@ -310,9 +310,11 @@ enum SigningKeyProvider {
                 }
             }
 
+            // BUG-016: gap 20 (not 50) for receive/change fallback discovery.
+            let gap = BitcoinFamilyAddressBook.gapLimit
             for purpose in bitcoinPurposes(for: chain) {
                 for branch in 0...1 {
-                    for index in 0..<50 {
+                    for index in 0..<gap {
                         if requiredAddresses.isSubset(of: covered) { break }
                         let path = "m/\(purpose)'/\(coinId)'/0'/\(branch)/\(index)"
                         let key = hdWallet.getKey(coin: coin, derivationPath: path)
@@ -422,6 +424,20 @@ enum SigningKeyProvider {
         requiredAddresses: Set<String>
     ) -> [String: String] {
         guard !requiredAddresses.isEmpty, let database = databaseBox.get() else { return [:] }
+        let all = loadAllBitcoinAddressPaths(walletId: walletId, chain: chain)
+        var result: [String: String] = [:]
+        for address in requiredAddresses {
+            if let path = all[address] { result[address] = path }
+        }
+        return result
+    }
+
+    /// All persisted Bitcoin-family address → path mappings for a wallet.
+    private static func loadAllBitcoinAddressPaths(
+        walletId: UUID,
+        chain: SupportedChain
+    ) -> [String: String] {
+        guard let database = databaseBox.get() else { return [:] }
         let rows = (try? database.read { db in
             try Row.fetchAll(
                 db,
@@ -436,7 +452,6 @@ enum SigningKeyProvider {
         var result: [String: String] = [:]
         for row in rows {
             let address: String = row["address"]
-            guard requiredAddresses.contains(address) else { continue }
             let path: String = row["derivation_path"]
             if !path.isEmpty { result[address] = path }
         }

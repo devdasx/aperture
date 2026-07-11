@@ -21,7 +21,6 @@ struct SendFeeSheet: View {
     @State private var customGasPriceGwei = ""     // EVM legacy gasPrice (gwei)
     @State private var customSolPriority = ""      // Solana µ-lamports/CU
     @State private var customStellarPerOp = ""     // Stellar stroops/op
-    @State private var customCosmosGasPrice = ""   // Cosmos ukava/gas
 
     private var quote: FeeQuote? { model.feeQuote }
 
@@ -208,10 +207,6 @@ struct SendFeeSheet: View {
             // Stellar's lever is the per-operation base-fee bid in stroops
             // (min 100/op; developers.stellar.org fee-stats).
             customField("Fee per operation", text: $customStellarPerOp, suffix: "stroops")
-        case .cosmosGas:
-            // Cosmos (Kava) lever is the gas price in ukava/gas (chain-registry
-            // tiers; node floor 0.001 ukava/gas).
-            customField("Gas price", text: $customCosmosGasPrice, suffix: "ukava/gas")
         default:
             // Other models expose no meaningful custom numeric lever from
             // this screen (gated off via `isCustomAllowed == false`, so this
@@ -297,9 +292,6 @@ struct SendFeeSheet: View {
         if customStellarPerOp.isEmpty, let s = normal.stellarPerOpStroops {
             customStellarPerOp = SendComposeModel.plainString(s, decimals: 0)
         }
-        if customCosmosGasPrice.isEmpty, let g = normal.cosmosGasPrice {
-            customCosmosGasPrice = SendComposeModel.plainString(g, decimals: 4)
-        }
     }
 
     /// Build the custom `FeeChoice` from the typed fields (only when the
@@ -334,8 +326,6 @@ struct SendFeeSheet: View {
         custom.solanaBaseFeeLamports = base.solanaBaseFeeLamports
         custom.stellarPerOpStroops = base.stellarPerOpStroops
         custom.stellarOpCount = base.stellarOpCount
-        custom.cosmosGasLimit = base.cosmosGasLimit
-        custom.cosmosGasPrice = base.cosmosGasPrice
 
         switch quote.feeModel {
         case .utxoByteFee, .utxoByteFeeNoWitness, .dogecoinFixedPerKB:
@@ -375,11 +365,6 @@ struct SendFeeSheet: View {
             guard let bid = SendComposeModel.parseAmount(customStellarPerOp), bid > 0 else { return }
             custom.stellarPerOpStroops = max(bid, 100)
             custom = ComposeFeeService.recomputeStellarTotals(custom, decimals: dec)
-        case .cosmosGas:
-            // Custom gas price in ukava/gas (clamp ≥ 0.001 node floor).
-            guard let price = SendComposeModel.parseAmount(customCosmosGasPrice), price > 0 else { return }
-            custom.cosmosGasPrice = max(price, Decimal(string: "0.001")!)
-            custom = ComposeFeeService.recomputeCosmosTotals(custom, decimals: dec)
         default:
             return
         }

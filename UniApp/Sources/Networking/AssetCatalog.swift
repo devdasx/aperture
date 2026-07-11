@@ -21,7 +21,7 @@ struct CatalogAsset: Sendable, Hashable, Identifiable {
     /// On-chain identifier used for the held-balance lookup: EVM
     /// contract / SPL mint / TRC-20 contract / NEP-141 account / Aptos
     /// metadata / Sui coin type / Polkadot assetId (as string) /
-    /// XRPL "currency.issuer" / TON master contract / Cosmos denom.
+    /// XRPL "currency.issuer" / TON master contract / Polkadot asset id.
     let contract: String
     let decimals: Int
 }

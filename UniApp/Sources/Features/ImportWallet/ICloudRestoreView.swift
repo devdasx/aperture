@@ -31,8 +31,14 @@ struct ICloudRestoreView: View {
     @State private var isDeletingBackups = false
     @State private var deleteErrorMessage: String?
     @State private var password = ""
+    /// BIP-39 passphrase (not the backup password). Required when the blob
+    /// was flagged `hasPassphrase` (P0-003).
+    @State private var bip39Passphrase = ""
+    /// Legacy backups without the flag: optional advanced field.
+    @State private var showOptionalPassphrase = false
     @State private var isWorking = false
     @State private var passwordError = false
+    @State private var passphraseError: String?
 
     private let store = CloudKitBackupStore()
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "icloud-restore")
@@ -424,7 +430,7 @@ struct ICloudRestoreView: View {
                     }
 
                     UniTextField(
-                        placeholder: "Password",
+                        placeholder: "Backup password",
                         text: $password,
                         directionPolicy: .forceLTR,
                         isSecure: true,
@@ -439,6 +445,20 @@ struct ICloudRestoreView: View {
                             .foregroundStyle(UniColors.Feedback.Error.foreground)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+
+                    // P0-003: BIP-39 passphrase is separate from the backup password.
+                    if blob.requiresBIP39Passphrase {
+                        passphraseRequiredSection
+                    } else {
+                        passphraseOptionalSection
+                    }
+
+                    if let passphraseError {
+                        Text(verbatim: passphraseError)
+                            .font(UniTypography.footnote)
+                            .foregroundStyle(UniColors.Feedback.Error.foreground)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
@@ -448,7 +468,7 @@ struct ICloudRestoreView: View {
                 title: "Restore wallet",
                 variant: .primary,
                 isLoading: isWorking,
-                isEnabled: !password.isEmpty && !isWorking
+                isEnabled: canSubmitRestore(for: blob) && !isWorking
             ) {
                 Task { await restore(blob) }
             }
@@ -456,6 +476,85 @@ struct ICloudRestoreView: View {
             .padding(.top, UniSpacing.s)
             .padding(.bottom, UniSpacing.m)
         }
+        .onAppear {
+            // Reset passphrase UI when opening a different backup.
+            bip39Passphrase = ""
+            showOptionalPassphrase = false
+            passphraseError = nil
+            passwordError = false
+        }
+    }
+
+    private var passphraseRequiredSection: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            Text("BIP-39 passphrase required")
+                .font(UniTypography.subheadlineEmphasized)
+                .foregroundStyle(UniColors.Text.primary)
+            Text("This wallet was created with a BIP-39 passphrase (sometimes called a 25th word). It is not your backup password. Leaving it blank restores a different empty wallet.")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            UniTextField(
+                placeholder: "BIP-39 passphrase",
+                text: $bip39Passphrase,
+                directionPolicy: .forceLTR,
+                isSecure: true,
+                showsRevealToggle: true,
+                contentType: .password
+            )
+            .onChange(of: bip39Passphrase) { _, _ in passphraseError = nil }
+        }
+        .padding(UniSpacing.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(UniColors.Card.elevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var passphraseOptionalSection: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showOptionalPassphrase.toggle()
+                    if !showOptionalPassphrase {
+                        bip39Passphrase = ""
+                        passphraseError = nil
+                    }
+                }
+            } label: {
+                HStack {
+                    Text("I used a BIP-39 passphrase")
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.secondary)
+                    Spacer()
+                    Image(systemName: showOptionalPassphrase ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(UniColors.Text.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if showOptionalPassphrase {
+                Text("Only for wallets created with an extra passphrase. Most users leave this blank. A wrong passphrase restores the wrong (empty) addresses.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                UniTextField(
+                    placeholder: "BIP-39 passphrase (optional)",
+                    text: $bip39Passphrase,
+                    directionPolicy: .forceLTR,
+                    isSecure: true,
+                    showsRevealToggle: true,
+                    contentType: .password
+                )
+            }
+        }
+    }
+
+    private func canSubmitRestore(for blob: WalletBackupBlob) -> Bool {
+        guard !password.isEmpty else { return false }
+        if blob.requiresBIP39Passphrase {
+            return !bip39Passphrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return true
     }
 
     // MARK: - Load + restore
@@ -499,6 +598,26 @@ struct ICloudRestoreView: View {
         guard !isWorking else { return }
         isWorking = true
         defer { isWorking = false }
+        passphraseError = nil
+        passwordError = false
+
+        // P0-003: never silently derive with "" when the backup requires a
+        // BIP-39 passphrase — that would create a different empty wallet.
+        let resolvedPassphrase: String
+        do {
+            resolvedPassphrase = try WalletBackupBlob.resolvedPassphrase(
+                hasPassphrase: blob.hasPassphrase,
+                passphrase: bip39Passphrase
+            )
+        } catch let error as RestorePassphraseError {
+            passphraseError = error.userMessage
+            UniHapticEngine.shared.play(.warning)
+            return
+        } catch {
+            passphraseError = String.apertureLocalized("Enter your BIP-39 passphrase to restore this wallet.")
+            UniHapticEngine.shared.play(.warning)
+            return
+        }
 
         let pw = password
         // Decrypt off-main (PBKDF2 600k). A wrong password throws .openFailed.
@@ -513,12 +632,20 @@ struct ICloudRestoreView: View {
             return
         }
 
-        // Bring it in through the canonical mnemonic-import path.
+        // Bring it in through the canonical mnemonic-import path with the
+        // correct BIP-39 passphrase (empty only when the wallet never used one).
         state.mnemonicWordCount = words.count == 24 ? .twentyFour : .twelve
         state.mnemonicWords = words
+        state.mnemonicPassphrase = resolvedPassphrase
         state.derivedAddressesFromMnemonic = await state.service.deriveAddresses(
-            mnemonic: words, passphrase: ""
+            mnemonic: words, passphrase: resolvedPassphrase
         )
+
+        guard !state.derivedAddressesFromMnemonic.isEmpty else {
+            passphraseError = String.apertureLocalized("Couldn't derive addresses for this phrase. Check the passphrase and try again.")
+            UniHapticEngine.shared.play(.warning)
+            return
+        }
 
         let repo = WalletCommandRepository()
         do {
@@ -532,6 +659,7 @@ struct ICloudRestoreView: View {
                 _ = try? await repo.updateAvatar(id: walletId, spec: avatar)
             }
             state.zeroSensitiveInput()
+            bip39Passphrase = ""
             UniHapticEngine.shared.play(.contextualImpact(.consequential))
             onImported(walletId)
         } catch WalletCommandRepositoryError.alreadyImported(let match) {

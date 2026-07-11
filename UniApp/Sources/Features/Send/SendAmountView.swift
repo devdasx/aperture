@@ -339,7 +339,7 @@ struct SendAmountView: View {
                           systemImage: "text.bubble")
                 }
             }
-        case .textMemo, .cosmosMemo, .splMemo, .stellarMemo:
+        case .textMemo, .splMemo, .stellarMemo:
             Button { isShowingMemoSheet = true } label: {
                 Label(model.hasMemoValue ? "Edit memo" : "Add a memo",
                       systemImage: "text.bubble")

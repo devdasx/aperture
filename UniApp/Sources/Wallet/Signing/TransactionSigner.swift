@@ -7,12 +7,9 @@ import WalletCore
 /// returns a `SignedTransaction`. Adapted from Stabro's
 /// `TransactionSigner.sign(privateKey:request:network:)` family switch.
 ///
-/// **PASS 1 wired `.evm` (12 chains) + `.bitcoin` (4 chains).**
-/// **PASS 2 closes the set — the remaining 10 chains across 8 families
-/// (ed25519: Solana/Stellar/Sui; tron; cosmos: Kava; aptos; near;
-/// polkadot; ton; ripple).** Every branch now builds the chain's real
-/// wallet-core SigningInput; there is no `.chainNotWired` seam left —
-/// the dispatcher covers all 26 supported chains.
+/// Covers all **24** supported chains: Bitcoin family (4), EVM (11),
+/// ed25519 (Solana/Stellar/Sui), TRON, Aptos, NEAR, Polkadot, TON, XRP.
+/// There is no Cosmos/Kava path — that orphan stack was removed (BUG-012).
 ///
 /// Pure compute, `nonisolated` — invoked off-main by the executor.
 enum TransactionSigner {
@@ -110,12 +107,6 @@ enum TransactionSigner {
         /// Reference gas price from `suix_getReferenceGasPrice` (MIST).
         let suiReferenceGasPrice: UInt64?
 
-        // MARK: Cosmos (Kava)
-        /// `cosmos/auth/.../accounts.account_number`.
-        let cosmosAccountNumber: UInt64?
-        /// `cosmos/auth/.../accounts.sequence`.
-        let cosmosSequence: UInt64?
-
         init(
             evmNonce: UInt64? = nil,
             bitcoinUTXOs: [SelectedUTXO]? = nil,
@@ -144,9 +135,7 @@ enum TransactionSigner {
             aptosGasUnitPrice: UInt64? = nil,
             suiInputCoins: [SuiCoinRef]? = nil,
             suiGasCoin: SuiCoinRef? = nil,
-            suiReferenceGasPrice: UInt64? = nil,
-            cosmosAccountNumber: UInt64? = nil,
-            cosmosSequence: UInt64? = nil
+            suiReferenceGasPrice: UInt64? = nil
         ) {
             self.evmNonce = evmNonce
             self.bitcoinUTXOs = bitcoinUTXOs
@@ -176,8 +165,6 @@ enum TransactionSigner {
             self.suiInputCoins = suiInputCoins
             self.suiGasCoin = suiGasCoin
             self.suiReferenceGasPrice = suiReferenceGasPrice
-            self.cosmosAccountNumber = cosmosAccountNumber
-            self.cosmosSequence = cosmosSequence
         }
     }
 
@@ -219,8 +206,6 @@ enum TransactionSigner {
                 )
             }
 
-        // MARK: - PASS 2 — the remaining 10 chains, real wallet-core signers
-
         case .ed25519:   // Solana, Stellar, Sui
             return try signEd25519(draft: draft, wallet: wallet, jit: jit, passphrase: passphrase)
 
@@ -230,14 +215,6 @@ enum TransactionSigner {
                 expectedAddress: draft.fromAddress
             ) { key in
                 try TronTransactionSigner.sign(draft: draft, jit: jit, privateKey: key)
-            }
-
-        case .cosmos:    // Kava (Cosmos)
-            return try SigningKeyProvider.withPrivateKey(
-                wallet: wallet, chain: draft.chain, passphrase: passphrase,
-                expectedAddress: draft.fromAddress
-            ) { key in
-                try CosmosTransactionSigner.sign(draft: draft, jit: jit, privateKey: key)
             }
 
         case .aptos:

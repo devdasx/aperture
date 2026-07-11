@@ -38,8 +38,7 @@ extension ComposeFeeService {
             l1DataFee = try await fetchOpStackL1Fee(ctx, gasLimit: gasLimit)
         }
 
-        // Per-chain tip floors (matrix): Polygon 25 gwei, Kava EVM ≥
-        // eth_gasPrice (1 gwei).
+        // Per-chain tip floors (e.g. Polygon 25 gwei).
         let tipFloor = tipFloorWei(for: chain)
         let dec = chain.nativeDecimals
 

@@ -13,40 +13,19 @@ enum SigningNumeric {
 
     /// Convert a non-negative whole-number `Decimal` (base units —
     /// already × 10^decimals, integral) to minimal big-endian `Data`.
-    /// Returns `Data([0])` for zero (wallet-core treats empty and
-    /// single-zero equivalently; a single zero byte is unambiguous).
-    /// Returns `nil` only for a negative or non-integral input — the
-    /// caller validates upstream, so this is a defensive guard.
+    ///
+    /// **BUG-025:** routes through the integer-string encoder so values
+    /// wider than Decimal's 38 significant digits are not re-rounded by
+    /// NSDecimalNumber divmod. Prefer calling
+    /// `bigEndianData(fromBaseUnitsString:)` directly when you already
+    /// hold a base-units string.
     static func bigEndianData(fromWholeDecimal value: Decimal) -> Data? {
         guard value >= 0 else { return nil }
-        // Ensure integral: round to 0 places and require equality.
         var rounded = Decimal.zero
         var input = value
         NSDecimalRound(&rounded, &input, 0, .down)
         guard rounded == value else { return nil }
-        if rounded == 0 { return Data([0]) }
-
-        // Repeated divmod by 256 via NSDecimalNumber integer arithmetic
-        // (exact for integers up to Decimal's 38 significant digits;
-        // u256 wei is 78 digits worst case — but a realistic send amount
-        // in base units stays well within 38 sig-figs, and the fee
-        // fields are far smaller). For values needing the full 256-bit
-        // width, prefer `bigEndianData(fromBaseUnitsString:)`.
-        var bytes: [UInt8] = []
-        var n = NSDecimalNumber(decimal: rounded)
-        let divisor = NSDecimalNumber(value: 256)
-        let behavior = NSDecimalNumberHandler(
-            roundingMode: .down, scale: 0,
-            raiseOnExactness: false, raiseOnOverflow: false,
-            raiseOnUnderflow: false, raiseOnDivideByZero: false
-        )
-        while n.compare(NSDecimalNumber.zero) == .orderedDescending {
-            let quotient = n.dividing(by: divisor, withBehavior: behavior)
-            let remainder = n.subtracting(quotient.multiplying(by: divisor, withBehavior: behavior))
-            bytes.insert(UInt8(truncating: remainder), at: 0)
-            n = quotient
-        }
-        return Data(bytes)
+        return bigEndianData(fromBaseUnitsString: ComposeDecimal.plainDecimalString(rounded))
     }
 
     /// Convert a base-units integer STRING (e.g. "1000000000000000000")

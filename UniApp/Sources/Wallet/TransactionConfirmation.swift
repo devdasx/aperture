@@ -8,7 +8,7 @@ import Foundation
 /// It reuses `TransactionDetailService.detail`, which ALREADY resolves a real
 /// `TransactionStatus` for every supported family — EVM receipts, Bitcoin
 /// confirmations, Solana signature status, and the XRPL / Stellar / TON /
-/// TRON / NEAR / Aptos / Cosmos / Polkadot / Sui lookups. One primitive, all
+/// TRON / NEAR / Aptos / Polkadot / Sui lookups. One primitive, all
 /// 24 chains: no new per-chain network code and no new crypto (Rule #3 —
 /// compose the proven path).
 ///

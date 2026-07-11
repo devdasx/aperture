@@ -43,8 +43,6 @@ struct BroadcastService: Sendable {
             return try await broadcastXRP(signed)
         case .tron:
             return try await broadcastTron(signed)
-        case .cosmos:    // Kava
-            return try await broadcastCosmos(signed, chain: chain)
         case .aptos:
             return try await broadcastAptos(signed, chain: chain)
         case .near:
@@ -75,17 +73,23 @@ struct BroadcastService: Sendable {
                 method: "eth_sendRawTransaction",
                 params: [rawHex]
             )
-            // Node returns the canonical hash; fall back to our local
-            // keccak256 hash if the node echoed something empty.
-            return returned.isEmpty ? signed.txHash : returned
+            // BUG-021: only accept a hash the node actually returned.
+            // Empty result after a transport "success" is outcome-unknown —
+            // never invent success from the local keccak256.
+            guard !returned.isEmpty else {
+                throw SigningError.broadcastAmbiguous("empty eth_sendRawTransaction result")
+            }
+            return returned
+        } catch let rpc as RPCError {
+            // `mapBroadcastError` routes transport / unparseable /
+            // all-endpoints-failed / cancelled to `.broadcastAmbiguous`
+            // (outcome UNKNOWN — Rule #16) and definitive node rejection
+            // to `.broadcastFailed`.
+            throw Self.mapBroadcastError(rpc)
+        } catch let signing as SigningError {
+            throw signing
         } catch {
-            // `callJSONString` is typed `throws(RPCError)`, so `error` is an
-            // RPCError. `mapBroadcastError` already routes the transport /
-            // unparseable / all-endpoints-failed / cancelled cases to
-            // `.broadcastAmbiguous` (outcome UNKNOWN — never claim the funds
-            // are safe, Rule #16) and only a definitive node rejection to
-            // `.broadcastFailed`.
-            throw Self.mapBroadcastError(error)
+            throw SigningError.broadcastAmbiguous(error.localizedDescription)
         }
     }
 
@@ -158,20 +162,9 @@ struct BroadcastService: Sendable {
             let data = try await client.callRESTPost(
                 chain: chain, path: "/txs/push", body: ["tx": signed.rawHex]
             )
-            if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let tx = root["tx"] as? [String: Any], let hash = tx["hash"] as? String, !hash.isEmpty {
-                    return hash
-                }
-                if let errorMsg = root["error"] as? String {
-                    throw SigningError.broadcastFailed(errorMsg)
-                }
-            }
-            // Fall back to the locally-computed txid if the body shape
-            // changed but the request succeeded (2xx).
-            guard !signed.txHash.isEmpty else {
-                throw SigningError.broadcastAmbiguous("unexpected DOGE broadcast response")
-            }
-            return signed.txHash
+            // BUG-021: never fall back to local signed.txHash on 2xx with an
+            // unexpected body — only return a hash confirmed in the response.
+            return try Self.parseBlockCypherPushResponse(data)
         } catch let rpc as RPCError {
             throw Self.mapBroadcastError(rpc)
         } catch let signing as SigningError {
@@ -217,25 +210,10 @@ struct BroadcastService: Sendable {
             // claim the funds are safe (Rule #16).
             throw SigningError.broadcastAmbiguous(error.localizedDescription)
         }
-        let body = String(data: data, encoding: .utf8) ?? ""
-        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let payload = root["data"] as? [String: Any],
-               let txid = payload["transaction_hash"] as? String, !txid.isEmpty {
-                return txid
-            }
-            if let context = root["context"] as? [String: Any],
-               let err = context["error"] as? String, !err.isEmpty {
-                throw SigningError.broadcastFailed(err)
-            }
-        }
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw SigningError.broadcastFailed(body.isEmpty ? "HTTP \(http.statusCode)" : String(body.prefix(200)))
-        }
-        // 2xx with the locally-computed txid as the fallback.
-        guard !signed.txHash.isEmpty else {
-            throw SigningError.broadcastAmbiguous("unexpected BCH broadcast response")
-        }
-        return signed.txHash
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        // BUG-021: never fall back to local signed.txHash on 2xx with an
+        // unexpected body — only return a hash confirmed in the response.
+        return try Self.parseBlockchairPushResponse(data, httpStatus: status)
     }
 
     // MARK: - Solana
@@ -358,21 +336,8 @@ struct BroadcastService: Sendable {
                 chain: .ripple, method: "submit",
                 params: [["tx_blob": signed.rawHex]], validatesIDEcho: false
             )
-            if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let engineResult = root["engine_result"] as? String ?? ""
-                // tesSUCCESS / terQUEUED are accepted; anything else with a
-                // tem/tef/tec prefix is a hard rejection.
-                if engineResult.hasPrefix("tes") || engineResult.hasPrefix("ter") {
-                    if let txJSON = root["tx_json"] as? [String: Any],
-                       let hash = txJSON["hash"] as? String, !hash.isEmpty {
-                        return hash
-                    }
-                    return signed.txHash // our locally-computed SHA-512Half id
-                }
-                let message = root["engine_result_message"] as? String ?? engineResult
-                throw SigningError.broadcastFailed(message.isEmpty ? "XRP submit rejected" : message)
-            }
-            throw SigningError.broadcastAmbiguous("unexpected XRP submit response")
+            // BUG-021: engine_result must confirm accept; hash from body preferred.
+            return try Self.parseXRPSubmitResponse(data, localTxHash: signed.txHash)
         } catch let rpc as RPCError {
             throw Self.mapBroadcastError(rpc)
         } catch let signing as SigningError {
@@ -405,52 +370,8 @@ struct BroadcastService: Sendable {
                 chain: .tron, path: "/wallet/broadcasttransaction",
                 body: signed.rawHex, contentType: "application/json"
             )
-            if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let ok = root["result"] as? Bool, ok {
-                    if let txid = root["txid"] as? String, !txid.isEmpty { return txid }
-                    return signed.txHash
-                }
-                // Failure: `message` is hex-encoded; `code` is the reason.
-                let code = root["code"] as? String ?? ""
-                let messageHex = root["message"] as? String ?? ""
-                let message = decodeHexMessage(messageHex) ?? code
-                throw SigningError.broadcastFailed(message.isEmpty ? "TRON broadcast rejected" : message)
-            }
-            throw SigningError.broadcastAmbiguous("unexpected TRON broadcast response")
-        } catch let rpc as RPCError {
-            throw Self.mapBroadcastError(rpc)
-        } catch let signing as SigningError {
-            throw signing
-        } catch {
-            // Transport-level failure (the request left the device but no
-            // definitive accept/reject came back) → outcome UNKNOWN, never
-            // claim the funds are safe (Rule #16).
-            throw SigningError.broadcastAmbiguous(error.localizedDescription)
-        }
-    }
-
-    // MARK: - Cosmos (Kava)
-
-    /// `POST /cosmos/tx/v1beta1/txs` with `{tx_bytes: <base64 TxRaw>, mode:
-    /// BROADCAST_MODE_SYNC}`. Doc: cosmos-sdk run-node/03-txs. Live-verified
-    /// 2026-06-15 on `api.data.kava.io`: the endpoint is recognized (empty
-    /// tx_bytes → code 18 "must contain at least one message"). Returns
-    /// `tx_response.txhash` when `code == 0`.
-    private func broadcastCosmos(_ signed: SignedTransaction, chain: SupportedChain) async throws(SigningError) -> String {
-        do {
-            let body: [String: Sendable] = ["tx_bytes": signed.rawHex, "mode": "BROADCAST_MODE_SYNC"]
-            let data = try await client.callRESTPost(
-                chain: chain, path: "/cosmos/tx/v1beta1/txs", body: body
-            )
-            if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let resp = root["tx_response"] as? [String: Any] {
-                let code = (resp["code"] as? NSNumber)?.intValue ?? 0
-                let hash = resp["txhash"] as? String ?? ""
-                if code == 0, !hash.isEmpty { return hash }
-                let rawLog = resp["raw_log"] as? String ?? "code \(code)"
-                throw SigningError.broadcastFailed(rawLog)
-            }
-            throw SigningError.broadcastAmbiguous("unexpected Cosmos broadcast response")
+            // BUG-021: require result:true; prefer body txid over local.
+            return try Self.parseTronBroadcastResponse(data, localTxHash: signed.txHash)
         } catch let rpc as RPCError {
             throw Self.mapBroadcastError(rpc)
         } catch let signing as SigningError {
@@ -513,17 +434,8 @@ struct BroadcastService: Sendable {
             let data = try await client.callJSONResultData(
                 chain: chain, method: "send_tx", paramsObject: params
             )
-            if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let tx = root["transaction"] as? [String: Any],
-               let hash = tx["hash"] as? String, !hash.isEmpty {
-                return hash
-            }
-            // Fall back to the locally-computed hash if the node accepted
-            // it but returned a shape we didn't parse.
-            guard !signed.txHash.isEmpty else {
-                throw SigningError.broadcastAmbiguous("unexpected NEAR send_tx response")
-            }
-            return signed.txHash
+            // BUG-021: hash must appear in the response body — no local fallback.
+            return try Self.parseNearSendTxResponse(data)
         } catch let rpc as RPCError {
             throw Self.mapBroadcastError(rpc)
         } catch let signing as SigningError {
@@ -569,19 +481,8 @@ struct BroadcastService: Sendable {
             let data = try await client.callRESTPost(
                 chain: chain, path: "/sendBocReturnHash", body: ["boc": signed.rawHex]
             )
-            if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let ok = root["ok"] as? Bool, ok,
-                   let result = root["result"] as? [String: Any],
-                   let hash = result["hash"] as? String, !hash.isEmpty {
-                    return hash
-                }
-                if let error = root["error"] as? String { throw SigningError.broadcastFailed(error) }
-            }
-            // Fall back to the locally-computed cell hash.
-            guard !signed.txHash.isEmpty else {
-                throw SigningError.broadcastAmbiguous("unexpected TON sendBoc response")
-            }
-            return signed.txHash
+            // BUG-021: hash must appear in the response body — no local fallback.
+            return try Self.parseTONSendBocResponse(data)
         } catch let rpc as RPCError {
             throw Self.mapBroadcastError(rpc)
         } catch let signing as SigningError {
@@ -594,8 +495,137 @@ struct BroadcastService: Sendable {
         }
     }
 
+    // MARK: - Response parsers (BUG-021, testable)
+
+    /// BlockCypher `POST /txs/push` body. Only succeeds when `tx.hash` is present.
+    static func parseBlockCypherPushResponse(_ data: Data) throws(SigningError) -> String {
+        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let tx = root["tx"] as? [String: Any],
+               let hash = (tx["hash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !hash.isEmpty {
+                return hash
+            }
+            if let errorMsg = root["error"] as? String, !errorMsg.isEmpty {
+                throw SigningError.broadcastFailed(errorMsg)
+            }
+        }
+        throw SigningError.broadcastAmbiguous(
+            "unexpected DOGE broadcast response: hash not confirmed in body"
+        )
+    }
+
+    /// Blockchair push body. Non-2xx without a parseable error → failed.
+    /// 2xx without `data.transaction_hash` → ambiguous (never local txid).
+    static func parseBlockchairPushResponse(_ data: Data, httpStatus: Int) throws(SigningError) -> String {
+        let body = String(data: data, encoding: .utf8) ?? ""
+        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let payload = root["data"] as? [String: Any],
+               let txid = (payload["transaction_hash"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !txid.isEmpty {
+                return txid
+            }
+            if let context = root["context"] as? [String: Any],
+               let err = context["error"] as? String, !err.isEmpty {
+                throw SigningError.broadcastFailed(err)
+            }
+        }
+        if !(200..<300).contains(httpStatus) {
+            throw SigningError.broadcastFailed(
+                body.isEmpty ? "HTTP \(httpStatus)" : String(body.prefix(200))
+            )
+        }
+        throw SigningError.broadcastAmbiguous(
+            "unexpected BCH broadcast response: hash not confirmed in body"
+        )
+    }
+
+    /// XRPL `submit` result object. Accept only tes*/ter*; prefer body hash.
+    /// Local hash only when engine confirmed accept and body omitted hash.
+    static func parseXRPSubmitResponse(_ data: Data, localTxHash: String) throws(SigningError) -> String {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SigningError.broadcastAmbiguous("unexpected XRP submit response")
+        }
+        let engineResult = root["engine_result"] as? String ?? ""
+        if engineResult.hasPrefix("tes") || engineResult.hasPrefix("ter") {
+            if let txJSON = root["tx_json"] as? [String: Any],
+               let hash = (txJSON["hash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !hash.isEmpty {
+                return hash
+            }
+            let local = localTxHash.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !local.isEmpty else {
+                throw SigningError.broadcastAmbiguous(
+                    "XRP submit accepted but hash missing from body and local txid"
+                )
+            }
+            return local
+        }
+        let message = root["engine_result_message"] as? String ?? engineResult
+        throw SigningError.broadcastFailed(message.isEmpty ? "XRP submit rejected" : message)
+    }
+
+    /// TronGrid broadcast. Require `result: true`; prefer body `txid`.
+    static func parseTronBroadcastResponse(_ data: Data, localTxHash: String) throws(SigningError) -> String {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SigningError.broadcastAmbiguous("unexpected TRON broadcast response")
+        }
+        if let ok = root["result"] as? Bool, ok {
+            if let txid = (root["txid"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !txid.isEmpty {
+                return txid
+            }
+            let local = localTxHash.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !local.isEmpty else {
+                throw SigningError.broadcastAmbiguous(
+                    "TRON broadcast accepted but txid missing from body and local hash"
+                )
+            }
+            return local
+        }
+        let code = root["code"] as? String ?? ""
+        let messageHex = root["message"] as? String ?? ""
+        let message = decodeHexMessageStatic(messageHex) ?? code
+        throw SigningError.broadcastFailed(message.isEmpty ? "TRON broadcast rejected" : message)
+    }
+
+    /// NEAR `send_tx` result — hash must be in body.
+    static func parseNearSendTxResponse(_ data: Data) throws(SigningError) -> String {
+        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let tx = root["transaction"] as? [String: Any],
+           let hash = (tx["hash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !hash.isEmpty {
+            return hash
+        }
+        throw SigningError.broadcastAmbiguous(
+            "unexpected NEAR send_tx response: hash not confirmed in body"
+        )
+    }
+
+    /// toncenter `sendBocReturnHash` — require ok + result.hash.
+    static func parseTONSendBocResponse(_ data: Data) throws(SigningError) -> String {
+        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let ok = root["ok"] as? Bool, ok,
+               let result = root["result"] as? [String: Any],
+               let hash = (result["hash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !hash.isEmpty {
+                return hash
+            }
+            if let error = root["error"] as? String, !error.isEmpty {
+                throw SigningError.broadcastFailed(error)
+            }
+        }
+        throw SigningError.broadcastAmbiguous(
+            "unexpected TON sendBoc response: hash not confirmed in body"
+        )
+    }
+
     /// Decode a hex-encoded TRON error `message` to UTF-8 text.
     private func decodeHexMessage(_ hex: String) -> String? {
+        Self.decodeHexMessageStatic(hex)
+    }
+
+    private static func decodeHexMessageStatic(_ hex: String) -> String? {
         guard !hex.isEmpty, let data = SigningNumeric.hexToData(hex) else { return nil }
         return String(data: data, encoding: .utf8)
     }

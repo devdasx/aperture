@@ -71,15 +71,39 @@ struct SendExecutor {
         }
 
         // 1. Resolve the wallet descriptor + the address row id.
-        guard let resolved = resolveWallet(
+        // BUG-018: require exact (wallet, chain, fromAddress) — never fall
+        // back to the chain's preferred address for the outbox.
+        switch resolveWallet(
             walletId: walletId,
             chain: effectiveDraft.chain,
             fromAddress: effectiveDraft.fromAddress
-        ) else {
+        ) {
+        case .walletNotFound:
             return .failure(.noWallet)
+        case .addressNotFound:
+            return .failure(.malformedDraft(
+                "fromAddress is not stored for this wallet on \(effectiveDraft.chain.displayName)"
+            ))
+        case .resolved(let walletDescriptor, let addressId):
+            return await executeResolved(
+                draft: effectiveDraft,
+                walletId: walletId,
+                walletDescriptor: walletDescriptor,
+                addressId: addressId,
+                passphrase: passphrase
+            )
         }
-        let walletDescriptor = resolved.descriptor
-        let addressId = resolved.addressId
+    }
+
+    private func executeResolved(
+        draft: SendDraft,
+        walletId: UUID,
+        walletDescriptor: WalletDescriptor,
+        addressId: UUID,
+        passphrase: String?
+    ) async -> Result<SentTransaction, SigningError> {
+        let effectiveDraft = draft
+        let addressId = addressId
 
         // 2. Just-in-time refresh (off-main) + 3. sign (off-main).
         let signed: SignedTransaction
@@ -108,6 +132,7 @@ struct SendExecutor {
         //    then poll the receipt to update it. The write is best-effort
         //    — a successful broadcast is the source of truth; a failed DB
         //    write must NOT make us report a non-send.
+        // BUG-018: addressId is always the exact fromAddress row — never preferred.
         let recordId = await writePendingRecord(
             txHash: txHash, draft: effectiveDraft, addressId: addressId, signed: signed
         )
@@ -139,59 +164,19 @@ struct SendExecutor {
 
     // MARK: - 1. Wallet resolution (main actor)
 
-    private struct ResolvedWallet { let descriptor: WalletDescriptor; let addressId: UUID? }
-
-    private func resolveWallet(walletId: UUID, chain: SupportedChain, fromAddress: String) -> ResolvedWallet? {
-        do {
-            return try database.read { db in
-                guard let walletRow = try Row.fetchOne(
-                    db,
-                    sql: """
-                    SELECT id, kind_raw, has_passphrase
-                    FROM wallets
-                    WHERE id = ?
-                    LIMIT 1
-                    """,
-                    arguments: [walletId.uuidString]
-                ), let id = UUID(uuidString: walletRow["id"]) else {
-                    return nil
-                }
-                let addressRaw = try String.fetchOne(
-                    db,
-                    sql: """
-                    SELECT id FROM wallet_addresses
-                    WHERE wallet_id = ? AND chain_raw = ? AND address = ?
-                    LIMIT 1
-                    """,
-                    arguments: [walletId.uuidString, chain.rawValue, fromAddress]
-                )
-                let fallbackAddressRaw: String?
-                if let addressRaw {
-                    fallbackAddressRaw = addressRaw
-                } else {
-                    fallbackAddressRaw = try String.fetchOne(
-                        db,
-                        sql: """
-                        SELECT id FROM wallet_addresses
-                        WHERE wallet_id = ? AND chain_raw = ?
-                        ORDER BY is_receive_preferred DESC
-                        LIMIT 1
-                        """,
-                        arguments: [walletId.uuidString, chain.rawValue]
-                    )
-                }
-                return ResolvedWallet(
-                    descriptor: WalletDescriptor(
-                        id: id,
-                        kind: WalletKind(rawValue: walletRow["kind_raw"]) ?? .watchOnly,
-                        hasPassphrase: (walletRow["has_passphrase"] as Int) != 0
-                    ),
-                    addressId: fallbackAddressRaw.flatMap(UUID.init(uuidString:))
-                )
-            }
-        } catch {
-            return nil
-        }
+    /// BUG-018: exact `(wallet, chain, fromAddress)` only — never fall back
+    /// to the chain's preferred address when writing the outbox row.
+    private func resolveWallet(
+        walletId: UUID,
+        chain: SupportedChain,
+        fromAddress: String
+    ) -> SendOutboxAddressResolver.Resolution {
+        SendOutboxAddressResolver.resolve(
+            walletId: walletId,
+            chain: chain,
+            fromAddress: fromAddress,
+            database: database
+        )
     }
 
     // MARK: - 2+3. Just-in-time refresh + sign (off-main)
@@ -219,7 +204,7 @@ struct SendExecutor {
     /// (Rule #27 §C). Per family: EVM nonce; Solana blockhash + ATAs; XRP
     /// sequence + last-ledger; TON seqno + jetton wallet; TRON block ref;
     /// NEAR nonce + block hash; Polkadot runtime/era/nonce; Aptos sequence
-    /// + gas; Sui coins + RGP; Cosmos account number + sequence; Stellar
+    /// + gas; Sui coins + RGP; Stellar
     /// sequence. We never sign against a stale value. All fetches are
     /// off-main (this method is `nonisolated`); the per-chain fetchers live
     /// in `SendExecutor+JustInTime.swift`.
@@ -289,7 +274,6 @@ struct SendExecutor {
             }
         case .ripple:   return try await refreshXRP(draft: draft)
         case .tron:     return try await refreshTron(draft: draft)
-        case .cosmos:   return try await refreshCosmos(draft: draft)
         case .aptos:    return try await refreshAptos(draft: draft)
         case .near:     return try await refreshNear(draft: draft, wallet: wallet, passphrase: passphrase)
         case .polkadot: return try await refreshPolkadot(draft: draft)
@@ -301,13 +285,15 @@ struct SendExecutor {
 
     /// Write the pending `TransactionRecord` (outgoing) for this send so
     /// the UI shows it live. Best-effort — returns the row id or nil.
+    ///
+    /// BUG-018: `addressId` must already be the exact `fromAddress` row
+    /// resolved by `SendOutboxAddressResolver` — never a preferred fallback.
     private func writePendingRecord(
         txHash: String,
         draft: SendDraft,
-        addressId: UUID?,
+        addressId: UUID,
         signed: SignedTransaction
     ) async -> UUID? {
-        guard let addressId else { return nil }
         let recordId = UUID()
         let symbol = draft.tokenSymbol ?? draft.chain.ticker
         let amountRaw = draft.totalAmount.description

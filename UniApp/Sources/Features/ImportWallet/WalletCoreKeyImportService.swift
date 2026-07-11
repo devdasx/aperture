@@ -10,7 +10,7 @@ import WalletCore
 ///
 /// **What this delivers (vs. the prior `StubKeyImportService`).**
 /// All 24 supported chains receive their real derivation today —
-/// Bitcoin / EVM family / Cosmos / TRON via secp256k1, Aptos / Sui /
+/// Bitcoin / EVM family / TRON via secp256k1, Aptos / Sui /
 /// Stellar / TON / NEAR / Solana / Polkadot via the appropriate
 /// ed25519 / sr25519 / SCALE / StrKey primitives that WalletCore
 /// already ships and Trust Wallet uses in production.
@@ -88,12 +88,10 @@ struct WalletCoreKeyImportService: KeyImportService {
     // MARK: - KeyImportService — protocol surface
 
     func detectFormat(_ raw: String, on chain: SupportedChain) -> KeyFormat? {
-        // Format detection is shape-based and chain-aware. We delegate
-        // to the existing stub heuristics; WalletCore's role is
-        // derivation, not detection. The stub's detectFormat shipped
-        // with explicit per-family heuristics and is the correct
-        // surface for now.
-        return StubKeyImportService().detectFormat(raw, on: chain)
+        // Format detection is shape-based and chain-aware. WalletCore's
+        // role is derivation, not detection. BUG-024: detection lives
+        // on `KeyImportFormatDetector` (no derivation surface).
+        return KeyImportFormatDetector.detectFormat(raw, on: chain)
     }
 
     func deriveAddress(
@@ -162,12 +160,12 @@ struct WalletCoreKeyImportService: KeyImportService {
         on chain: SupportedChain
     ) throws -> Data {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let format = StubKeyImportService().detectFormat(trimmed, on: chain) else {
+        guard let format = KeyImportFormatDetector.detectFormat(trimmed, on: chain) else {
             throw KeyImportError.invalidFormat
         }
 
         switch format {
-        case .evmHex, .cosmosHex, .ed25519Hex:
+        case .evmHex, .ed25519Hex:
             let bodyHex = trimmed.hasPrefix("0x") ? String(trimmed.dropFirst(2)) : trimmed
             guard let keyData = Data(hexString: bodyHex), keyData.count == 32 else {
                 throw KeyImportError.invalidFormat

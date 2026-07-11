@@ -121,13 +121,6 @@ struct FeeChoice: Codable, Hashable, Sendable {
     /// Optional tip in plancks (the only sender lever).
     var polkadotTipPlancks: Decimal?
 
-    // MARK: - Cosmos (Kava)
-
-    /// gas_limit (uint64) for the cosmos tx.
-    var cosmosGasLimit: Decimal?
-    /// gas_price in ukava/gas.
-    var cosmosGasPrice: Decimal?
-
     // MARK: - Aptos
 
     /// gas_unit_price in octas/gas.
@@ -186,8 +179,6 @@ struct FeeChoice: Codable, Hashable, Sendable {
         self.nearGasUnits = nil
         self.polkadotPartialFeePlancks = nil
         self.polkadotTipPlancks = nil
-        self.cosmosGasLimit = nil
-        self.cosmosGasPrice = nil
         self.aptosGasUnitPrice = nil
         self.aptosMaxGasAmount = nil
         self.estimatedTotalNative = estimatedTotalNative

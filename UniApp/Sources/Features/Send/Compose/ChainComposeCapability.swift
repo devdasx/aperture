@@ -52,7 +52,7 @@ struct ChainComposeCapability: Sendable, Hashable {
 /// chain's native units as `Decimal` (money math, never Double).
 enum ReserveRule: Sendable, Hashable {
 
-    /// No reserve, no activation (Bitcoin family, EVM, Sui, TON, Cosmos,
+    /// No reserve, no activation (Bitcoin family, EVM, Sui, TON,
     /// TRON-for-existing-recipients). Spendable = balance − fee.
     case none
 

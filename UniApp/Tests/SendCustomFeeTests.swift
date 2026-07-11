@@ -250,7 +250,4 @@ struct SendCustomFeeTests {
                 "Custom maxFee was lost on refresh")
     }
 
-    // (The single-tier custom-allowed regression test used Kava/cosmosGas as
-    // its example; Kava was removed from the app, and it was the only
-    // cosmos-gas chain, so that test was dropped with the chain.)
 }

@@ -14,7 +14,7 @@ import Foundation
 /// Bitcoin's inputs/outputs/hex/size/vsize/weight/feeRate; EVM's
 /// gas/nonce/type/logs/decoded-ERC-20; Solana's slot/CU/balances/
 /// instructions/logs; and a `.generic` labeled key-value list for the 9
-/// other chains (XRPL, TRON, TON, NEAR, Aptos, Cosmos/Kava, Polkadot,
+/// other chains (XRPL, TRON, TON, NEAR, Aptos, Polkadot,
 /// Stellar, Sui).
 ///
 /// **Honesty (Rule #16 / #24).** Every value is the truth of what the
@@ -39,7 +39,7 @@ struct TransactionDetail: Sendable, Equatable {
     /// XRPL `meta.TransactionResult`, etc.).
     let status: TransactionStatus
 
-    /// Block height (EVM/Bitcoin/Cosmos/Aptos/Stellar `ledger`/Polkadot
+    /// Block height (EVM/Bitcoin/Aptos/Stellar `ledger`/Polkadot
     /// `blockHeight`) OR Solana `slot` OR Sui `checkpoint`. `nil` while the
     /// tx is still pending / unconfirmed.
     let blockNumber: Int64?
@@ -78,7 +78,7 @@ struct TransactionDetail: Sendable, Equatable {
         case evm(EVMTxDetail)
         case solana(SolanaTxDetail)
         /// Ordered, labeled key-value rows for XRPL / TRON / TON / NEAR /
-        /// Aptos / Cosmos-Kava / Polkadot / Stellar / Sui — each fetcher
+        /// Aptos / Polkadot / Stellar / Sui — each fetcher
         /// fills the chain-specific rows (sequence, memo/tag, ledger, gas,
         /// energy usage, vm_status, …). Order is meaningful (the UI renders
         /// the rows top-to-bottom as built).

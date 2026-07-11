@@ -144,14 +144,10 @@ enum EVMTransactionSigner {
         return n.uint64Value
     }
 
-    /// Display amount (`Decimal`, e.g. 1.5) → base-units integer string
-    /// (e.g. "1500000000000000000") at `decimals`. Money math stays in
-    /// `Decimal` end-to-end (Rule); the string is the exact wire form
-    /// `SigningNumeric` consumes for full u256 precision.
+    /// Display amount → base-units integer string at `decimals`.
+    /// BUG-025: integer-string path (floor) so full u256 wei / ERC-20
+    /// amounts never round at Decimal's 38th significant digit.
     private static func baseUnitsString(_ display: Decimal, decimals: Int) -> String {
-        let base = ComposeDecimal.toBaseUnits(display, decimals: decimals)
-        // toBaseUnits already rounds to an integer; render without a
-        // decimal point or exponent via NSDecimalNumber.
-        return NSDecimalNumber(decimal: base).stringValue
+        SigningAmount.baseUnitsString(display: display, decimals: decimals)
     }
 }

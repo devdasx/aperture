@@ -206,6 +206,8 @@ final class SendComposeModel {
     var selectedUTXOs: [SelectedUTXO]?
     /// The fetched UTXO set (Bitcoin family). Empty until fetched.
     private(set) var availableUTXOs: [SelectedUTXO] = []
+    /// Wallet id last used for UTXO / change-address allocation (BUG-016).
+    private(set) var cachedUTXOWalletId: UUID?
     /// True while `loadUTXOs` is fetching — drives the coin-selection
     /// sheet's honest loading state so the user sees a spinner instead of
     /// a premature "no coins found" while the fetch is still in flight.
@@ -296,15 +298,22 @@ final class SendComposeModel {
 
     /// The crypto amount for one entry, resolving the fiat→crypto
     /// conversion when the user is typing in fiat.
+    ///
+    /// **BUG-007:** always floor-quantizes to `effectiveDecimals` so
+    /// fiat conversion and over-long crypto decimals never produce a
+    /// display amount that signs as one base unit more than spendable.
     func cryptoAmount(for entry: AmountEntry) -> Decimal {
         guard let typed = Self.parseAmount(entry.amountText) else { return 0 }
+        let crypto: Decimal
         switch entryUnit {
         case .crypto:
-            return typed
+            crypto = typed
         case .fiat:
             guard let price = assetUnitPrice, price > 0 else { return 0 }
-            return typed / price
+            crypto = typed / price
         }
+        guard crypto > 0 else { return 0 }
+        return ComposeDecimal.quantizeDisplay(crypto, decimals: effectiveDecimals)
     }
 
     /// The resolved recipient+amount list (always in crypto display units).
@@ -692,6 +701,20 @@ final class SendComposeModel {
             return opReturnText.data(using: .utf8)
         }()
 
+        // BUG-016: Bitcoin-family change pays to a fresh …/1/i path when
+        // the planner emits change — never reuse fromAddress.
+        let changeAddress: String?
+        if capability.supportsUTXO, chain.family == .bitcoin {
+            let needsChange = (changeSats ?? 0) > 0 && !isMaxSend
+            if needsChange {
+                changeAddress = resolveBitcoinFamilyChangeAddress() ?? fromAddress
+            } else {
+                changeAddress = fromAddress
+            }
+        } else {
+            changeAddress = fromAddress
+        }
+
         return SendDraft(
             chain: chain,
             tokenSymbol: tokenSymbol,
@@ -701,7 +724,7 @@ final class SendComposeModel {
             recipients: recipients,
             fee: fee,
             selectedUTXOs: utxosForDraft,
-            changeAddress: fromAddress, // no fresh change path is stored yet
+            changeAddress: changeAddress,
             changeSats: changeSats,
             opReturn: opReturnData,
             signalsRBF: capability.supportsUTXO && chain != .dogecoin && chain != .bitcoinCash,
@@ -709,6 +732,20 @@ final class SendComposeModel {
             isMaxSend: isMaxSend,
             recipientNeedsActivation: recipientNeedsActivation,
             tonBounceable: chain == .ton ? false : nil
+        )
+    }
+
+    /// Allocate the next change address (`…/1/n`) for this wallet/chain and
+    /// persist it so signing can resolve the private key via derivation path.
+    private func resolveBitcoinFamilyChangeAddress() -> String? {
+        guard let walletId = cachedUTXOWalletId else { return nil }
+        let database = AppDatabase.shared
+        let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database)
+        return try? BitcoinFamilyAddressBook.allocateChangeAddress(
+            walletId: walletId,
+            chain: chain,
+            words: words,
+            database: database
         )
     }
 
@@ -784,6 +821,7 @@ final class SendComposeModel {
         guard capability.supportsUTXO else { return }
         isLoadingUTXOs = true
         defer { isLoadingUTXOs = false }
+        if let walletId { cachedUTXOWalletId = walletId }
         do {
             if let walletId {
                 let cached = try ChainStateRepository(database: database)

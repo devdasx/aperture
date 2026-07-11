@@ -15,49 +15,131 @@ actor BitcoinFamilyRESTBalanceScanner {
         includeHistory: Bool = true
     ) async throws {
         guard address.chain == .litecoin || address.chain == .dogecoin else { return }
+        let chain = address.chain
+
+        // BUG-016: multi-address receive/change (gap 20) for LTC/DOGE.
+        let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database)
+        if let words, !words.isEmpty {
+            _ = try? BitcoinFamilyAddressBook.ensureGapCoverage(
+                walletId: walletId,
+                chain: chain,
+                words: words,
+                database: database
+            )
+        }
+        var addressRows = (try? BitcoinFamilyAddressBook.persistedAddresses(
+            walletId: walletId,
+            chain: chain,
+            database: database
+        )) ?? []
+        if addressRows.isEmpty {
+            addressRows = [(address.address, "")]
+        }
 
         async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
             ? TokenPricingEngine.shared.unitPrices(
-                symbols: [address.chain.ticker],
+                symbols: [chain.ticker],
                 currencyCode: currencyCode
             )
             : [:]
-        async let snapshotTask = accountSnapshot(address: address.address, chain: address.chain)
-        async let utxosTask = safeUTXOs(address: address.address, chain: address.chain)
-        async let historyTask: [BitcoinFamilyRESTEvent] = includeHistory
-            ? safeHistory(address: address.address, chain: address.chain)
-            : []
 
-        let snapshot = try await snapshotTask
+        // Scan every known address; extend gap when activity found.
+        var totalRaw: Int64 = 0
+        var allUTXOs: [SelectedUTXO] = []
+        var allHistory: [BitcoinFamilyRESTEvent] = []
+        var activeAddresses = Set<String>()
+        var scanned = Set<String>()
+        var queue = addressRows.map(\.address)
+        var pathByAddress = Dictionary(uniqueKeysWithValues: addressRows.map { ($0.address, $0.path) })
+        var loopGuard = 0
+
+        while !queue.isEmpty, loopGuard < 12 {
+            loopGuard += 1
+            let batch = queue
+            queue = []
+            for addr in batch where scanned.insert(addr).inserted {
+                async let snap = safeSnapshot(address: addr, chain: chain)
+                async let utxos = safeUTXOs(address: addr, chain: chain)
+                async let history: [BitcoinFamilyRESTEvent] = includeHistory
+                    ? safeHistory(address: addr, chain: chain)
+                    : []
+                let snapshot = await snap
+                let addrUTXOs = await utxos
+                let addrHistory = await history
+                if let raw = Int64(snapshot.rawBalance) {
+                    let (sum, overflow) = totalRaw.addingReportingOverflow(raw)
+                    totalRaw = overflow ? Int64.max : sum
+                }
+                if snapshot.isUsed || !addrHistory.isEmpty || !addrUTXOs.isEmpty {
+                    activeAddresses.insert(addr)
+                }
+                allUTXOs.append(contentsOf: addrUTXOs.map { utxo in
+                    SelectedUTXO(
+                        ownerAddress: addr,
+                        txid: utxo.txid,
+                        vout: utxo.vout,
+                        valueSats: utxo.valueSats,
+                        scriptHex: utxo.scriptHex,
+                        confirmed: utxo.confirmed
+                    )
+                })
+                allHistory.append(contentsOf: addrHistory)
+            }
+
+            let extensions = (try? BitcoinFamilyAddressBook.markUsedAndExtendIfNeeded(
+                walletId: walletId,
+                chain: chain,
+                activeAddresses: activeAddresses,
+                words: words,
+                database: database
+            )) ?? []
+            for item in extensions where !scanned.contains(item.address) {
+                queue.append(item.address)
+                pathByAddress[item.address] = item.path
+            }
+            // Persist quiet addresses too so we don't regenerate them.
+            let discovered = pathByAddress.map { addr, path in
+                ChainStateRepository.DiscoveredAddress(
+                    address: addr,
+                    derivationPath: path,
+                    isUsed: activeAddresses.contains(addr)
+                )
+            }
+            _ = try? ChainStateRepository(database: database).upsertDiscoveredAddresses(
+                walletId: walletId,
+                chain: chain,
+                addresses: discovered
+            )
+        }
+
         let prices = await pricesTask
-        let utxos = await utxosTask
-        let history = await historyTask
-
+        let rawBalance = String(max(0, totalRaw))
         let txRepo = TransactionRepository(database: database)
         try txRepo.upsertBalance(
             addressId: address.id,
-            tokenSymbol: address.chain.ticker,
+            tokenSymbol: chain.ticker,
             tokenContract: nil,
-            decimals: address.chain.nativeDecimals,
-            rawBalance: snapshot.rawBalance,
+            decimals: chain.nativeDecimals,
+            rawBalance: rawBalance,
             fiatValueCached: fiatValue(
-                rawBalance: snapshot.rawBalance,
-                decimals: address.chain.nativeDecimals,
-                symbol: address.chain.ticker,
+                rawBalance: rawBalance,
+                decimals: chain.nativeDecimals,
+                symbol: chain.ticker,
                 prices: prices
             ),
             fiatCurrencyCode: currencyCode,
             save: false
         )
 
-        let isUsed = snapshot.isUsed || !history.isEmpty || !utxos.isEmpty
-        for event in history.prefix(50) {
+        let isUsed = !activeAddresses.isEmpty || totalRaw > 0
+        var seenTx = Set<String>()
+        for event in allHistory.prefix(80) where seenTx.insert(event.txHash).inserted {
             try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
                 amountRaw: event.amount,
-                tokenSymbol: address.chain.ticker,
+                tokenSymbol: chain.ticker,
                 tokenContract: nil,
                 blockNumber: event.blockNumber,
                 occurredAt: event.occurredAt,
@@ -71,9 +153,9 @@ actor BitcoinFamilyRESTBalanceScanner {
         try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try txRepo.flush()
 
-        let addressedUTXOs = utxos.map {
+        let addressedUTXOs = allUTXOs.map {
             ChainStateRepository.AddressedUTXO(
-                address: address.address,
+                address: $0.ownerAddress ?? address.address,
                 txid: $0.txid,
                 vout: $0.vout,
                 valueSats: $0.valueSats,
@@ -84,16 +166,25 @@ actor BitcoinFamilyRESTBalanceScanner {
         _ = try ChainStateRepository(database: database)
             .replaceAddressedUTXOs(
                 walletId: walletId,
-                chain: address.chain,
+                chain: chain,
                 utxos: addressedUTXOs
             )
         _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
-            onlyChains: Set([address.chain]),
+            onlyChains: Set([chain]),
             failedChains: [],
             interim: false
         )
+    }
+
+    private func safeSnapshot(address: String, chain: SupportedChain) async -> BitcoinFamilyRESTSnapshot {
+        do {
+            return try await accountSnapshot(address: address, chain: chain)
+        } catch {
+            log.debug("Snapshot failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            return BitcoinFamilyRESTSnapshot(rawBalance: "0", isUsed: false)
+        }
     }
 
     func accountSnapshot(address: String, chain: SupportedChain) async throws -> BitcoinFamilyRESTSnapshot {

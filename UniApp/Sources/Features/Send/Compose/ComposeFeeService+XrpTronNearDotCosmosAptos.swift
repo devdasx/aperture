@@ -1,6 +1,6 @@
 import Foundation
 
-/// Fee fetchers for XRP, TRON, NEAR, Polkadot, Cosmos (Kava), Aptos.
+/// Fee fetchers for XRP, TRON, NEAR, Polkadot, Aptos.
 /// Doc-grounded per `.claude/send-compose-matrix.md` (G8–G12 + Aptos
 /// research), live-verified 2026-06-15.
 extension ComposeFeeService {
@@ -116,21 +116,6 @@ extension ComposeFeeService {
         return copy
     }
 
-    /// Recompute a Cosmos `FeeChoice`'s native total after the user sets a
-    /// custom gas price (BUG 3 · custom lever). total ukava = ceil(gasLimit ×
-    /// gasPrice). The data layer owns the math (Rule: money math never in the
-    /// UI). Doc: cosmos/chain-registry kava/chain.json fee tiers; node
-    /// minimum-gas-prices floor 0.001 ukava/gas (docs.kava.io node-config).
-    static func recomputeCosmosTotals(_ c: FeeChoice, decimals: Int) -> FeeChoice {
-        var copy = c
-        let gasLimit = c.cosmosGasLimit ?? 200_000
-        let price = c.cosmosGasPrice ?? Decimal(string: "0.1")!
-        let native = ComposeDecimal.toDisplay(
-            ComposeDecimal.ceilToInteger(gasLimit * price), decimals: decimals)
-        copy.setTotals(estimated: native, worst: native)
-        return copy
-    }
-
     private func fetchTronChainParameters() async throws -> [String: Decimal] {
         let data = try await client.callRESTPost(chain: .tron, path: "/wallet/getchainparameters", body: [:])
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -239,34 +224,6 @@ extension ComposeFeeService {
         return FeeQuote(chain: ctx.chain, feeModel: .polkadotWeight, tiers: tiers,
                         isCustomAllowed: false, hasSpeedTiers: true,
                         note: "The only adjustable part is the priority tip")
-    }
-
-    // MARK: - Cosmos (Kava)
-
-    /// Cosmos fee = gasLimit × gasPrice (ukava). Tiers from chain-registry
-    /// (low 0.05 / avg 0.1 / high 0.25 ukava). gasLimit default 200,000
-    /// (refined by simulate before signing).
-    /// Docs: https://raw.githubusercontent.com/cosmos/chain-registry/master/kava/chain.json
-    func cosmosQuote(_ ctx: Context) async throws -> FeeQuote {
-        let dec = ctx.chain.nativeDecimals // 6
-        let gasLimit = Decimal(200_000)
-        func choice(_ tier: FeeTier, price: Decimal) -> FeeChoice {
-            let feeUkava = ComposeDecimal.ceilToInteger(gasLimit * price)
-            var c = makeChoice(tier: tier, model: .cosmosGas, decimals: dec) { c in
-                c.cosmosGasLimit = gasLimit
-                c.cosmosGasPrice = price
-            }
-            let native = ComposeDecimal.toDisplay(feeUkava, decimals: dec)
-            c.setTotals(estimated: native, worst: native)
-            return c
-        }
-        let tiers: [FeeTier: FeeChoice] = [
-            .slow:   choice(.slow,   price: Decimal(string: "0.05")!),
-            .normal: choice(.normal, price: Decimal(string: "0.1")!),
-            .fast:   choice(.fast,   price: Decimal(string: "0.25")!),
-        ]
-        return FeeQuote(chain: ctx.chain, feeModel: .cosmosGas, tiers: tiers,
-                        isCustomAllowed: true, hasSpeedTiers: true, note: nil)
     }
 
     // MARK: - Aptos

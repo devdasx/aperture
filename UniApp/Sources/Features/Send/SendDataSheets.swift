@@ -47,10 +47,10 @@ struct SendOpReturnSheet: View {
     }
 }
 
-// MARK: - Memo (text / cosmos / SPL / stellar / near)
+// MARK: - Memo (text / SPL / stellar / near)
 
 /// Send · advanced — a free-text memo for the chains whose protocol carries
-/// one (TRON, Cosmos, Solana SPL Memo, Stellar text memo, NEAR FT memo).
+/// one (TRON, Solana SPL Memo, Stellar text memo, NEAR FT memo).
 /// Byte-counted against the chain's `memoMaxBytes`. Honest service-note
 /// copy for recipients that require a memo.
 struct SendMemoSheet: View {
@@ -167,7 +167,7 @@ struct SendMemoSheet: View {
         case .stellarMemo:
             guard stellarMemoError == nil, let memo = stellarMemoInference.memo else { return }
             model.memo = .stellarMemo(memo)
-        case .textMemo, .cosmosMemo, .nearFtMemo: model.memo = .text(trimmed)
+        case .textMemo, .nearFtMemo: model.memo = .text(trimmed)
         default:          model.memo = .text(trimmed)
         }
     }

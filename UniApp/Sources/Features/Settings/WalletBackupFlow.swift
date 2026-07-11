@@ -31,6 +31,10 @@ struct WalletBackupFlow: View {
     /// keeps it (2026-06-20). nil from paths that don't have it yet (create
     /// flow); the restore UI then derives a colored disc from the name.
     var avatar: WalletAvatarSpec? = nil
+    /// **P0-003.** Whether this wallet uses a BIP-39 passphrase. Stored as a
+    /// clear flag on the iCloud blob (never the passphrase itself) so restore
+    /// can require the correct passphrase and refuse silent empty derive.
+    var hasPassphrase: Bool = false
     /// When set, the flow starts directly in the selected method. Used from
     /// wallet details where the user already tapped "iCloud backup" or
     /// "Manual backup"; nil keeps the chooser for create/export/reset flows.
@@ -68,6 +72,7 @@ struct WalletBackupFlow: View {
         walletName: String,
         words: [String],
         avatar: WalletAvatarSpec? = nil,
+        hasPassphrase: Bool = false,
         startingMethod: WalletBackupMethod? = nil,
         onClose: @escaping () -> Void,
         isNewWallet: Bool = false,
@@ -77,6 +82,7 @@ struct WalletBackupFlow: View {
         self.walletName = walletName
         self.words = words
         self.avatar = avatar
+        self.hasPassphrase = hasPassphrase
         self.startingMethod = startingMethod
         self.onClose = onClose
         self.isNewWallet = isNewWallet
@@ -151,6 +157,7 @@ struct WalletBackupFlow: View {
                 walletName: walletName,
                 words: words,
                 avatar: avatar,
+                hasPassphrase: hasPassphrase,
                 password: password,
                 onDone: { complete(.iCloud) }
             )
@@ -561,6 +568,8 @@ struct ICloudProgressScreen: View {
     let walletName: String
     let words: [String]
     let avatar: WalletAvatarSpec?
+    /// P0-003: clear flag on the blob — never the passphrase bytes.
+    var hasPassphrase: Bool = false
     let password: String
     let onDone: () -> Void
 
@@ -601,7 +610,9 @@ struct ICloudProgressScreen: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else if isDone {
-                        Text("Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.")
+                        Text(hasPassphrase
+                             ? "Your encrypted recovery phrase is safe in iCloud. To restore, you will need this backup password AND your BIP-39 passphrase — Aperture never stores the passphrase."
+                             : "Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.")
                             .font(UniTypography.body)
                             .foregroundStyle(UniColors.Text.secondary)
                             .multilineTextAlignment(.center)
@@ -655,11 +666,19 @@ struct ICloudProgressScreen: View {
         progress = reduceMotion ? 0.34 : 0.06
 
         let wid = walletId, wname = walletName, w = words, pw = password, av = avatar
+        let passphraseFlag = hasPassphrase
         do {
             // 1 · Encrypt on device (PBKDF2 600k → AES-GCM) off the main actor.
+            // P0-003: hasPassphrase is a clear flag only — never the secret.
             let blob = try await Task.detached(priority: .userInitiated) {
                 try WalletBackupBlob.make(
-                    walletId: wid, walletName: wname, words: w, password: pw, createdAt: Date(), avatar: av
+                    walletId: wid,
+                    walletName: wname,
+                    words: w,
+                    password: pw,
+                    createdAt: Date(),
+                    avatar: av,
+                    hasPassphrase: passphraseFlag
                 )
             }.value
             steps[0] = .done; steps[1] = .active

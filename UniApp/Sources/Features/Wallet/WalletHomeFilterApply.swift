@@ -404,7 +404,7 @@ enum WalletHomeFilterApply {
     ///
     /// **2026-06-09 perf.** Was `SupportedChain.allCases.firstIndex(of:)`
     /// — an O(N) linear scan on every sort comparison. With ~400 rows
-    /// × ~12 comparisons per row × 26 chains, the sort step alone was
+    /// × ~12 comparisons per row × all chains, the sort step alone was
     /// burning ~125k chain comparisons per body render. Memoized into
     /// a static `[chain: index]` dictionary computed once at first
     /// access; every subsequent call is a single hash lookup.

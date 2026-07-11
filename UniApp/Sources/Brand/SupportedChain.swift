@@ -1,7 +1,7 @@
 import Foundation
 
-/// Aperture's supported chains for wallet import. Mirrors the canonical
-/// list in `SUPPORTED_ASSETS.md` (27 networks across five families).
+/// Aperture's supported chains for wallet import. **24 networks** across
+/// Bitcoin, EVM, ed25519, and single-chain families (no Cosmos/Kava).
 ///
 /// **Why a separate enum from `SupportedAsset` / `SupportedCurrency`.**
 /// `SupportedCurrency` is fiat (USD, EUR, …); `SupportedAsset` is a
@@ -176,7 +176,6 @@ extension SupportedChain {
         case .evm:      return "0x0000…0001 (32-byte hex)"
         case .ed25519:  return "3Mz4…example… (base58 secret key)"
         case .ripple:   return "sEd…example… (XRP family seed)"
-        case .cosmos:   return "0x…example… (hex)"
         case .aptos:    return "0x…example… (Aptos hex)"
         case .near:     return "ed25519:…example… (NEAR)"
         case .polkadot: return "0x…example… (Polkadot hex)"
@@ -245,7 +244,6 @@ enum ChainFamily: String, Hashable, Sendable {
     case evm       // secp256k1 + keccak256
     case ed25519   // Solana / Stellar / Sui
     case ripple    // secp256k1 or ed25519 + ripple encoding
-    case cosmos    // secp256k1 + bech32
     case aptos     // ed25519 + Aptos address
     case near      // ed25519 + NEAR account
     case polkadot  // sr25519 / ed25519 + SS58

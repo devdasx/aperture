@@ -290,7 +290,7 @@ struct PrivateKeyEntryView: View {
             return ("Solana secret key (base58).", UniColors.Text.secondary)
         case .xrpSeed:
             return ("XRP family seed.", UniColors.Text.secondary)
-        case .cosmosHex, .ed25519Hex:
+        case .ed25519Hex:
             return ("Hex-encoded private key.", UniColors.Text.secondary)
         case .extendedPublicKey:
             return ("This is an extended public key. Use Watch-only instead.", UniColors.Feedback.Warning.foreground)

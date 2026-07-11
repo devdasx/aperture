@@ -23,6 +23,20 @@ enum PolkadotSigningNetwork: String, Sendable, Hashable {
 
     var transferKeepAliveCallIndex: UInt8 { 0x03 }
 
+    /// Asset Hub `pallet_assets` index (live metadata `spec_name=statemint`).
+    var assetsPalletIndex: UInt8? {
+        switch self {
+        case .relay: return nil
+        case .assetHub: return 50 // 0x32
+        }
+    }
+
+    /// `assets.transfer_keep_alive` call index.
+    var assetsTransferKeepAliveCallIndex: UInt8 { 0x09 }
+
+    /// `assets.transfer_all` call index (send-max path).
+    var assetsTransferAllCallIndex: UInt8 { 0x20 }
+
     /// `frame_utility` pallet index (Polkadot relay vs Asset Hub metadata).
     var utilityPalletIndex: UInt8 {
         switch self {
@@ -41,9 +55,10 @@ enum PolkadotSigningNetwork: String, Sendable, Hashable {
     }
 }
 
-/// Builds + signs Polkadot Asset Hub transactions (native DOT
-/// `balances.transferKeepAlive`, with a mortal era + optional tip) from
-/// `SendDraft` + just-in-time data.
+/// Builds + signs Polkadot Asset Hub transactions from `SendDraft` + JIT data:
+/// - native DOT → `balances.transferKeepAlive`
+/// - Asset Hub tokens (USDT 1984, USDC 1337, …) → `assets.transferKeepAlive`
+///   / `assets.transferAll` (send-max)
 ///
 /// This intentionally does not use WalletCore's Polkadot extrinsic builder.
 /// Polkadot mainnet now includes the `CheckMetadataHash` signed extension,
@@ -55,18 +70,12 @@ enum PolkadotSigningNetwork: String, Sendable, Hashable {
 ///
 /// **Fee model (matrix §G11, doc-grounded — fees):** weight-based
 /// inclusion fee computed by the runtime; the only sender lever is the
-/// optional `tip` (`FeeChoice.polkadotTipPlancks`). Default
-/// `transferKeepAlive` so the runtime rejects a tx that would reap the
-/// sender below the Existential Deposit (matrix §G11). Send-all could use
-/// `balances.transferAll`; for safety + the keep-alive default we sign a
-/// keep-alive transfer of the resolved amount.
+/// optional `tip` (`FeeChoice.polkadotTipPlancks`). Fees remain in native DOT
+/// (`ChargeAssetTxPayment.asset_id = None`) even when moving USDT/USDC.
 ///
 /// Aperture shows Polkadot balances from Asset Hub, so production sends
 /// target Asset Hub too. Tests still exercise relay-chain constants to keep
 /// the SCALE helpers honest across both Substrate runtimes.
-///
-/// **No Asset Hub tokens yet** — native DOT is wired here; asset-token sends
-/// require the `Assets` pallet call path and continue to refuse honestly.
 ///
 /// Output: `output.encoded` is the SCALE-encoded signed extrinsic for
 /// `author_submitExtrinsic` (0x-hex); the node assigns the hash.
@@ -88,12 +97,8 @@ enum PolkadotTransactionSigner {
         guard draft.chain == .polkadot else {
             throw SigningError.malformedDraft("Polkadot signer used for \(draft.chain.rawValue)")
         }
-        guard !draft.isTokenSend else {
-            // Asset Hub assets are a separate parachain path (matrix §G11).
-            throw SigningError.signingFailed("Sending tokens on Polkadot isn't available yet")
-        }
         // BUG-001: every recipient is encoded into the call (single transfer
-        // or utility.batch_all of transferKeepAlive calls).
+        // or utility.batch_all of transferKeepAlive / assets.transfer* calls).
         let recipients = try SendRecipientSigning.requireRecipients(draft)
         guard let specVersion = jit.polkadotSpecVersion,
               let txVersion = jit.polkadotTransactionVersion else {
@@ -109,24 +114,68 @@ enum PolkadotTransactionSigner {
         guard let nonce = jit.polkadotNonce else {
             throw SigningError.justInTimeRefreshFailed("Polkadot nonce not refreshed")
         }
-        let network = jit.polkadotNetwork ?? .assetHub
+        // Asset Hub tokens always target Asset Hub (not the relay). Native DOT
+        // sends also use Asset Hub in production; tests may still pass `.relay`.
+        let network: PolkadotSigningNetwork = draft.isTokenSend
+            ? .assetHub
+            : (jit.polkadotNetwork ?? .assetHub)
         let genesisHashHex = jit.polkadotGenesisHash ?? network.genesisHashHex
         guard let genesisHash = SigningNumeric.hexToData(stripped0x(genesisHashHex)) else {
             throw SigningError.signingFailed("Polkadot genesis hash invalid")
         }
 
+        let assetId: UInt32?
+        if draft.isTokenSend {
+            assetId = try resolveAssetHubAssetId(draft: draft)
+        } else {
+            assetId = nil
+        }
+
         var transferCalls: [Data] = []
         transferCalls.reserveCapacity(recipients.count)
-        for r in recipients {
-            guard let value = SigningAmount.uint64(display: r.amount, decimals: draft.chain.nativeDecimals) else {
-                throw SigningError.malformedDraft("invalid DOT amount")
-            }
+        for (index, r) in recipients.enumerated() {
             guard let accountId = SS58.decodeAccountId(r.address) else {
                 throw SigningError.malformedDraft("invalid Polkadot recipient address")
             }
-            transferCalls.append(
-                transferKeepAliveCall(toAccountId: Data(accountId), value: value, network: network)
-            )
+            let dest = Data(accountId)
+            if let assetId {
+                // BUG-011: Asset Hub `pallet_assets` transfers (USDT/USDC/…).
+                if draft.isMaxSend, recipients.count == 1, index == 0 {
+                    transferCalls.append(
+                        try assetsTransferAllCall(
+                            assetId: assetId,
+                            toAccountId: dest,
+                            keepAlive: true,
+                            network: network
+                        )
+                    )
+                } else {
+                    guard let value = SigningAmount.uint64(
+                        display: r.amount,
+                        decimals: draft.effectiveDecimals
+                    ) else {
+                        throw SigningError.malformedDraft("invalid Asset Hub token amount")
+                    }
+                    transferCalls.append(
+                        try assetsTransferKeepAliveCall(
+                            assetId: assetId,
+                            toAccountId: dest,
+                            amount: value,
+                            network: network
+                        )
+                    )
+                }
+            } else {
+                guard let value = SigningAmount.uint64(
+                    display: r.amount,
+                    decimals: draft.chain.nativeDecimals
+                ) else {
+                    throw SigningError.malformedDraft("invalid DOT amount")
+                }
+                transferCalls.append(
+                    transferKeepAliveCall(toAccountId: dest, value: value, network: network)
+                )
+            }
         }
         let tip = draft.fee.polkadotTipPlancks.flatMap(SigningAmount.uint64) ?? 0
 
@@ -182,6 +231,42 @@ enum PolkadotTransactionSigner {
         return out
     }
 
+    /// Asset Hub `assets.transfer_keep_alive(id, target, amount)`.
+    /// SCALE (live metadata): pallet=50 | call=9 | Compact<u32> id |
+    /// MultiAddress | Compact<u128> amount.
+    static func assetsTransferKeepAliveCall(
+        assetId: UInt32,
+        toAccountId: Data,
+        amount: UInt64,
+        network: PolkadotSigningNetwork
+    ) throws -> Data {
+        guard let pallet = network.assetsPalletIndex else {
+            throw SigningError.signingFailed("Assets pallet is only available on Asset Hub")
+        }
+        var out = Data([pallet, network.assetsTransferKeepAliveCallIndex])
+        out.append(compact(UInt64(assetId)))
+        out.append(multiAddress(accountId: toAccountId))
+        out.append(compact(amount))
+        return out
+    }
+
+    /// Asset Hub `assets.transfer_all(id, dest, keep_alive)`.
+    static func assetsTransferAllCall(
+        assetId: UInt32,
+        toAccountId: Data,
+        keepAlive: Bool,
+        network: PolkadotSigningNetwork
+    ) throws -> Data {
+        guard let pallet = network.assetsPalletIndex else {
+            throw SigningError.signingFailed("Assets pallet is only available on Asset Hub")
+        }
+        var out = Data([pallet, network.assetsTransferAllCallIndex])
+        out.append(compact(UInt64(assetId)))
+        out.append(multiAddress(accountId: toAccountId))
+        out.append(keepAlive ? 0x01 : 0x00)
+        return out
+    }
+
     /// `utility.batch_all(calls)` — atomic multi-transfer (BUG-001).
     /// SCALE: pallet | call_index | Compact<u32> len | Call… (raw call bytes).
     static func batchAllCall(innerCalls: [Data], network: PolkadotSigningNetwork) -> Data {
@@ -191,6 +276,24 @@ enum PolkadotTransactionSigner {
             out.append(call)
         }
         return out
+    }
+
+    /// Resolve Asset Hub asset id from `SendDraft.tokenContract`
+    /// (catalog stores `"1337"` / `"1984"`).
+    static func resolveAssetHubAssetId(draft: SendDraft) throws -> UInt32 {
+        guard let raw = draft.tokenContract?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            throw SigningError.malformedDraft("Asset Hub token id missing")
+        }
+        // Prefer registry match (symbol/id), then plain numeric contract.
+        if let entry = PolkadotAssetRegistry.entry(assetIdString: raw)
+            ?? PolkadotAssetRegistry.entry(symbol: draft.tokenSymbol ?? "") {
+            return entry.assetId
+        }
+        guard let assetId = UInt32(raw) else {
+            throw SigningError.malformedDraft("invalid Asset Hub asset id: \(raw)")
+        }
+        return assetId
     }
 
     static func signedExtra(

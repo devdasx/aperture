@@ -6,16 +6,12 @@ import UIKit
 /// address, and the per-chain balance result in the user's currency.
 ///
 /// **Honesty (Rule #2 §A.7 + Rule #16).** When the address starts with
-/// `StubKeyImportService.stubAddressPrefix` the row knows the
-/// derivation hasn't shipped for that chain yet (Bitcoin / EVM /
-/// Cosmos / TRON / Sui / Stellar / Aptos / TON / Polkadot — every
-/// chain that needs secp256k1 / SHA-3 / BLAKE2b / StrKey / SCALE).
+/// the historical stub prefix (`KeyImportFormatDetector.stubAddressPrefix`)
+/// the row treats it as non-real derivation (defense-in-depth; production
+/// `WalletCoreKeyImportService` never emits this prefix — BUG-024).
 /// Instead of pretending to show an address + balance, the row
 /// renders a quiet "Derivation pending" surface so the user can never
 /// confuse a placeholder for a real on-chain account.
-///
-/// Real-derivation chains today (Solana, NEAR) render the truncated
-/// address and the real RPC-fetched balance.
 ///
 /// `balance` is optional: nil while the scan is in flight (renders a
 /// `ProgressView` in the trailing slot), present once the scanner
@@ -31,12 +27,12 @@ struct ReviewChainRow: View {
     let balance: ChainBalance?
 
     private var isStubAddress: Bool {
-        address.hasPrefix(StubKeyImportService.stubAddressPrefix)
+        address.hasPrefix(KeyImportFormatDetector.stubAddressPrefix)
     }
 
     private var displayAddress: String {
         guard isStubAddress else { return address }
-        return String(address.dropFirst(StubKeyImportService.stubAddressPrefix.count))
+        return String(address.dropFirst(KeyImportFormatDetector.stubAddressPrefix.count))
     }
 
     var body: some View {

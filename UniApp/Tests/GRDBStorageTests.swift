@@ -356,8 +356,8 @@ import Testing
         #expect(state.hasEncryptedKey)
     }
 
-    @Test("chain summaries ignore balances cached in another fiat currency")
-    func chainSummariesIgnoreStaleFiatCurrencies() async throws {
+    @Test("BUG-009 rebuild keeps last fiat when currency mismatches and no FX yet")
+    func chainSummariesKeepLastFiatOnCurrencyMismatchWithoutFX() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
         defer { TestAppDatabaseFactory.cleanup(database) }
         let walletID = try await insertWatchWallet(database, chains: [.ethereum])
@@ -378,15 +378,119 @@ import Testing
 
         let state = try #require(try chainRepo.chainState(walletId: walletID, chain: .ethereum))
         #expect(state.nativeBalanceRaw == "1")
-        #expect(state.nativeFiat == 0)
-        #expect(state.totalFiat == 0)
+        // Never stamp 0 solely because fiat_currency_code differs.
+        #expect(state.nativeFiat == 70)
+        #expect(state.totalFiat == 70)
         #expect(state.tokenCount == 0)
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT total_fiat FROM wallet_portfolio_summaries WHERE wallet_id = ? AND currency_code = ?",
+            arguments: [walletID.uuidString, "USD"],
+            database: database
+        ) == "70")
+    }
 
-        let summary = try database.read { db in
-            try WalletHomeProjection.summary(db: db, walletId: walletID, currencyCode: "USD")
-        }
-        #expect(summary.totalFiat == 0)
-        #expect(summary.positiveBalanceRowCount == 1)
+    @Test("BUG-009 rebuild converts via USD unit price × FX on currency switch")
+    func chainSummariesConvertViaUSDPriceAndFX() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertWatchWallet(database, chains: [.ethereum])
+        let addressID = try firstAddressID(walletID: walletID, chain: .ethereum, database: database)
+
+        // 1 ETH, previously stamped in USD.
+        try TransactionRepository(database: database).upsertBalance(
+            addressId: addressID,
+            tokenSymbol: "ETH",
+            tokenContract: nil,
+            decimals: 18,
+            rawBalance: "1000000000000000000",
+            fiatValueCached: 2000,
+            fiatCurrencyCode: "USD"
+        )
+
+        // Canonical USD token price + USD→EUR FX (0.92 EUR per 1 USD).
+        let prices = PriceCacheRepository(database: database)
+        try prices.upsert(symbol: "ETH", fiat: "USD", price: 2000, source: "test")
+        try prices.upsert(symbol: "USD", fiat: "EUR", price: Decimal(string: "0.92")!, source: "test FX")
+
+        let chainRepo = ChainStateRepository(database: database)
+        try chainRepo.rebuild(walletId: walletID, fiatCurrencyCode: "EUR")
+
+        let state = try #require(try chainRepo.chainState(walletId: walletID, chain: .ethereum))
+        #expect(state.totalFiat == Decimal(string: "1840"))
+        #expect(state.nativeFiat == Decimal(string: "1840"))
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT fiat_currency_code FROM chain_states WHERE wallet_id = ? AND chain_raw = ?",
+            arguments: [walletID.uuidString, SupportedChain.ethereum.rawValue],
+            database: database
+        )?.uppercased() == "EUR")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT total_fiat FROM wallet_portfolio_summaries WHERE wallet_id = ? AND currency_code = ?",
+            arguments: [walletID.uuidString, "EUR"],
+            database: database
+        ) == "1840")
+    }
+
+    @Test("BUG-009 rebuild converts cached fiat via USD-anchored FX cross rate")
+    func chainSummariesConvertCachedFiatViaFXCross() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertWatchWallet(database, chains: [.ethereum])
+        let addressID = try firstAddressID(walletID: walletID, chain: .ethereum, database: database)
+
+        // 1 ETH valued at 70 JOD, no token unit prices — only FX rows.
+        try TransactionRepository(database: database).upsertBalance(
+            addressId: addressID,
+            tokenSymbol: "ETH",
+            tokenContract: nil,
+            decimals: 18,
+            rawBalance: "1000000000000000000",
+            fiatValueCached: 70,
+            fiatCurrencyCode: "JOD"
+        )
+
+        let prices = PriceCacheRepository(database: database)
+        // 1 USD = 0.71 JOD, 1 USD = 0.92 EUR → JOD→EUR = 0.92/0.71
+        try prices.upsert(symbol: "USD", fiat: "JOD", price: Decimal(string: "0.71")!, source: "test FX")
+        try prices.upsert(symbol: "USD", fiat: "EUR", price: Decimal(string: "0.92")!, source: "test FX")
+
+        let chainRepo = ChainStateRepository(database: database)
+        try chainRepo.rebuild(walletId: walletID, fiatCurrencyCode: "EUR")
+
+        let state = try #require(try chainRepo.chainState(walletId: walletID, chain: .ethereum))
+        let expected = 70 * (Decimal(string: "0.92")! / Decimal(string: "0.71")!)
+        #expect(state.totalFiat == expected)
+        #expect(state.nativeFiat == expected)
+    }
+
+    @Test("BUG-009 price cache stores USD token prices and FX rates")
+    func priceCacheStoresUSDAndFX() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+
+        let prices = PriceCacheRepository(database: database)
+        try prices.upsert(symbol: "ETH", fiat: "USD", price: 2500, source: "CoinGecko")
+        try prices.upsert(symbol: "BTC", fiat: "USD", price: 60_000, source: "Binance")
+        // FX row: symbol USD, fiat = local → units of local per 1 USD.
+        try prices.upsert(symbol: "USD", fiat: "JOD", price: Decimal(string: "0.71")!, source: "Coinbase FX")
+        try prices.upsert(symbol: "USD", fiat: "EUR", price: Decimal(string: "0.92")!, source: "OpenER FX")
+
+        let ethUSD = try #require(try prices.price(symbol: "ETH", fiat: "USD"))
+        #expect(ethUSD.price == 2500)
+
+        let btcUSD = try #require(try prices.price(symbol: "BTC", fiat: "USD"))
+        #expect(btcUSD.price == 60_000)
+
+        let jodFX = try #require(try prices.price(symbol: "USD", fiat: "JOD"))
+        #expect(jodFX.price == Decimal(string: "0.71"))
+
+        let eurFX = try #require(try prices.price(symbol: "USD", fiat: "EUR"))
+        #expect(eurFX.price == Decimal(string: "0.92"))
+
+        // Display conversion used by rebuild / currency switch: USD price × FX.
+        let ethInJOD = ethUSD.price * jodFX.price
+        #expect(ethInJOD == 2500 * Decimal(string: "0.71")!)
+        let btcInEUR = btcUSD.price * eurFX.price
+        #expect(btcInEUR == 60_000 * Decimal(string: "0.92")!)
     }
 
     @Test("wallet fiat projection converts cached balances before token price refresh")

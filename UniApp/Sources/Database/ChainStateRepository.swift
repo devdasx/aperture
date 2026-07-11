@@ -120,6 +120,16 @@ final class ChainStateRepository {
             arguments: [walletId.uuidString, chainRaw]
         )
 
+        // BUG-009: rebuild must never stamp total_fiat = 0 solely because
+        // balance rows still carry a different fiat_currency_code. Prefer
+        // amount × USD unit price × (USD→target FX) from cached_prices;
+        // otherwise convert cached fiat via USD-anchored FX; last resort
+        // keep the last non-zero cached fiat until projection catches up.
+        let symbols = Set(balanceRows.map { ($0["token_symbol"] as String).uppercased() })
+        let usdUnitPrices = try Self.loadUSDUnitPrices(db: db, symbols: symbols)
+        let anyUnitPrices = try Self.loadLatestUnitPricesAnyCurrency(db: db, symbols: symbols)
+        let usdToFiatRates = try Self.loadAllUSDToFiatRates(db: db)
+
         var nativeAmount: Decimal = 0
         var nativeFiat: Decimal = 0
         var totalFiat: Decimal = 0
@@ -131,9 +141,18 @@ final class ChainStateRepository {
             let decimals: Int = balance["decimals"]
             let cachedCurrency: String = balance["fiat_currency_code"]
             let cachedFiat = Decimal(string: balance["fiat_value_cached"] as String) ?? 0
-            let fiat = cachedCurrency.uppercased() == targetCurrencyCode ? cachedFiat : 0
-            totalFiat += fiat
             let amount = Self.decimalAmount(rawBalance: rawBalance, decimals: decimals) ?? 0
+            let fiat = Self.resolveFiatValue(
+                amount: amount,
+                symbol: symbol.uppercased(),
+                cachedFiat: cachedFiat,
+                cachedCurrency: cachedCurrency,
+                targetCurrency: targetCurrencyCode,
+                usdUnitPrices: usdUnitPrices,
+                anyUnitPrices: anyUnitPrices,
+                usdToFiatRates: usdToFiatRates
+            )
+            totalFiat += fiat
             if symbol.caseInsensitiveCompare(chain.ticker) == .orderedSame && contract == nil {
                 nativeAmount += amount
                 nativeFiat += fiat
@@ -551,6 +570,148 @@ final class ChainStateRepository {
 
     private static func decimalString(_ value: Decimal) -> String {
         NSDecimalNumber(decimal: value).stringValue
+    }
+
+    // MARK: - BUG-009 fiat resolution (USD prices + FX)
+
+    /// Unit prices stored under fiat = USD (canonical).
+    private static func loadUSDUnitPrices(db: Database, symbols: Set<String>) throws -> [String: Decimal] {
+        guard !symbols.isEmpty else { return [:] }
+        let rows = try Row.fetchAll(
+            db,
+            sql: "SELECT symbol, price FROM cached_prices WHERE fiat = 'USD'"
+        )
+        var out: [String: Decimal] = [:]
+        for row in rows {
+            let symbol = (row["symbol"] as String).uppercased()
+            guard symbols.contains(symbol) else { continue }
+            // Skip the FX row itself (symbol USD = exchange rate, not a token).
+            if symbol == "USD" { continue }
+            let price = Decimal(string: row["price"] as String) ?? 0
+            if price > 0 { out[symbol] = price }
+        }
+        return out
+    }
+
+    /// Latest unit price per symbol in any fiat (for pre-USD-storage rows).
+    private static func loadLatestUnitPricesAnyCurrency(
+        db: Database,
+        symbols: Set<String>
+    ) throws -> [String: (price: Decimal, fiat: String)] {
+        guard !symbols.isEmpty else { return [:] }
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT symbol, fiat, price, fetched_at_ms
+            FROM cached_prices
+            ORDER BY fetched_at_ms DESC
+            """
+        )
+        var out: [String: (price: Decimal, fiat: String)] = [:]
+        for row in rows {
+            let symbol = (row["symbol"] as String).uppercased()
+            guard symbols.contains(symbol), out[symbol] == nil else { continue }
+            if symbol == "USD" { continue }
+            let price = Decimal(string: row["price"] as String) ?? 0
+            let fiat = (row["fiat"] as String).uppercased()
+            if price > 0 { out[symbol] = (price, fiat) }
+        }
+        return out
+    }
+
+    /// `cached_prices` rows with symbol = USD store units of `fiat` per 1 USD.
+    private static func loadAllUSDToFiatRates(db: Database) throws -> [String: Decimal] {
+        let rows = try Row.fetchAll(
+            db,
+            sql: "SELECT fiat, price FROM cached_prices WHERE UPPER(symbol) = 'USD'"
+        )
+        var out: [String: Decimal] = ["USD": 1]
+        for row in rows {
+            let fiat = (row["fiat"] as String).uppercased()
+            let price = Decimal(string: row["price"] as String) ?? 0
+            if price > 0 { out[fiat] = price }
+        }
+        return out
+    }
+
+    /// Cross rate: 1 unit of `from` → units of `to`, via USD-anchored FX table.
+    private static func crossRate(
+        from source: String,
+        to target: String,
+        usdToFiatRates: [String: Decimal]
+    ) -> Decimal? {
+        let from = source.uppercased()
+        let to = target.uppercased()
+        if from == to { return 1 }
+        if from == "USD" {
+            return usdToFiatRates[to]
+        }
+        if to == "USD" {
+            guard let sourceUSD = usdToFiatRates[from], sourceUSD > 0 else { return nil }
+            return 1 / sourceUSD
+        }
+        guard
+            let sourceUSD = usdToFiatRates[from],
+            let targetUSD = usdToFiatRates[to],
+            sourceUSD > 0
+        else { return nil }
+        return targetUSD / sourceUSD
+    }
+
+    /// Resolve display fiat for one balance row without ever zeroing solely
+    /// because `fiat_currency_code` differs from the rebuild target.
+    private static func resolveFiatValue(
+        amount: Decimal,
+        symbol: String,
+        cachedFiat: Decimal,
+        cachedCurrency: String,
+        targetCurrency: String,
+        usdUnitPrices: [String: Decimal],
+        anyUnitPrices: [String: (price: Decimal, fiat: String)],
+        usdToFiatRates: [String: Decimal]
+    ) -> Decimal {
+        let target = targetCurrency.uppercased()
+        let cachedCode = cachedCurrency.uppercased()
+        let sym = symbol.uppercased()
+
+        // 1) Canonical path: amount × USD unit price × (USD→target FX).
+        if amount > 0, let usdPrice = usdUnitPrices[sym], usdPrice > 0 {
+            if target == "USD" {
+                return amount * usdPrice
+            }
+            if let fx = usdToFiatRates[target], fx > 0 {
+                return amount * usdPrice * fx
+            }
+        }
+
+        // 2) Any-currency unit price × FX into target.
+        if amount > 0, let any = anyUnitPrices[sym], any.price > 0 {
+            if any.fiat == target {
+                return amount * any.price
+            }
+            if let rate = crossRate(from: any.fiat, to: target, usdToFiatRates: usdToFiatRates) {
+                return amount * any.price * rate
+            }
+        }
+
+        // 3) Already in target currency — use cached fiat.
+        if cachedCode == target {
+            return cachedFiat
+        }
+
+        // 4) Convert existing cached fiat via FX (e.g. JOD → EUR).
+        if cachedFiat > 0,
+           let rate = crossRate(from: cachedCode, to: target, usdToFiatRates: usdToFiatRates) {
+            return cachedFiat * rate
+        }
+
+        // 5) Last resort: keep last non-zero fiat rather than stamp 0.
+        // Value may be stale/wrong-currency until projection refreshes,
+        // but the hero never blanks when balances are non-zero.
+        if cachedFiat > 0 {
+            return cachedFiat
+        }
+        return 0
     }
 
     private static func snapshot(from row: Row) -> ChainStateSnapshot {

@@ -70,7 +70,7 @@ enum SendMemoValue: Codable, Hashable, Sendable {
     case tonComment(String)
     /// Solana SPL memo.
     case splMemo(String)
-    /// Cosmos memo / TRON memo / NEAR FT memo — free text.
+    /// TRON memo / NEAR FT memo — free text.
     case text(String)
     /// Stellar memo with its type.
     case stellarMemo(StellarMemo)

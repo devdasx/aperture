@@ -57,6 +57,8 @@ enum ExportClipboard {
 struct ExportRecoveryPhraseFlow: View {
     let walletId: UUID
     let walletName: String
+    /// P0-003: when true, iCloud backup blob records that restore needs BIP-39 passphrase.
+    var hasPassphrase: Bool = false
     let onClose: () -> Void
 
     @State private var isShowingReveal = false
@@ -92,7 +94,12 @@ struct ExportRecoveryPhraseFlow: View {
                 }
             }
             .navigationDestination(isPresented: $isShowingReveal) {
-                RecoveryPhraseRevealScreen(walletId: walletId, walletName: walletName, onDone: onClose)
+                RecoveryPhraseRevealScreen(
+                    walletId: walletId,
+                    walletName: walletName,
+                    hasPassphrase: hasPassphrase,
+                    onDone: onClose
+                )
             }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
@@ -104,6 +111,7 @@ struct ExportRecoveryPhraseFlow: View {
 private struct RecoveryPhraseRevealScreen: View {
     let walletId: UUID
     let walletName: String
+    var hasPassphrase: Bool = false
     let onDone: () -> Void
 
     @State private var words: [String] = []
@@ -202,6 +210,7 @@ private struct RecoveryPhraseRevealScreen: View {
                 walletId: walletId,
                 walletName: walletName,
                 words: words,
+                hasPassphrase: hasPassphrase,
                 onClose: {
                     isShowingBackup = false
                     onDone()

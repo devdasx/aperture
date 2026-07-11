@@ -66,7 +66,7 @@ enum PrivateKeyExport {
                     return (WalletCore.Base58.encodeNoCheck(data: keyData + pub), "Base58")
                 }
                 return ("0x" + hexString(keyData), "Hex")
-            case .evm, .tron, .cosmos, .ripple:
+            case .evm, .tron, .ripple:
                 // Raw secp256k1 scalar as 0x-hex — the universal import form
                 // for these families.
                 return ("0x" + hexString(keyData), "Hex")

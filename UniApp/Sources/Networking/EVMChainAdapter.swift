@@ -3,9 +3,9 @@ import OSLog
 
 /// Domain-layer adapter for EVM chains (Ethereum, Arbitrum, Base,
 /// Optimism, Polygon, BNB Chain, Avalanche, Celo, Scroll, zkSync Era,
-/// Kava EVM, opBNB). One adapter for all 12 — every EVM RPC speaks
-/// the standard JSON-RPC surface, so the adapter parameterizes only
-/// on `chain` for endpoint selection.
+/// opBNB). One adapter for all 11 — every EVM RPC speaks the standard
+/// JSON-RPC surface, so the adapter parameterizes only on `chain` for
+/// endpoint selection.
 ///
 /// **Phase 1 scope (this turn):** native balance fetch via
 /// `eth_getBalance`, used-address heuristic via

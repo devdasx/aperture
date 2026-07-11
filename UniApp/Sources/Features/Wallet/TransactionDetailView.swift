@@ -339,7 +339,7 @@ struct TransactionDetailView: View {
     /// about to see is present immediately. EVM → Transaction + Gas & fee;
     /// Bitcoin family → Transaction + Inputs + Outputs; Solana → Transaction
     /// + Balance changes; everything else (XRPL / TRON / TON / NEAR / Aptos /
-    /// Cosmos / Polkadot / Stellar / Sui) → a single generic "On-chain
+    /// Polkadot / Stellar / Sui) → a single generic "On-chain
     /// detail" section. If the chain can't be resolved at all, the generic
     /// scaffold is the safe minimum.
     @ViewBuilder
@@ -725,7 +725,7 @@ struct TransactionDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: Generic (XRPL / TRON / TON / NEAR / Aptos / Cosmos / Polkadot / Stellar / Sui)
+    // MARK: Generic (XRPL / TRON / TON / NEAR / Aptos / Polkadot / Stellar / Sui)
 
     @ViewBuilder
     private func genericSection(_ rows: [DetailField]) -> some View {

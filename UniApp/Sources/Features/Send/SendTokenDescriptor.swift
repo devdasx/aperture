@@ -28,10 +28,15 @@ struct SendTokenDescriptor: Codable, Hashable, Sendable, Identifiable {
     }
 
     /// Tokens we can honestly submit through the current signer stack.
-    /// Native DOT is sendable, but Polkadot Asset Hub tokens need a
-    /// separate parachain endpoint and extrinsic path.
+    /// BUG-011: Polkadot Asset Hub assets (contract = asset id string like
+    /// `"1984"` for USDT) sign via `assets.transferKeepAlive` on Asset Hub.
     var isSendSupported: Bool {
-        chain != .polkadot
+        switch chain {
+        case .polkadot:
+            return PolkadotAssetRegistry.isSendSupportedAssetId(contract)
+        default:
+            return true
+        }
     }
 
     init(
