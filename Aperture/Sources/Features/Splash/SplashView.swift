@@ -1,0 +1,279 @@
+import SwiftUI
+
+/// Aperture's launch splash — the brand's first breath.
+///
+/// **2026-06-07 (take 6) — shared-element handoff.** Composition
+/// rebuilt against `/Users/thuglifex/Downloads/design_handoff_splash_to_onboarding/`.
+/// The logo is no longer the hand-driven 6-blade iris from the
+/// prior `design_handoff_splash_screen/` redesign; it is now the
+/// unified Aperture iris mark shared with the onboarding welcome slide via
+/// SwiftUI's `matchedGeometryEffect`. The logo blooms in on splash
+/// entrance via a native scale + opacity keyframe driven by the
+/// same `TimelineView` elapsed-time state as the rest of the
+/// chrome, and on splash → onboarding the same logo view flies to
+/// its onboarding position over 0.82s
+/// (`cubic-bezier(0.52, 0, 0.12, 1)`), with a single medium-impact
+/// haptic firing at landing.
+///
+/// **What's preserved from the prior splash design:**
+/// - The "Aperture" wordmark with its wipe-up reveal.
+/// - The monochrome surface, now backed by the app-wide background role.
+///
+/// **What changed:**
+/// - The mark itself: `Brand/Mark.imageset` is rendered through
+///   `ApertureIrisView`, so dark mode uses the white brand mark.
+/// - The mark bloom: a single restrained scale + opacity bloom
+///   computed in `SplashChromeState` from the elapsed time — the
+///   same cubic-bezier family as the wordmark, one shot, no loops.
+/// - The splash glow/halo is removed completely.
+/// - The logo view carries `.matchedGeometryEffect` so the
+///   onboarding welcome slide can claim it on transition.
+///
+/// **Why the bloom is hand-driven again (2026-06-10).** The take-6
+/// composition played the bloom from a Lottie JSON via the
+/// third-party Lottie SPM package — a Rule #3 (native-only)
+/// violation in the UI layer. The bloom is now computed natively
+/// from the existing `TimelineView` clock; its final frame is the
+/// still `ApertureIrisView` itself, so the splash mark stays on the
+/// shared brand component.
+struct SplashView: View {
+    /// Logo namespace shared with the onboarding welcome slide via
+    /// `AppRoot`. Both views attach `matchedGeometryEffect` to
+    /// their logo container with `id: "logo"` so the system can
+    /// resolve the shared-element animation.
+    let logoNamespace: Namespace.ID
+
+    /// App-wide phase from `AppRoot`. When `.splash`, this view
+    /// owns the logo (isSource: true on the matchedGeometryEffect).
+    /// When `.transitioning`, onboarding becomes the source and
+    /// this view's logo follows along. When `.onboarding`,
+    /// `AppRoot` unmounts this view entirely.
+    let phase: AppPhase
+
+    /// Fired as soon as the logo bloom + "Aperture" wordmark reveal finish.
+    /// `AppRoot` consumes this to start the matchedGeometryEffect transition.
+    let onSplashComplete: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var startDate: Date = .init()
+    @State private var hasFiredComplete: Bool = false
+    /// Single-shot completion timer. Stored so `.onDisappear` can
+    /// cancel it — the prior `DispatchQueue.main.asyncAfter` shape
+    /// could double-fire across view re-mounts because the queued
+    /// closure outlived the view instance that scheduled it.
+    @State private var completionTask: Task<Void, Never>?
+    /// Flips true once every chrome keyframe has reached its final
+    /// value. Drives the `TimelineView`'s `paused:` so the 60fps
+    /// clock stops instead of ticking forever on a settled screen.
+    @State private var isChromeSettled: Bool = false
+
+    /// Total wall time the splash holds before calling `onSplashComplete`.
+    /// This now tracks the last remaining visible keyframe: the wordmark wipe
+    /// (delay 0.92s + duration 0.80s), with a tiny frame buffer.
+    private static let splashDuration: TimeInterval = 1.76
+
+    /// The instant the last chrome keyframe lands. Past this point every
+    /// `SplashChromeState` value is constant, so the timeline can pause.
+    private static let chromeSettleDuration: TimeInterval = 1.72
+    /// Reduce-motion collapses every keyframe to a single 0.30s ramp.
+    private static let reducedMotionSettleDuration: TimeInterval = 0.30
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: isChromeSettled)) { context in
+            let elapsed = context.date.timeIntervalSince(startDate)
+            let settleDuration = reduceMotion
+                ? Self.reducedMotionSettleDuration
+                : Self.chromeSettleDuration
+            let chrome = SplashChromeState(elapsed: elapsed, reduceMotion: reduceMotion)
+            ZStack {
+                background
+                GeometryReader { proxy in
+                    let centerX = proxy.size.width / 2
+                    let centerY = proxy.size.height / 2
+
+                    // The logo container — native scale + opacity
+                    // bloom on splash entrance, then carried into
+                    // onboarding via matchedGeometryEffect. Per the
+                    // handoff: 80pt diameter at splash, center Y
+                    // ~45% of screen. matchedGeometryEffect handles
+                    // the size + position interpolation to the
+                    // onboarding frame automatically — no manual
+                    // frame math. `.scaleEffect` doesn't alter the
+                    // layout frame, so the matched-geometry handoff
+                    // still tracks the settled 80pt frame.
+                    logo
+                        .frame(width: 80, height: 80)
+                        .scaleEffect(chrome.logoScale)
+                        .opacity(chrome.logoOpacity)
+                        .matchedGeometryEffect(
+                            id: "logo",
+                            in: logoNamespace,
+                            properties: .frame,
+                            isSource: phase == .splash
+                        )
+                        .position(x: centerX, y: centerY - 22)
+
+                    // Wordmark sits 30pt below the 80pt logo
+                    // center. Anchored to logo position so it
+                    // tracks geometry consistently with the
+                    // prior splash composition.
+                    wordmark(chrome: chrome)
+                        .position(x: centerX, y: centerY - 22 + 80 / 2 + 30 + 20)
+
+                }
+            }
+            .ignoresSafeArea()
+            // Pause the 60fps timeline once every chrome keyframe
+            // has landed. The expression flips false → true exactly
+            // once per run-through; past that point every frame
+            // would recompute identical values, so the clock stops.
+            .onChange(of: elapsed >= settleDuration) { _, settled in
+                if settled { isChromeSettled = true }
+            }
+        }
+        .accessibilityLabel(Text("Aperture"))
+        .onAppear {
+            startDate = Date()
+            isChromeSettled = false
+            // Single-shot completion timer as a cancellable Task.
+            // Created once (guarded on nil) so re-mounts can't queue
+            // a second timer; cancelled in `.onDisappear` so a torn-
+            // down splash never fires into a stale closure. The
+            // `hasFiredComplete` guard stays as the last line of
+            // defense against any double fire.
+            guard completionTask == nil else { return }
+            let duration = reduceMotion ? Self.reducedMotionSettleDuration : Self.splashDuration
+            completionTask = Task {
+                try? await Task.sleep(for: .seconds(duration))
+                guard !Task.isCancelled, !hasFiredComplete else { return }
+                hasFiredComplete = true
+                onSplashComplete()
+            }
+        }
+        .onDisappear {
+            completionTask?.cancel()
+            completionTask = nil
+        }
+        // Splash chrome (background and wordmark) fades out when
+        // the shared-element transition
+        // starts. The logo itself does NOT fade — it flies via
+        // matchedGeometryEffect. The 0.35s fade matches the
+        // handoff's wordmark fade at the start of the move.
+        .opacity(phase == .splash ? 1 : 0)
+        .animation(.easeOut(duration: 0.35), value: phase)
+    }
+
+    // MARK: - Background
+
+    private var background: some View {
+        UniColors.Background.primary
+            .ignoresSafeArea()
+    }
+
+    // MARK: - Logo
+
+    /// The adaptive unified brand mark.
+    /// On splash entrance, the bloom is a native one-shot scale +
+    /// opacity keyframe (`SplashChromeState.logoScale` /
+    /// `.logoOpacity`) applied at the call site in `body`. Because
+    /// The bloom's final frame is the same semantic logo view used by
+    /// onboarding, so the matchedGeometryEffect handoff stays contiguous
+    /// while the logo respects light/dark appearance.
+    private var logo: some View {
+        ApertureIrisView(ringColor: UniColors.Brand.mark)
+    }
+
+    // MARK: - Wordmark
+
+    private func wordmark(chrome: SplashChromeState) -> some View {
+        let wordHeight: CGFloat = 50
+        return ZStack(alignment: .bottom) {
+            Color.clear.frame(height: wordHeight)
+            Text("Aperture")
+                .font(.system(size: 42, weight: .semibold, design: .default))
+                .kerning(-1.47)
+                .foregroundStyle(UniColors.Splash.mark)
+                .offset(y: wordHeight * chrome.wordmarkOffsetFraction)
+        }
+        .frame(height: wordHeight)
+        .clipped()
+    }
+
+}
+
+// MARK: - Splash chrome state
+
+/// Per-frame state for the splash elements: logo bloom and wordmark.
+/// The logo's *transition to onboarding*
+/// is owned by `matchedGeometryEffect` (driven by the
+/// `AppRoot.phase` change); only its entrance bloom is computed
+/// here.
+///
+/// The logo bloom is the first beat: it completes just before the
+/// wordmark's 0.92s wipe-up begins. One bloom, no loops.
+private struct SplashChromeState {
+    let logoOpacity: Double
+    let logoScale: Double
+    let wordmarkOffsetFraction: Double
+
+    init(elapsed: TimeInterval, reduceMotion: Bool) {
+        if reduceMotion {
+            let p = max(0, min(1, elapsed / 0.30))
+            self.logoOpacity = p
+            self.logoScale = 1
+            self.wordmarkOffsetFraction = 0
+            return
+        }
+
+        // Logo bloom — delay 0s, duration 0.90s, (.2, .7, .2, 1).
+        // Scale 0.60 → 1.00 across the full bloom; opacity 0 → 1
+        // over the first 60% so the mark is fully present while it
+        // settles into its final size. Done before the wordmark's
+        // 0.92s entrance — the logo leads, everything else follows.
+        let logoT = clampUnit(elapsed / 0.90)
+        let logoE = SplashEase.cubicBezier(logoT, 0.2, 0.7, 0.2, 1.0)
+        self.logoScale = 0.60 + 0.40 * logoE
+        let logoFadeT = clampUnit(logoT / 0.60)
+        self.logoOpacity = SplashEase.cubicBezier(logoFadeT, 0.2, 0.7, 0.2, 1.0)
+
+        // Wordmark — delay 0.92s, duration 0.80s, (.2, .8, .2, 1)
+        let wordT = clampUnit((elapsed - 0.92) / 0.80)
+        let wordE = SplashEase.cubicBezier(wordT, 0.2, 0.8, 0.2, 1.0)
+        self.wordmarkOffsetFraction = 1.10 * (1.0 - wordE)
+    }
+}
+
+@inline(__always)
+private func clampUnit(_ x: Double) -> Double {
+    max(0, min(1, x))
+}
+
+// MARK: - Cubic-Bezier solver
+
+private enum SplashEase {
+    static func cubicBezier(_ t: Double, _ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Double {
+        if t <= 0 { return 0 }
+        if t >= 1 { return 1 }
+        var u = t
+        for _ in 0..<10 {
+            let oneMinusU = 1 - u
+            let x = 3 * oneMinusU * oneMinusU * u * x1
+                  + 3 * oneMinusU * u * u * x2
+                  + u * u * u
+            let dx = 3 * oneMinusU * oneMinusU * x1
+                   + 6 * oneMinusU * u * (x2 - x1)
+                   + 3 * u * u * (1 - x2)
+            if abs(dx) < 1e-6 { break }
+            let delta = (x - t) / dx
+            u -= delta
+            if u < 0 { u = 0 }
+            if u > 1 { u = 1 }
+            if abs(delta) < 1e-6 { break }
+        }
+        let oneMinusU = 1 - u
+        return 3 * oneMinusU * oneMinusU * u * y1
+             + 3 * oneMinusU * u * u * y2
+             + u * u * u
+    }
+}

@@ -1,4 +1,4 @@
-name: UniApp
+name: Aperture
 options:
   bundleIdPrefix: com.aperture
   deploymentTarget:
@@ -35,13 +35,13 @@ packages:
     from: "7.11.1"
 
 targets:
-  UniApp:
+  Aperture:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      - path: UniApp/Sources
-      - path: UniApp/Resources
+      - path: Aperture/Sources
+      - path: Aperture/Resources
     dependencies:
       - package: WalletCore
         product: WalletCore
@@ -62,7 +62,7 @@ targets:
     # GENERATE_INFOPLIST_FILE produced: launch screen, single-scene
     # manifest, portrait-only, display name, Face ID + camera usage.)
     info:
-      path: UniApp/Info.plist
+      path: Aperture/Info.plist
       properties:
         CFBundleDisplayName: Aperture
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
@@ -100,7 +100,7 @@ targets:
     # auto-create in the Development environment on first save. Deploy the
     # schema to Production before App Store release.
     entitlements:
-      path: UniApp/Aperture.entitlements
+      path: Aperture/Aperture.entitlements
       properties:
         com.apple.developer.icloud-container-identifiers:
           - iCloud.com.aperture.wallet
@@ -142,9 +142,9 @@ targets:
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      - path: UniApp/Tests
+      - path: Aperture/Tests
     dependencies:
-      - target: UniApp
+      - target: Aperture
       - package: GRDB
         product: GRDB
     settings:
@@ -161,29 +161,29 @@ targets:
         # off Xcode's "update to recommended settings" prompt.
         ENABLE_USER_SCRIPT_SANDBOXING: YES
         # The host app's PRODUCT_NAME is Aperture (set in the
-        # UniApp target above), so the test-host bundle path
-        # follows that — not the project / target name "UniApp".
+        # Aperture target above), so the test-host bundle path
+        # follows that — not the project / target name "Aperture".
         # Without these two settings xcodebuild stalls with
         # "Could not find test host for ApertureTests:
-        # TEST_HOST evaluates to .../UniApp.app/UniApp" before
+        # TEST_HOST evaluates to .../Aperture.app/Aperture" before
         # any test runs.
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Aperture.app/Aperture"
         BUNDLE_LOADER: "$(TEST_HOST)"
         # Auto-generate the test bundle's Info.plist (same pattern
         # the host app target uses — see `GENERATE_INFOPLIST_FILE:
-        # YES` on UniApp above). Without this xcodebuild refuses
+        # YES` on Aperture above). Without this xcodebuild refuses
         # to code-sign the test bundle.
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
-  UniApp:
+  Aperture:
     build:
       targets:
-        UniApp: all
+        Aperture: all
         ApertureTests: [test]
     test:
       targets:
         - ApertureTests
       gatherCoverageData: true
       coverageTargets:
-        - UniApp
+        - Aperture
