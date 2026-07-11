@@ -423,7 +423,7 @@ enum SigningKeyProvider {
         chain: SupportedChain,
         requiredAddresses: Set<String>
     ) -> [String: String] {
-        guard !requiredAddresses.isEmpty, let database = databaseBox.get() else { return [:] }
+        guard !requiredAddresses.isEmpty, databaseBox.get() != nil else { return [:] }
         let all = loadAllBitcoinAddressPaths(walletId: walletId, chain: chain)
         var result: [String: String] = [:]
         for address in requiredAddresses {

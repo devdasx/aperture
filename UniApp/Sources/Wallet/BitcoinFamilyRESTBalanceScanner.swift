@@ -4,6 +4,7 @@ import OSLog
 actor BitcoinFamilyRESTBalanceScanner {
     private let client = RPCClient.shared
     private let utxoService = UTXOService()
+    private let dogecoin = DogecoinDataClient.shared
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "bitcoin-family-rest")
 
     func scanAndPersist(
@@ -215,6 +216,19 @@ actor BitcoinFamilyRESTBalanceScanner {
             failedChains: failed,
             interim: false
         )
+
+        // Soft-fail scans return success to the wallet runner (keep-last-good
+        // did not throw). Surface the real cause in Diagnostics + Xcode console.
+        if !failed.isEmpty {
+            var reasons: [String] = []
+            if anySnapshotFailed { reasons.append("balance snapshot") }
+            if anyUTXOFailed { reasons.append("utxo") }
+            NetworkProbeDiagnostics.recordKeepLastGood(
+                chain: chain,
+                reasons: reasons,
+                source: "BitcoinFamilyRESTBalanceScanner"
+            )
+        }
     }
 
     /// P1-001 / BUG-004: `nil` on transport failure — never invent `"0"`.
@@ -222,7 +236,13 @@ actor BitcoinFamilyRESTBalanceScanner {
         do {
             return try await accountSnapshot(address: address, chain: chain)
         } catch {
-            log.debug("Snapshot failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            NetworkProbeDiagnostics.recordFailure(
+                chain: chain,
+                operation: "balance snapshot",
+                error: error,
+                address: address,
+                source: "BitcoinFamilyRESTBalanceScanner"
+            )
             return nil
         }
     }
@@ -254,7 +274,13 @@ actor BitcoinFamilyRESTBalanceScanner {
         do {
             return try await utxoService.fetchUTXOs(address: address, chain: chain)
         } catch {
-            log.debug("UTXO fetch failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            NetworkProbeDiagnostics.recordFailure(
+                chain: chain,
+                operation: "utxo",
+                error: error,
+                address: address,
+                source: "BitcoinFamilyRESTBalanceScanner"
+            )
             return nil
         }
     }
@@ -263,7 +289,15 @@ actor BitcoinFamilyRESTBalanceScanner {
         do {
             return try await recentEvents(address: address, chain: chain)
         } catch {
-            log.debug("History fetch failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            // History is non-critical for spendable balance; still record so
+            // rate-limits are visible (but do not mark keep-last-good alone).
+            NetworkProbeDiagnostics.recordFailure(
+                chain: chain,
+                operation: "history",
+                error: error,
+                address: address,
+                source: "BitcoinFamilyRESTBalanceScanner"
+            )
             return []
         }
     }
@@ -287,13 +321,8 @@ actor BitcoinFamilyRESTBalanceScanner {
     }
 
     private func dogecoinSnapshot(address: String) async throws -> BitcoinFamilyRESTSnapshot {
-        let response = try await dogecoinAddress(address: address, limit: 1)
-        let raw = int64(response["final_balance"] ?? response["balance"])
-        let count = int64(response["final_n_tx"] ?? response["n_tx"])
-        return BitcoinFamilyRESTSnapshot(
-            rawBalance: String(max(0, raw)),
-            isUsed: count > 0
-        )
+        // Multi-provider cascade: Blockbook → Blockchair → BlockCypher.
+        try await dogecoin.accountSnapshot(address: address)
     }
 
     private func litecoinHistory(address: String) async throws -> [BitcoinFamilyRESTEvent] {
@@ -344,7 +373,7 @@ actor BitcoinFamilyRESTBalanceScanner {
     }
 
     private func dogecoinHistory(address: String) async throws -> [BitcoinFamilyRESTEvent] {
-        try await blockCypherHistory(address: address, chain: .dogecoin)
+        try await dogecoin.recentEvents(address: address, limit: 50)
     }
 
     private func blockCypherSnapshot(

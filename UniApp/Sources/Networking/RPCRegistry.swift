@@ -358,32 +358,34 @@ enum RPCRegistry {
         ]
     }
     private static func dogecoinEndpoints() -> [RPCEndpoint?] {
-        // BlockCypher promoted to primary 2026-06-06 after
-        // dogechain.info started gating all plain HTTP requests
-        // through Cloudflare (returns interstitial HTML instead of JSON).
+        // **2026-07-11 — multi-provider DOGE (curl-verified live).**
+        // BlockCypher keyless is fragile (429 / "Limits reached" under
+        // normal wallet refresh). Primary is now Trezor-compatible
+        // **Blockbook** (zelcore mirror): `/api/v2/address`, `/api/v2/utxo`,
+        // `/api/v2/sendtx` all return real JSON for funded addresses.
+        // Blockchair dashboards API is the code-level #2 fallback
+        // (different path shape — see `DogecoinDataClient`). BlockCypher
+        // stays last-resort for reads + historical push path.
         //
-        // **2026-06-16 — live-probe cleanup (curl-verified).** REMOVED
-        // `doge-dogechain` (dogechain.info): re-confirmed HTTP 403
-        // Cloudflare interstitial, never returns JSON to a plain HTTP UA —
-        // it gave DOGE the *illusion* of a fallback while providing none.
-        // No clean keyless DOGE replacement exists (blockchair = keyed,
-        // sochain/dogeblocks = 502, bitaps has no DOGE, Trezor doge1 =
-        // Cloudflare HTML), so DOGE runs on BlockCypher alone. BlockCypher's
-        // keyless tier is fragile (~100 req/hr, 429s under concurrency) —
-        // the real fix is a free BlockCypher / NOWNodes API token, flagged
-        // for the team; out of scope for a keyless endpoint registry pass.
-        // **2026-06-16 — BlockCypher rate-limit fix (curl-verified).**
-        // DOGE runs on BlockCypher alone, and its keyless tier is the
-        // most fragile UTXO source measured (7/15 reqs 429 at ~2.35
-        // req/s, 20/20 429 under parallel burst, ~100/hr cap that stays
-        // locked once spent). Dropped from `.moderate10` (10 req/s) to
-        // `.blockCypherKeyless` (~0.5 req/s, burst 1) so the limiter
-        // self-throttles below the hourly cap; the per-host
-        // `ConcurrencyGate` slot (4) additionally prevents the
-        // parallel-burst 429. A free BlockCypher / NOWNodes token is the
-        // real fix for DOGE redundancy (flagged for the team).
+        // Removed: dogechain.info (Cloudflare interstitial), Trezor doge1
+        // (Cloudflare), sochain/dogeblocks (502).
         [
-            rs("doge-blockcypher", "https://api.blockcypher.com/v1/doge/main", .dogecoin, "blockcypher", .blockCypherKeyless, 0),
+            rs(
+                "doge-blockbook-zelcore",
+                "https://blockbook.doge.zelcore.io",
+                .dogecoin,
+                "zelcore-blockbook",
+                .moderate10,
+                0
+            ),
+            rs(
+                "doge-blockcypher",
+                "https://api.blockcypher.com/v1/doge/main",
+                .dogecoin,
+                "blockcypher",
+                .blockCypherKeyless,
+                10
+            ),
         ]
     }
 

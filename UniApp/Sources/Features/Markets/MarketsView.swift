@@ -598,6 +598,10 @@ final class MarketsViewModel: ObservableObject {
     func reprice(asset: MarketAsset, currencyCode: String) async -> MarketAsset {
         let target = normalizedCurrencyCode(currencyCode)
         guard asset.currencyCode.uppercased() != target else { return asset }
+        // P1-007: never return an unconverted asset that still carries the
+        // old currency amount — callers format with the display currency.
+        // If FX is unavailable, keep the old currency code on the asset so
+        // the UI can still label amounts honestly (asset.currencyCode).
         guard let conversion = try? await service.crossRate(from: asset.currencyCode, to: target) else {
             return asset
         }
@@ -978,6 +982,14 @@ struct MarketDetailView: View {
         return []
     }
 
+    /// P1-007: format fiat amounts with the asset's own currency code — never
+    /// the preference code alone. After a currency switch, reprice updates
+    /// `asset.currencyCode`; if FX is still pending, the old code stays and
+    /// the amount/symbol stay consistent (no "old USD number + EUR symbol").
+    private var priceCurrencyCode: String {
+        asset.currencyCode.uppercased()
+    }
+
     private var displayedPrice: Double {
         scrubbedPoint?.price ?? asset.price
     }
@@ -1070,7 +1082,7 @@ struct MarketDetailView: View {
 
     private var priceBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(MarketFormatting.currency(displayedPrice, code: displayCurrencyCode))
+            Text(MarketFormatting.currency(displayedPrice, code: priceCurrencyCode))
                 .font(.system(size: 38, weight: .bold, design: .default))
                 .monospacedDigit()
                 .contentTransition(.numericText(value: displayedPrice))
@@ -1084,7 +1096,7 @@ struct MarketDetailView: View {
                     .padding(.vertical, 6)
                     .background((displayedIsPositive ? UniColors.Text.success : UniColors.Text.error).opacity(0.12), in: Capsule())
 
-                Text("\(displayedIsPositive ? "+" : "")\(MarketFormatting.currency(displayedChangeAmount, code: displayCurrencyCode)) today")
+                Text("\(displayedIsPositive ? "+" : "")\(MarketFormatting.currency(displayedChangeAmount, code: priceCurrencyCode)) today")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(UniColors.Text.secondary)
             }
@@ -1134,12 +1146,12 @@ struct MarketDetailView: View {
 
     private var statsBlock: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            MarketStatTile(title: "Market cap", value: MarketFormatting.compactCurrency(asset.marketCap, code: displayCurrencyCode))
-            MarketStatTile(title: "24h volume", value: MarketFormatting.compactCurrency(asset.volume24h, code: displayCurrencyCode))
+            MarketStatTile(title: "Market cap", value: MarketFormatting.compactCurrency(asset.marketCap, code: priceCurrencyCode))
+            MarketStatTile(title: "24h volume", value: MarketFormatting.compactCurrency(asset.volume24h, code: priceCurrencyCode))
             MarketStatTile(title: "Circulating", value: MarketFormatting.compactNumber(asset.circulatingSupply, suffix: asset.symbol))
-            MarketStatTile(title: "ATH", value: MarketFormatting.currency(asset.ath, code: displayCurrencyCode))
-            MarketStatTile(title: "24h high", value: MarketFormatting.currency(asset.high24h, code: displayCurrencyCode))
-            MarketStatTile(title: "24h low", value: MarketFormatting.currency(asset.low24h, code: displayCurrencyCode))
+            MarketStatTile(title: "ATH", value: MarketFormatting.currency(asset.ath, code: priceCurrencyCode))
+            MarketStatTile(title: "24h high", value: MarketFormatting.currency(asset.high24h, code: priceCurrencyCode))
+            MarketStatTile(title: "24h low", value: MarketFormatting.currency(asset.low24h, code: priceCurrencyCode))
         }
     }
 

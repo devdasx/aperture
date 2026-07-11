@@ -409,4 +409,33 @@ struct BalanceProbeKeepLastGoodTests {
         #expect(failAny)
         #expect(!BalanceProbeKeepLastGood.shouldUpsertBalance(probeSucceeded: false))
     }
+
+    @Test("XRP trust-line failure omits tokens (same as TON/TRON BUG-004)")
+    func rippleTokenLinesOptionalPolicy() {
+        // account_lines success → normalize may invent "0" for absent IOUs (real empty).
+        #expect(BalanceProbeKeepLastGood.shouldUpsertBalance(probeSucceeded: true))
+        // account_lines transport failure → nil / no upsert.
+        #expect(!BalanceProbeKeepLastGood.shouldUpsertBalance(probeSucceeded: false))
+        #expect(
+            BalanceProbeKeepLastGood.failedChains(
+                chain: .ripple,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: false
+            ) == [.ripple]
+        )
+        #expect(
+            BalanceProbeKeepLastGood.failedChains(
+                chain: .near,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: false
+            ) == [.near]
+        )
+        #expect(
+            BalanceProbeKeepLastGood.failedChains(
+                chain: .ethereum,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: false
+            ) == [.ethereum]
+        )
+    }
 }

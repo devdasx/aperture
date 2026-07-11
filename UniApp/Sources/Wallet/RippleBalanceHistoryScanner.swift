@@ -69,25 +69,29 @@ actor RippleBalanceHistoryScanner {
         )
 
         var isUsed = account.accountExists || EVMHexQuantity.isPositiveDecimalString(account.rawXRP)
-        for balance in account.tokenBalances {
-            if RippleBalanceHistoryClient.isNonZeroXRPLAmount(balance.rawBalance) {
-                isUsed = true
-            }
-            try txRepo.upsertBalance(
-                addressId: address.id,
-                tokenSymbol: balance.entry.symbol,
-                tokenContract: RippleBalanceHistoryClient.contract(for: balance.entry),
-                decimals: balance.entry.decimals,
-                rawBalance: balance.rawBalance,
-                fiatValueCached: fiatValue(
-                    rawBalance: balance.rawBalance,
+        // BUG-004 / P1-001: only rewrite trust-line rows when account_lines
+        // succeeded. `nil` = RPC failure — keep last-good token balances.
+        if let tokenBalances = account.tokenBalances {
+            for balance in tokenBalances {
+                if RippleBalanceHistoryClient.isNonZeroXRPLAmount(balance.rawBalance) {
+                    isUsed = true
+                }
+                try txRepo.upsertBalance(
+                    addressId: address.id,
+                    tokenSymbol: balance.entry.symbol,
+                    tokenContract: RippleBalanceHistoryClient.contract(for: balance.entry),
                     decimals: balance.entry.decimals,
-                    symbol: balance.entry.symbol,
-                    prices: priceMap
-                ),
-                fiatCurrencyCode: currencyCode,
-                save: false
-            )
+                    rawBalance: balance.rawBalance,
+                    fiatValueCached: fiatValue(
+                        rawBalance: balance.rawBalance,
+                        decimals: balance.entry.decimals,
+                        symbol: balance.entry.symbol,
+                        prices: priceMap
+                    ),
+                    fiatCurrencyCode: currencyCode,
+                    save: false
+                )
+            }
         }
 
         if !events.isEmpty {
@@ -117,7 +121,11 @@ actor RippleBalanceHistoryScanner {
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.ripple],
-            failedChains: [],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: .ripple,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: account.tokenBalances != nil
+            ),
             interim: false
         )
     }
@@ -161,12 +169,15 @@ actor RippleBalanceHistoryClient {
         async let linesTask = safeAccountLines(address: address)
 
         let account = try await accountTask
+        // BUG-004: account_lines failure → nil (do not invent zero trust lines).
         let lines = await linesTask
         return RippleAccountSnapshot(
             rawXRP: account.rawXRP,
             accountExists: account.accountExists,
             ownerCount: account.ownerCount,
-            tokenBalances: normalizeTokenBalances(lines, supportedTokens: supportedTokens)
+            tokenBalances: lines.map {
+                normalizeTokenBalances($0, supportedTokens: supportedTokens)
+            }
         )
     }
 
@@ -241,11 +252,21 @@ actor RippleBalanceHistoryClient {
         return nil
     }
 
-    private func safeAccountLines(address: String) async -> [RippleAccountLineRead] {
+    /// BUG-004 / P1-001: `nil` on transport failure — never invent empty
+    /// trust lines that normalize into `"0"` and wipe last-good IOU rows.
+    /// Successful empty inventory (or actNotFound) still returns `[]`.
+    private func safeAccountLines(address: String) async -> [RippleAccountLineRead]? {
         do {
             return try await accountLines(address: address)
         } catch {
-            return []
+            NetworkProbeDiagnostics.recordFailure(
+                chain: .ripple,
+                operation: "account_lines (trust lines)",
+                error: error,
+                address: address,
+                source: "RippleBalanceHistoryClient"
+            )
+            return nil
         }
     }
 
@@ -471,7 +492,9 @@ struct RippleAccountSnapshot: Sendable, Hashable {
     let accountExists: Bool
     /// XRPL OwnerCount (P0-004).
     let ownerCount: Int
-    let tokenBalances: [RippleTokenBalanceRead]
+    /// `nil` when `account_lines` failed (BUG-004) — scanners must not
+    /// overwrite stored trust-line balances with invented zeros.
+    let tokenBalances: [RippleTokenBalanceRead]?
 }
 
 struct RippleTokenBalanceRead: Sendable, Hashable {

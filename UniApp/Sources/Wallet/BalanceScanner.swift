@@ -581,17 +581,19 @@ actor WalletDataRefreshCoordinator {
             )
             return false
         } catch {
+            let detail = RPCError.diagnosticDetail(for: error)
             DiagnosticsLogStore.shared.record(
                 .error,
                 category: "scanner",
-                message: "Chain scan failed",
+                message: "Chain scan failed: \(detail)",
                 metadata: [
                     "walletId": walletId.uuidString,
                     "chain": chainName,
                     "currency": currencyCode,
                     "source": source,
                     "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: start),
-                    "error": String(describing: error)
+                    "error": detail,
+                    "errorKind": RPCError.diagnosticKind(for: error)
                 ]
             )
             return false
@@ -1240,7 +1242,13 @@ private actor PolkadotBalanceHistoryScanner {
         do {
             return try await assetHub.balances(address: address, assets: assets)
         } catch {
-            log.debug("Polkadot Asset Hub balances failed: \(String(describing: error), privacy: .public)")
+            NetworkProbeDiagnostics.recordFailure(
+                chain: .polkadot,
+                operation: "asset hub balances",
+                error: error,
+                address: address,
+                source: "PolkadotBalanceHistoryScanner"
+            )
             return nil
         }
     }
@@ -1250,7 +1258,13 @@ private actor PolkadotBalanceHistoryScanner {
         do {
             return try await assetHub.nativeAccount(address: address)
         } catch {
-            log.debug("Polkadot Asset Hub native DOT failed: \(String(describing: error), privacy: .public)")
+            NetworkProbeDiagnostics.recordFailure(
+                chain: .polkadot,
+                operation: "asset hub native DOT",
+                error: error,
+                address: address,
+                source: "PolkadotBalanceHistoryScanner"
+            )
             return nil
         }
     }
@@ -2105,6 +2119,13 @@ private actor SolanaBalanceHistoryScanner {
                         return try await self.tokenBalance(owner: owner, token: token)
                     } catch {
                         await self.logTokenFailure(symbol: token.entry.symbol, error: error)
+                        NetworkProbeDiagnostics.recordFailure(
+                            chain: .solana,
+                            operation: "token balance \(token.entry.symbol)",
+                            error: error,
+                            address: owner,
+                            source: "SolanaBalanceHistoryScanner"
+                        )
                         return nil
                     }
                 }
@@ -2788,7 +2809,8 @@ private actor PublicNodeEVMBalanceScanner {
             : []
 
         let nativeRaw = try EVMHexQuantity.decimalString(from: await nativeHex)
-        let tokenBalances = await tokenReads
+        let tokenProbe = await tokenReads
+        let tokenBalances = tokenProbe.rows
         let priceMap = await prices
         let txCount = await transactionCount
         let historyEvents = await transactionHistory
@@ -2806,6 +2828,7 @@ private actor PublicNodeEVMBalanceScanner {
         )
 
         var isUsed = EVMHexQuantity.isPositiveDecimalString(nativeRaw) || txCount > 0 || !historyEvents.isEmpty
+        // P1-001: only upsert ERC-20 rows we actually probed.
         for token in tokenBalances {
             if EVMHexQuantity.isPositiveDecimalString(token.rawBalance) {
                 isUsed = true
@@ -2845,16 +2868,21 @@ private actor PublicNodeEVMBalanceScanner {
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [chain],
-            failedChains: [],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: chain,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: !tokenProbe.anyFailed
+            ),
             interim: false
         )
     }
 
+    /// P1-001: per-token transport failure omits the mint — never invent `"0"`.
     private func readTokenBalances(
         chain: SupportedChain,
         holder: String,
         tokens: [EVMTokenRegistry.Entry]
-    ) async -> [TokenRead] {
+    ) async -> EVMTokenProbeResult {
         await withTaskGroup(of: TokenRead?.self) { group in
             for entry in tokens {
                 group.addTask {
@@ -2870,17 +2898,28 @@ private actor PublicNodeEVMBalanceScanner {
                         )
                     } catch {
                         await self.logTokenFailure(symbol: entry.symbol, error: error)
+                        NetworkProbeDiagnostics.recordFailure(
+                            chain: chain,
+                            operation: "token balance \(entry.symbol)",
+                            error: error,
+                            address: holder,
+                            source: "PublicNodeEVMBalanceScanner"
+                        )
                         return nil
                     }
                 }
             }
 
-            var rows: [TokenRead] = []
+            var rows: [TokenRead?] = []
             rows.reserveCapacity(tokens.count)
             for await row in group {
-                if let row { rows.append(row) }
+                rows.append(row)
             }
-            return rows.sorted { $0.entry.symbol < $1.entry.symbol }
+            let compacted = BalanceProbeKeepLastGood.compactSuccessfulProbes(rows)
+            return EVMTokenProbeResult(
+                rows: compacted.rows.sorted { $0.entry.symbol < $1.entry.symbol },
+                anyFailed: compacted.anyFailed
+            )
         }
     }
 
@@ -2942,6 +2981,12 @@ private actor PublicNodeEVMBalanceScanner {
     private struct TokenRead: Sendable {
         let entry: EVMTokenRegistry.Entry
         let rawBalance: String
+    }
+
+    /// P1-001: successful ERC-20 rows only; `anyFailed` marks the chain failed on rebuild.
+    private struct EVMTokenProbeResult: Sendable {
+        let rows: [TokenRead]
+        let anyFailed: Bool
     }
 }
 

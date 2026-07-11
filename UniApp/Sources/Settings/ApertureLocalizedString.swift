@@ -44,4 +44,12 @@ extension String {
     static func apertureLocalized(_ key: String.LocalizationValue) -> String {
         String(localized: key, locale: ApertureLocalization.currentLocale)
     }
+
+    /// Runtime catalog key (English source string already stored in a `String`
+    /// variable). Prefer the `LocalizationValue` overload for string literals.
+    /// Use this for fee notes and other dynamic keys so they still honor the
+    /// in-app language and resolve through `Localizable.xcstrings`.
+    static func apertureLocalizedKey(_ key: String) -> String {
+        apertureLocalized(String.LocalizationValue(stringLiteral: key))
+    }
 }

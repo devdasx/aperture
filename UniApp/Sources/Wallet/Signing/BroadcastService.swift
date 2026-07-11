@@ -100,7 +100,8 @@ struct BroadcastService: Sendable {
         case .bitcoin, .litecoin:
             return try await broadcastEsplora(signed, chain: chain)
         case .dogecoin:
-            return try await broadcastBlockCypher(signed, chain: chain)
+            // Multi-provider: Blockbook sendtx → BlockCypher → Blockchair.
+            return try await broadcastDogecoin(signed)
         case .bitcoinCash:
             return try await broadcastBlockchairBCH(signed)
         default:
@@ -151,28 +152,39 @@ struct BroadcastService: Sendable {
         }
     }
 
-    /// BlockCypher `POST /txs/push` with a JSON `{"tx": "<hex>"}` body;
-    /// returns `{"tx": {"hash": "<txid>"}}` (DOGE). Doc:
+    /// Dogecoin multi-provider push (2026-07-11): Blockbook `/api/v2/sendtx`
+    /// (primary) → BlockCypher `/txs/push` → Blockchair `dogecoin/push/transaction`.
+    /// Live-verified Blockbook rejects malformed hex with `-22: TX decode failed`.
+    private func broadcastDogecoin(_ signed: SignedTransaction) async throws(SigningError) -> String {
+        do {
+            let txid = try await DogecoinDataClient.shared.broadcast(rawHex: signed.rawHex)
+            guard txid.count >= 32 else {
+                throw SigningError.broadcastAmbiguous("DOGE broadcast returned a short hash")
+            }
+            return txid
+        } catch let rpc as RPCError {
+            throw Self.mapBroadcastError(rpc)
+        } catch let signing as SigningError {
+            throw signing
+        } catch {
+            throw SigningError.broadcastAmbiguous(error.localizedDescription)
+        }
+    }
+
+    /// BlockCypher `POST /txs/push` with a JSON `{"tx": "<hex>"}` body
+    /// (kept for LTC/other callers if needed). Doc:
     /// https://www.blockcypher.com/dev/bitcoin/#push-raw-transaction-endpoint.
-    /// Live-verified 2026-06-15: a malformed body returns HTTP 409 (the
-    /// endpoint parsed the `{"tx":…}` shape and rejected the tx), proving
-    /// the endpoint + body shape (NOT 404).
     private func broadcastBlockCypher(_ signed: SignedTransaction, chain: SupportedChain) async throws(SigningError) -> String {
         do {
             let data = try await client.callRESTPost(
                 chain: chain, path: "/txs/push", body: ["tx": signed.rawHex]
             )
-            // BUG-021: never fall back to local signed.txHash on 2xx with an
-            // unexpected body — only return a hash confirmed in the response.
             return try Self.parseBlockCypherPushResponse(data)
         } catch let rpc as RPCError {
             throw Self.mapBroadcastError(rpc)
         } catch let signing as SigningError {
             throw signing
         } catch {
-            // Transport-level failure (the request left the device but no
-            // definitive accept/reject came back) → outcome UNKNOWN, never
-            // claim the funds are safe (Rule #16).
             throw SigningError.broadcastAmbiguous(error.localizedDescription)
         }
     }

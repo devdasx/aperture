@@ -34,13 +34,14 @@ actor NearBalanceHistoryScanner {
             ? safeTokenHistory(accountId: address.address, tokens: tokens)
             : []
 
-        let (priceMap, account, tokenBalances, nativeEvents, tokenEvents) = try await (
+        let (priceMap, account, tokenProbe, nativeEvents, tokenEvents) = try await (
             priceTask,
             accountTask,
             tokenBalancesTask,
             nativeHistoryTask,
             tokenHistoryTask
         )
+        let tokenBalances = tokenProbe.rows
 
         let txRepo = TransactionRepository(database: database)
         try txRepo.upsertBalance(
@@ -78,6 +79,7 @@ actor NearBalanceHistoryScanner {
         )
 
         var isUsed = DecimalString.isPositive(account.amount)
+        // P1-001: only upsert FT rows we actually probed (failed mints omitted).
         for tokenBalance in tokenBalances {
             if DecimalString.isPositive(tokenBalance.rawBalance) {
                 isUsed = true
@@ -129,15 +131,20 @@ actor NearBalanceHistoryScanner {
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.near],
-            failedChains: [],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: .near,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: !tokenProbe.anyFailed
+            ),
             interim: false
         )
     }
 
+    /// P1-001: per-token transport failure omits the mint — never invent `"0"`.
     private func tokenBalances(
         accountId: String,
         tokens: [NearTokenRegistry.Entry]
-    ) async -> [NearTokenBalance] {
+    ) async -> NearTokenProbeResult {
         await withTaskGroup(of: NearTokenBalance?.self) { group in
             for token in tokens {
                 group.addTask {
@@ -145,17 +152,28 @@ actor NearBalanceHistoryScanner {
                         return try await self.rpc.ftBalance(accountId: accountId, token: token)
                     } catch {
                         await self.logTokenBalanceFailure(symbol: token.symbol, error: error)
+                        NetworkProbeDiagnostics.recordFailure(
+                            chain: .near,
+                            operation: "token balance \(token.symbol)",
+                            error: error,
+                            address: accountId,
+                            source: "NearBalanceHistoryScanner"
+                        )
                         return nil
                     }
                 }
             }
 
-            var rows: [NearTokenBalance] = []
+            var rows: [NearTokenBalance?] = []
             rows.reserveCapacity(tokens.count)
             for await row in group {
-                if let row { rows.append(row) }
+                rows.append(row)
             }
-            return rows.sorted { $0.symbol < $1.symbol }
+            let compacted = BalanceProbeKeepLastGood.compactSuccessfulProbes(rows)
+            return NearTokenProbeResult(
+                rows: compacted.rows.sorted { $0.symbol < $1.symbol },
+                anyFailed: compacted.anyFailed
+            )
         }
     }
 
@@ -502,6 +520,12 @@ private struct NearTokenBalance: Sendable {
     let symbol: String
     let decimals: Int
     let rawBalance: String
+}
+
+/// P1-001: successful FT rows only; `anyFailed` marks the chain failed on rebuild.
+private struct NearTokenProbeResult: Sendable {
+    let rows: [NearTokenBalance]
+    let anyFailed: Bool
 }
 
 private struct NearHistoryEvent: Sendable, Hashable {

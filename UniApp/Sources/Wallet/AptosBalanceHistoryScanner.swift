@@ -126,6 +126,13 @@ actor AptosBalanceHistoryScanner {
                     do {
                         return try await fullnode.tokenBalance(owner: owner, token: token)
                     } catch {
+                        NetworkProbeDiagnostics.recordFailure(
+                            chain: .aptos,
+                            operation: "token balance \(token.symbol)",
+                            error: error,
+                            address: owner,
+                            source: "AptosBalanceHistoryScanner"
+                        )
                         return nil
                     }
                 }

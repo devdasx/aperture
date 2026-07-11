@@ -9,7 +9,8 @@ import OSLog
 /// - BTC: `GET mempool.space/api/address/{addr}/utxo` (Esplora shape).
 /// - LTC: `GET litecoinspace.org/api/address/{addr}/utxo` (Esplora shape).
 /// - BCH: `GET api.haskoin.com/bch/address/{addr}/unspent` (pkscript inline).
-/// - DOGE: `GET api.blockcypher.com/v1/doge/main/addrs/{addr}?unspentOnly=true&includeScript=true`.
+/// - DOGE: multi-provider via `DogecoinDataClient` (Blockbook primary →
+///   Blockchair → BlockCypher).
 ///
 /// Off-main (Rule #28): a `struct` with async methods; the heavy decode +
 /// selection runs on the calling background task.
@@ -45,7 +46,8 @@ struct UTXOService: Sendable {
             case .bitcoinCash:
                 utxos = try await fetchHaskoin(address: address)
             case .dogecoin:
-                utxos = try await fetchBlockCypher(address: address, chain: chain)
+                // Primary Blockbook (zelcore), then Blockchair, then BlockCypher.
+                utxos = try await DogecoinDataClient.shared.fetchUTXOs(address: address)
             default:
                 throw RPCError.invalidResponse("UTXOService called for non-UTXO chain \(chain.rawValue)")
             }

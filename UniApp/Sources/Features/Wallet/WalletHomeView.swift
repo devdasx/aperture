@@ -3024,31 +3024,26 @@ private struct BalanceCardLiveSection: View {
     /// rebuilds `ChainStateRecord`, and the card sums those persisted
     /// per-chain rows for the active wallet/currency.
     ///
-    /// BUG-009: when the user just switched currency, chain_states may still
-    /// carry the previous `fiat_currency_code` until rebuild finishes. Prefer
-    /// matching-currency rows/summary; if none exist yet, fall back to any
-    /// last-known total for this wallet so the hero never flashes $0 while
-    /// balances are non-zero.
+    /// P1-007 / BUG-009: only sum amounts whose `fiat_currency_code` matches
+    /// the **display** currency. Never fall back to prior-currency totals and
+    /// format them with the new symbol (that looks like a portfolio crash or
+    /// jump). While rebuild/projection is in flight, show 0 rather than a
+    /// lie — `repriceForCurrencyChange` + rebuild fill matching rows promptly.
     private var totalFiat: Decimal {
-        guard let walletId else { return 0 }
-        if let summary = portfolioSummaries.first(where: {
-            $0.walletId == walletId
-            && $0.currencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
-        }) {
-            return summary.totalFiat
-        }
-
-        let matching = chainStateRecords.filter {
-            $0.walletId == walletId
-            && $0.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
-        }
-        if !matching.isEmpty {
-            return matching.reduce(Decimal.zero) { $0 + $1.totalFiat }
-        }
-
-        return chainStateRecords
-            .filter { $0.walletId == walletId }
-            .reduce(Decimal.zero) { $0 + $1.totalFiat }
+        WalletHeroFiat.total(
+            walletId: walletId,
+            displayCurrencyCode: currencyCode,
+            portfolioSummaries: portfolioSummaries.map {
+                WalletHeroFiat.Summary(walletId: $0.walletId, currencyCode: $0.currencyCode, totalFiat: $0.totalFiat)
+            },
+            chainStates: chainStateRecords.map {
+                WalletHeroFiat.ChainTotal(
+                    walletId: $0.walletId,
+                    fiatCurrencyCode: $0.fiatCurrencyCode,
+                    totalFiat: $0.totalFiat
+                )
+            }
+        )
     }
 
     /// When the active wallet's balances + history were last refreshed —

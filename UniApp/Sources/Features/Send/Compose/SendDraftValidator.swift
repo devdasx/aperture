@@ -37,39 +37,41 @@ enum SendValidationError: Error, Hashable, Sendable {
     /// appends this when a `.blocked` row still holds a positive amount.
     case recipientUnfunded
 
-    /// English source message for display (resolved via
-    /// `LocalizedStringKey` at the call site).
+    /// English catalog key for display. Resolved via
+    /// `String.apertureLocalizedKey` so in-app language is honored.
     var message: String {
+        let key: String
         switch self {
         case .amountNotPositive:
-            return "Enter an amount greater than zero"
+            key = "Enter an amount greater than zero"
         case .insufficientFunds:
-            return "Not enough balance to cover the amount and fee"
+            key = "Not enough balance to cover the amount and fee"
         case .insufficientNativeForFee:
-            return "Not enough balance to cover the network fee"
+            key = "Not enough balance to cover the network fee"
         case .belowDust:
-            return "Amount is too small to send"
+            key = "Amount is too small to send"
         case .belowReserve:
-            return "This would drop your account below its required reserve"
+            key = "This would drop your account below its required reserve"
         case .belowActivationMinimum:
-            return "This new account needs a larger first payment to activate"
+            key = "This new account needs a larger first payment to activate"
         case .destinationTagRequired:
-            return "This recipient requires a destination tag"
+            key = "This recipient requires a destination tag"
         case .memoRequired:
-            return "This recipient requires a memo"
+            key = "This recipient requires a memo"
         case .memoTooLong:
-            return "Memo is too long"
+            key = "Memo is too long"
         case .memoInvalid:
-            return "Memo is invalid"
+            key = "Memo is invalid"
         case .opReturnTooLong:
-            return "Data note is too long"
+            key = "Data note is too long"
         case .noRecipients:
-            return "Add at least one recipient"
+            key = "Add at least one recipient"
         case .tooManyRecipients:
-            return "Too many recipients for one transaction"
+            key = "Too many recipients for one transaction"
         case .recipientUnfunded:
-            return "A recipient can't be paid with what's left — lower an earlier amount or remove it"
+            key = "A recipient can't be paid with what's left — lower an earlier amount or remove it"
         }
+        return String.apertureLocalizedKey(key)
     }
 }
 

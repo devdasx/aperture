@@ -23,7 +23,9 @@ struct RippleBalanceHistoryProbeTests {
         let elapsed = start.duration(to: ContinuousClock.now)
 
         #expect(Decimal(string: snapshot.rawXRP) ?? 0 > 0, "known XRP Ledger account should hold native XRP drops")
-        let rlusd = try #require(snapshot.tokenBalances.first { $0.entry.symbol == "RLUSD" })
+        // BUG-004: tokenBalances is optional (nil when account_lines failed).
+        let tokenBalances = try #require(snapshot.tokenBalances, "account_lines should succeed for known account")
+        let rlusd = try #require(tokenBalances.first { $0.entry.symbol == "RLUSD" })
         #expect(Decimal(string: rlusd.rawBalance) ?? 0 > 0, "known XRP Ledger account should hold supported RLUSD IOU")
         #expect(events.contains { $0.tokenSymbol == SupportedChain.ripple.ticker }, "history should include native XRP payments")
         #expect(events.contains { $0.tokenSymbol == "RLUSD" }, "history should include supported RLUSD payments")
@@ -33,7 +35,7 @@ struct RippleBalanceHistoryProbeTests {
         print("""
         [RippleProbe] account=\(owner) elapsed=\(elapsed)
         [RippleProbe] rawXRP=\(snapshot.rawXRP)
-        [RippleProbe] tokenBalances=\(snapshot.tokenBalances.map { "\($0.entry.symbol)=\($0.rawBalance)" }.joined(separator: ","))
+        [RippleProbe] tokenBalances=\(tokenBalances.map { "\($0.entry.symbol)=\($0.rawBalance)" }.joined(separator: ","))
         [RippleProbe] events=\(events.count) native=\(events.filter { $0.tokenContract == nil }.count) tokens=\(events.filter { $0.tokenContract != nil }.count)
         """)
     }

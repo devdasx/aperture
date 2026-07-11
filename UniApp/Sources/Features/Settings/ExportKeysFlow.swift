@@ -58,10 +58,24 @@ struct ExportRecoveryPhraseFlow: View {
     let walletId: UUID
     let walletName: String
     /// P0-003: when true, iCloud backup blob records that restore needs BIP-39 passphrase.
-    var hasPassphrase: Bool = false
+    var hasPassphrase: Bool
     let onClose: () -> Void
 
     @State private var isShowingReveal = false
+
+    /// Explicit init so call sites and the linked symbol stay stable across
+    /// incremental builds (avoids stale 3-arg vs 4-arg memberwise mismatches).
+    init(
+        walletId: UUID,
+        walletName: String,
+        hasPassphrase: Bool = false,
+        onClose: @escaping () -> Void
+    ) {
+        self.walletId = walletId
+        self.walletName = walletName
+        self.hasPassphrase = hasPassphrase
+        self.onClose = onClose
+    }
 
     var body: some View {
         NavigationStack {

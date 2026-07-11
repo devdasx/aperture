@@ -65,7 +65,9 @@ struct SendFeeSheet: View {
                         UniCaption(text: "Network fee", color: UniColors.Text.tertiary)
                     } footer: {
                         if let note = quote.note {
-                            Text(verbatim: note)
+                            // Catalog key = English source (Rule: every UI string
+                            // must be localizable). Never Text(verbatim:) for notes.
+                            Text(verbatim: String.apertureLocalizedKey(note))
                         }
                     }
                 }

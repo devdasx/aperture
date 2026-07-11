@@ -105,7 +105,11 @@ actor TronBalanceHistoryScanner {
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.tron],
-            failedChains: [],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: .tron,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: account.tokenBalances != nil
+            ),
             interim: false
         )
     }

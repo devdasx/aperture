@@ -103,7 +103,11 @@ actor TonBalanceHistoryScanner {
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.ton],
-            failedChains: [],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: .ton,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: account.jettonBalances != nil
+            ),
             interim: false
         )
     }

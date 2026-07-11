@@ -64,9 +64,9 @@ enum SendRecipientAccountProbe {
                 validatesIDEcho: false
             )
             return parseXRPAccountInfoJSON(data)
-        } catch let rpc as RPCError {
-            // Node often surfaces actNotFound as a structured rpcError.
-            if case .rpcError(_, let message) = rpc {
+        } catch {
+            // Typed throw is RPCError — node often surfaces actNotFound as rpcError.
+            if case .rpcError(_, let message) = error {
                 let lower = message.lowercased()
                 if lower.contains("actnotfound")
                     || lower.contains("account not found")
@@ -78,9 +78,6 @@ enum SendRecipientAccountProbe {
                     )
                 }
             }
-            log.debug("XRP recipient probe failed: \(String(describing: rpc), privacy: .public)")
-            return .none
-        } catch {
             log.debug("XRP recipient probe failed: \(String(describing: error), privacy: .public)")
             // Network failure: do not invent require-tag (would block honest sends).
             // Do not invent activation (would understate MAX incorrectly).
