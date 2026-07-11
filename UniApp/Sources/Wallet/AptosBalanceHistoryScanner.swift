@@ -32,7 +32,8 @@ actor AptosBalanceHistoryScanner {
             : []
 
         let native = try await nativeTask
-        let tokenBalances = await tokenTask
+        let tokenProbe = await tokenTask
+        let tokenBalances = tokenProbe.rows
         let priceMap = await pricesTask
         let events = await historyTask
 
@@ -54,6 +55,8 @@ actor AptosBalanceHistoryScanner {
         )
 
         var isUsed = native.accountExists || EVMHexQuantity.isPositiveDecimalString(native.rawBalance)
+        // P1-001 / BUG-004: only upsert tokens we successfully probed.
+        // Failed per-token reads are omitted so last-good balances stay put.
         for balance in tokenBalances {
             if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
                 isUsed = true
@@ -102,33 +105,46 @@ actor AptosBalanceHistoryScanner {
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.aptos],
-            failedChains: [],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: .aptos,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: !tokenProbe.anyFailed
+            ),
             interim: false
         )
     }
 
+    /// P1-001 / BUG-004: per-token transport failure omits the mint — never invent `"0"`.
     private func tokenBalances(
         owner: String,
         tokens: [AptosTokenRegistry.Entry]
-    ) async -> [AptosTokenRead] {
+    ) async -> AptosTokenProbeResult {
         let fullnode = self.fullnode
-        return await withTaskGroup(of: AptosTokenRead.self) { group in
+        return await withTaskGroup(of: AptosTokenRead?.self) { group in
             for token in tokens {
                 group.addTask {
                     do {
                         return try await fullnode.tokenBalance(owner: owner, token: token)
                     } catch {
-                        return AptosTokenRead(token: token, rawBalance: "0")
+                        return nil
                     }
                 }
             }
 
             var rows: [AptosTokenRead] = []
+            var anyFailed = false
             rows.reserveCapacity(tokens.count)
             for await row in group {
-                rows.append(row)
+                if let row {
+                    rows.append(row)
+                } else {
+                    anyFailed = true
+                }
             }
-            return rows.sorted { $0.token.symbol < $1.token.symbol }
+            return AptosTokenProbeResult(
+                rows: rows.sorted { $0.token.symbol < $1.token.symbol },
+                anyFailed: anyFailed
+            )
         }
     }
 
@@ -412,6 +428,12 @@ private struct AptosNativeRead: Sendable {
 private struct AptosTokenRead: Sendable {
     let token: AptosTokenRegistry.Entry
     let rawBalance: String
+}
+
+/// P1-001: successful token rows only; `anyFailed` marks the chain failed on rebuild.
+private struct AptosTokenProbeResult: Sendable {
+    let rows: [AptosTokenRead]
+    let anyFailed: Bool
 }
 
 private struct AptosActivityLeg: Sendable {

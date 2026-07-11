@@ -155,25 +155,56 @@ extension ComposeFeeService {
     // MARK: - NEAR
 
     /// NEAR deterministic gas-unit fee. Native ~0.45 Tgas (from protocol
-    /// config) × gas_price; FT transfer attaches 30 Tgas. No speed tier.
+    /// config) × gas_price. FT transfer matches the signer: 40 Tgas
+    /// (`storage_deposit` 10 + `ft_transfer` 30) **plus** the always-
+    /// prepended 0.00125 NEAR NEP-145 storage deposit (P1-003). No speed tier.
     /// Docs: https://docs.near.org/api/rpc/gas ;
     /// https://docs.near.org/protocol/transactions/gas
     func nearQuote(_ ctx: Context) async throws -> FeeQuote {
         let dec = ctx.chain.nativeDecimals // 24
         let gasPrice = try await fetchNearGasPrice()
-        // Native transfer total ≈ 446,365,125,000 gas (matrix protocol
-        // config). FT transfer attaches 30 Tgas (refunded if unused).
-        let gasUnits: Decimal = ctx.isToken ? 30_000_000_000_000 : 446_365_125_000
-        let feeYocto = gasUnits * gasPrice
+        let resolved = Self.nearFeeTotals(isToken: ctx.isToken, gasPriceYocto: gasPrice)
         var c = makeChoice(tier: .normal, model: .nearGas, decimals: dec) { c in
             c.nearGasPriceYocto = gasPrice
-            c.nearGasUnits = gasUnits
+            c.nearGasUnits = resolved.gasUnits
         }
-        let native = ComposeDecimal.toDisplay(feeYocto, decimals: dec)
-        c.setTotals(estimated: native, worst: native)
-        let note = ctx.isToken ? "Unused attached gas is refunded" : nil
+        c.setTotals(estimated: resolved.totalNative, worst: resolved.totalNative)
+        let note: String?
+        if ctx.isToken {
+            note = "Includes 0.00125 NEAR storage deposit; unused gas is refunded"
+        } else {
+            note = nil
+        }
         return FeeQuote(chain: ctx.chain, feeModel: .nearGas, tiers: [.normal: c],
                         isCustomAllowed: false, hasSpeedTiers: false, note: note)
+    }
+
+    /// Pure NEAR fee math (display NEAR). P1-003: FT totals always include
+    /// the signer's NEP-145 `storage_deposit` (0.00125 NEAR) on top of
+    /// attached gas × gas_price so Fee/Max never understate native cost.
+    ///
+    /// - Native: ~446,365,125,000 gas units (protocol config).
+    /// - FT: `NearTransactionSigner.ftAttachedGasUnits` (40 Tgas) + deposit.
+    static func nearFeeTotals(
+        isToken: Bool,
+        gasPriceYocto: Decimal
+    ) -> (gasUnits: Decimal, totalNative: Decimal) {
+        let dec = SupportedChain.near.nativeDecimals
+        // Native transfer total ≈ 446,365,125,000 gas (matrix protocol config).
+        let gasUnits: Decimal = isToken
+            ? Decimal(NearTransactionSigner.ftAttachedGasUnits)
+            : Decimal(446_365_125_000)
+        let gasFeeYocto = gasUnits * gasPriceYocto
+        let depositYocto: Decimal
+        if isToken {
+            depositYocto = ComposeDecimal.fromIntegerString(
+                NearTransactionSigner.storageDepositYocto
+            ) ?? 0
+        } else {
+            depositYocto = 0
+        }
+        let totalYocto = gasFeeYocto + depositYocto
+        return (gasUnits, ComposeDecimal.toDisplay(totalYocto, decimals: dec))
     }
 
     private func fetchNearGasPrice() async throws -> Decimal {

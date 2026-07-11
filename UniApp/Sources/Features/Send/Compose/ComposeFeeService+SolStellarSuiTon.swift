@@ -9,12 +9,20 @@ extension ComposeFeeService {
     /// Solana fee = 5,000 lamports base/signature + optional priority =
     /// ceil(price × cuLimit / 1e6). Priority price from
     /// `getRecentPrioritizationFees` percentiles.
+    ///
+    /// **P1-005:** `cuLimit` scales with `recipientCount` the same way
+    /// `SolanaTransactionSigner.applyPriorityFees` does (base × N, cap 15).
+    /// A fixed single-transfer CU quote under-reserves priority fee for multi.
     /// Docs: https://solana.com/docs/core/fees ;
     /// https://solana.com/docs/rpc/http/getrecentprioritizationfees
     func solanaQuote(_ ctx: Context) async throws -> FeeQuote {
         let dec = ctx.chain.nativeDecimals // 9
         let base = Decimal(5000) // lamports per signature (single-sig)
-        let cuLimit: Decimal = ctx.isToken ? 50000 : 450 // matrix defaults
+        // P1-005: match signer multi-recipient CU headroom.
+        let cuLimit = Self.solanaComputeUnitLimit(
+            isToken: ctx.isToken,
+            recipientCount: ctx.recipientCount
+        )
         let percentiles = try await fetchSolanaPriorityPercentiles()
 
         func choice(_ tier: FeeTier, price: Decimal) -> FeeChoice {
@@ -40,6 +48,15 @@ extension ComposeFeeService {
         let note = ctx.isToken ? "Token sends may need a recipient token account (extra rent)" : nil
         return FeeQuote(chain: ctx.chain, feeModel: .solana, tiers: tiers,
                         isCustomAllowed: true, hasSpeedTiers: true, note: note)
+    }
+
+    /// Pure CU limit used by compose quotes and aligned with
+    /// `SolanaTransactionSigner` multi-recipient headroom (P1-005).
+    /// Base: 50_000 SPL / 450 native; × clamp(recipientCount, 1…15).
+    static func solanaComputeUnitLimit(isToken: Bool, recipientCount: Int) -> Decimal {
+        let base: Decimal = isToken ? 50_000 : 450
+        let n = max(1, min(recipientCount, 15))
+        return base * Decimal(n)
     }
 
     /// Recompute a Solana `FeeChoice`'s native total from its compute-unit
@@ -187,17 +204,34 @@ extension ComposeFeeService {
     /// `estimateFee` requires a built message body BoC (not available at
     /// compose time before the message is assembled), so we surface a
     /// doc-grounded practical estimate (~0.0055 TON native) and the same
-    /// 0.05 TON jetton transfer reserve the signer attaches. Keep this
-    /// non-editable: TON has no user gas-price lever.
+    /// 0.05 TON jetton transfer reserve the signer attaches **per message**.
+    ///
+    /// **P1-004:** multi-jetton attaches `0.05 × recipientCount` TON (wallet
+    /// v4r2 up to 4 msgs). A 1× reserve falsely says the user has enough.
+    /// Keep this non-editable: TON has no user gas-price lever.
     func tonQuote(_ ctx: Context) async throws -> FeeQuote {
         let dec = ctx.chain.nativeDecimals // 9
-        // Native ≈ 0.0055 TON; jetton uses the signer attach reserve.
-        let estimatedNative: Decimal = ctx.isToken
-            ? TONTransactionSigner.jettonGasAttachTON : Decimal(string: "0.0055")!
+        let estimatedNative = Self.tonFeeNative(
+            isToken: ctx.isToken,
+            recipientCount: ctx.recipientCount
+        )
         var c = makeChoice(tier: .normal, model: .tonFixed, decimals: dec) { _ in }
         c.setTotals(estimated: estimatedNative, worst: estimatedNative)
         return FeeQuote(chain: ctx.chain, feeModel: .tonFixed, tiers: [.normal: c],
                         isCustomAllowed: false, hasSpeedTiers: false,
                         note: "Network fee is set by the protocol")
+    }
+
+    /// Pure TON fee reserve in display TON (P1-004).
+    /// - Native: ~0.0055 TON per outgoing message (practical estimateFee proxy).
+    /// - Jetton: `jettonGasAttachTON` (0.05) per recipient message — matches
+    ///   `TONTransactionSigner` which sets `transfer.amount` per jetton msg.
+    static func tonFeeNative(isToken: Bool, recipientCount: Int) -> Decimal {
+        // Wallet v4r2 max 4 outgoing messages (ChainComposeCapability).
+        let n = max(1, min(recipientCount, 4))
+        if isToken {
+            return TONTransactionSigner.jettonGasAttachTON * Decimal(n)
+        }
+        return Decimal(string: "0.0055")! * Decimal(n)
     }
 }

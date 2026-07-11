@@ -59,6 +59,24 @@ actor NearBalanceHistoryScanner {
             save: false
         )
 
+        // P0-004: locked + storage_usage drive NEAR standing reserve for MAX.
+        try ChainAccountStateRepository(database: database).upsert(
+            addressId: address.id,
+            chain: .near,
+            state: ChainAccountStateSnapshot(
+                ownerCount: 0,
+                subentryCount: 0,
+                numSponsoring: 0,
+                numSponsored: 0,
+                sellingLiabilitiesRaw: "0",
+                frozenRaw: "0",
+                reservedRaw: "0",
+                storageUsageBytes: Int(clamping: account.storageUsage),
+                lockedRaw: account.locked,
+                freeRaw: account.amount
+            )
+        )
+
         var isUsed = DecimalString.isPositive(account.amount)
         for tokenBalance in tokenBalances {
             if DecimalString.isPositive(tokenBalance.rawBalance) {

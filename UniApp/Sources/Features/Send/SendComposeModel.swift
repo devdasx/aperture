@@ -581,6 +581,15 @@ final class SendComposeModel {
         accountState = state
     }
 
+    /// P0-006: apply live recipient account probe (activation / dest-tag / memo).
+    func setRecipientAccountProbe(_ result: SendRecipientAccountProbeResult) {
+        recipientNeedsActivation = result.needsActivation
+        recipientRequiresDestinationTag = result.requiresDestinationTag
+        recipientRequiresMemo = result.requiresMemo
+        // MAX depends on activation surcharge (TRON) — refresh if engaged.
+        if isMaxSend { engageMax() }
+    }
+
     func setPrices(asset: Decimal?, native: Decimal?) {
         assetUnitPrice = asset
         nativeUnitPrice = native

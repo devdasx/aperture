@@ -160,6 +160,50 @@ struct BroadcastResponseHonestyTests {
         }
     }
 
+    @Test("P0-007: XRP ter* is not success (regression)")
+    func xrpTerNotSuccess() {
+        // Old bug: hasPrefix("ter") treated terNO_ACCOUNT / terQUEUED as success.
+        for code in ["terQUEUED", "terNO_ACCOUNT", "terRETRY", "terFUNDS_SPENT"] {
+            let data = json([
+                "engine_result": code,
+                "engine_result_message": "not applied",
+                "tx_json": ["hash": "SHOULDNOTUSE"]
+            ])
+            do {
+                _ = try BroadcastService.parseXRPSubmitResponse(data, localTxHash: "LOCAL")
+                Issue.record("\(code) must not succeed")
+            } catch let error as SigningError {
+                guard case .broadcastAmbiguous = error else {
+                    Issue.record("\(code) expected broadcastAmbiguous, got \(error)")
+                    return
+                }
+            } catch {
+                Issue.record("unexpected \(error)")
+            }
+        }
+    }
+
+    @Test("P0-007: XRP tec/tef/tem are broadcastFailed")
+    func xrpHardFailures() {
+        for code in ["tecUNFUNDED_PAYMENT", "tefPAST_SEQ", "temMALFORMED", "telFAILED"] {
+            let data = json([
+                "engine_result": code,
+                "engine_result_message": "rejected",
+            ])
+            do {
+                _ = try BroadcastService.parseXRPSubmitResponse(data, localTxHash: "LOCAL")
+                Issue.record("\(code) must fail")
+            } catch let error as SigningError {
+                guard case .broadcastFailed = error else {
+                    Issue.record("\(code) expected broadcastFailed, got \(error)")
+                    return
+                }
+            } catch {
+                Issue.record("unexpected \(error)")
+            }
+        }
+    }
+
     @Test("TRON result true without txid uses local; without either is ambiguous")
     func tronAcceptPaths() throws {
         let okBody = json(["result": true, "txid": "TRONTX"])

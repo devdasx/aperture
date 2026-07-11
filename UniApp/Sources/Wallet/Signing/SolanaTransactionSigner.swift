@@ -82,14 +82,19 @@ enum SolanaTransactionSigner {
            let price = SigningAmount.uint64(priceDec), price > 0 {
             input.priorityFeePrice = SolanaPriorityFeePrice.with { $0.price = price }
         }
+        // P1-005: CU limit must match compose (`solanaComputeUnitLimit`).
+        // Prefer the fee's limit when present (already N-scaled by quote);
+        // otherwise scale the matrix base the same way compose does.
         let scaledLimit: UInt64 = {
             if let limitDec = draft.fee.computeUnitLimit,
                let limit = SigningAmount.uint64(limitDec), limit > 0 {
                 return limit
             }
-            // Multi transfers need more CU headroom.
-            let base: UInt64 = draft.isTokenSend ? 50_000 : 450
-            return base &* UInt64(max(1, min(recipientCount, 15)))
+            let scaled = ComposeFeeService.solanaComputeUnitLimit(
+                isToken: draft.isTokenSend,
+                recipientCount: recipientCount
+            )
+            return SigningAmount.uint64(scaled) ?? 0
         }()
         if scaledLimit > 0, scaledLimit <= UInt32.max {
             input.priorityFeeLimit = SolanaPriorityFeeLimit.with { $0.limit = UInt32(scaledLimit) }

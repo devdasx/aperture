@@ -35,8 +35,22 @@ enum NearTransactionSigner {
     /// NEP-141 standard gas budgets (matrix §G10 / reference).
     private static let storageDepositGas: UInt64 = 10_000_000_000_000   // 10 Tgas
     private static let ftTransferGas: UInt64 = 30_000_000_000_000       // 30 Tgas
-    /// 0.00125 NEAR minimum NEP-145 storage registration deposit.
-    private static let storageDepositYocto = "1250000000000000000000"
+    /// Total FunctionCall gas attached for NEP-141 FT send
+    /// (`storage_deposit` 10 Tgas + `ft_transfer` 30 Tgas). Fee quotes must
+    /// reserve this full attach — unused gas is refunded, but Max/fee must
+    /// not understate the prepaid gas budget.
+    static let ftAttachedGasUnits: UInt64 = storageDepositGas + ftTransferGas
+    /// 0.00125 NEAR minimum NEP-145 storage registration deposit (yocto).
+    /// Always prepended by this signer on FT sends (P1-003) — fee/Max math
+    /// must include the same deposit so native balance checks stay honest.
+    static let storageDepositYocto = "1250000000000000000000"
+    /// Display-unit form of `storageDepositYocto` (0.00125 NEAR).
+    static let storageDepositNEAR: Decimal = ComposeDecimal.toDisplay(
+        ComposeDecimal.fromIntegerString(storageDepositYocto)
+            ?? Decimal(string: storageDepositYocto)
+            ?? 0,
+        decimals: SupportedChain.near.nativeDecimals
+    )
     /// ft_transfer requires exactly 1 yoctoNEAR attached (anti-phishing).
     private static let oneYocto = "1"
 

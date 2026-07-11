@@ -50,9 +50,11 @@ enum SendAmountMath {
             let entries = Decimal(max(0, rawEntries))
             return entries * baseReserve + state.sellingLiabilities
         case .existentialDeposit(let ed):
-            // Spendable = free − max(frozen − reserved, ED). The non-
-            // spendable floor is max(frozen − reserved, ed).
-            return max(state.frozen - state.reserved, ed)
+            // P0-005: `nativeBalance` / `state.balance` is FREE only (not
+            // free+reserved). Reserved is already excluded from the balance
+            // row. Non-spendable floor inside free is max(frozen, ED).
+            // (Substrate reducible ≈ free − max(frozen, ed) for keep-alive.)
+            return max(state.frozen, ed)
         case .solanaRent(let rent):
             return rent
         case .nearStorage(let perByte):

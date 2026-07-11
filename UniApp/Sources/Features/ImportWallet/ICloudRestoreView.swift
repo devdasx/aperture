@@ -148,7 +148,10 @@ struct ICloudRestoreView: View {
                             Button {
                                 UniHapticEngine.shared.play(.selection)
                                 password = ""
+                                bip39Passphrase = ""
+                                showOptionalPassphrase = false
                                 passwordError = false
+                                passphraseError = nil
                                 selectedBackupId = blob.id
                             } label: {
                                 backupRow(blob, showsChevron: true)
@@ -162,7 +165,7 @@ struct ICloudRestoreView: View {
                         confirmDeleteBackups(Set(offsets.map { backups[$0].id }))
                     }
                 } header: {
-                    Text("Choose a backup to restore. You'll need its password.")
+                    Text("Choose a backup to restore. You'll need its password — and the BIP-39 passphrase if the row says “passphrase”.")
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.tertiary)
                         .textCase(nil)
@@ -283,7 +286,7 @@ struct ICloudRestoreView: View {
                 Text(verbatim: blob.walletName)
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
-                Text(verbatim: "\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                Text(verbatim: backupSubtitle(blob))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
             }
@@ -301,6 +304,14 @@ struct ICloudRestoreView: View {
     private func backup(withId id: UUID) -> WalletBackupBlob? {
         guard case .loaded(let backups) = listState else { return nil }
         return backups.first { $0.id == id }
+    }
+
+    private func backupSubtitle(_ blob: WalletBackupBlob) -> String {
+        let date = blob.createdAt.formatted(date: .abbreviated, time: .omitted)
+        if blob.hasPassphrase {
+            return "\(blob.wordCount) words · passphrase · \(date)"
+        }
+        return "\(blob.wordCount) words · \(date)"
     }
 
     private var loadedBackups: [WalletBackupBlob] {

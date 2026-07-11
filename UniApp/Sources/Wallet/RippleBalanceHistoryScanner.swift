@@ -50,6 +50,24 @@ actor RippleBalanceHistoryScanner {
             save: false
         )
 
+        // P0-004: OwnerCount drives XRP base + owner reserve for MAX.
+        try ChainAccountStateRepository(database: database).upsert(
+            addressId: address.id,
+            chain: .ripple,
+            state: ChainAccountStateSnapshot(
+                ownerCount: account.ownerCount,
+                subentryCount: 0,
+                numSponsoring: 0,
+                numSponsored: 0,
+                sellingLiabilitiesRaw: "0",
+                frozenRaw: "0",
+                reservedRaw: "0",
+                storageUsageBytes: 0,
+                lockedRaw: "0",
+                freeRaw: account.rawXRP
+            )
+        )
+
         var isUsed = account.accountExists || EVMHexQuantity.isPositiveDecimalString(account.rawXRP)
         for balance in account.tokenBalances {
             if RippleBalanceHistoryClient.isNonZeroXRPLAmount(balance.rawBalance) {
@@ -147,6 +165,7 @@ actor RippleBalanceHistoryClient {
         return RippleAccountSnapshot(
             rawXRP: account.rawXRP,
             accountExists: account.accountExists,
+            ownerCount: account.ownerCount,
             tokenBalances: normalizeTokenBalances(lines, supportedTokens: supportedTokens)
         )
     }
@@ -201,17 +220,25 @@ actor RippleBalanceHistoryClient {
         }
         guard isSuccess(result) else {
             if isMissingAccount(result) {
-                return RippleAccountRead(rawXRP: "0", accountExists: false)
+                return RippleAccountRead(rawXRP: "0", accountExists: false, ownerCount: 0)
             }
             throw RippleBalanceHistoryError.xrplError(errorMessage(result))
         }
         guard let accountData = result["account_data"] as? [String: Any] else {
             throw RippleBalanceHistoryError.invalidResponse("account_info missing account_data")
         }
+        let ownerCount = intValue(accountData["OwnerCount"]) ?? 0
         return RippleAccountRead(
             rawXRP: stringValue(accountData["Balance"]) ?? "0",
-            accountExists: true
+            accountExists: true,
+            ownerCount: max(0, ownerCount)
         )
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber { return number.intValue }
+        if let string = value as? String { return Int(string) }
+        return nil
     }
 
     private func safeAccountLines(address: String) async -> [RippleAccountLineRead] {
@@ -442,6 +469,8 @@ actor RippleBalanceHistoryClient {
 struct RippleAccountSnapshot: Sendable, Hashable {
     let rawXRP: String
     let accountExists: Bool
+    /// XRPL OwnerCount (P0-004).
+    let ownerCount: Int
     let tokenBalances: [RippleTokenBalanceRead]
 }
 
@@ -466,6 +495,8 @@ struct RippleHistoryEvent: Sendable, Hashable {
 private struct RippleAccountRead: Sendable, Hashable {
     let rawXRP: String
     let accountExists: Bool
+    /// XRPL OwnerCount — trust lines, offers, etc. (P0-004).
+    let ownerCount: Int
 }
 
 private struct RippleAccountLineRead: Sendable, Hashable {

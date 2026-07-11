@@ -636,6 +636,10 @@ private extension AppDatabase {
         migrator.registerMigration("v6_portfolio_pnl_history") { db in
             try db.execute(sql: portfolioPnLHistorySQL)
         }
+        // P0-004 / P0-005: per-address reserve fields for Send MAX / spendable.
+        migrator.registerMigration("v7_chain_account_states") { db in
+            try db.execute(sql: chainAccountStatesSQL)
+        }
         return migrator
     }
 
@@ -1183,6 +1187,23 @@ private extension AppDatabase {
     );
     CREATE INDEX idx_chain_utxos_wallet_chain ON chain_utxos(wallet_id, chain_raw);
     CREATE INDEX idx_chain_utxos_address ON chain_utxos(address_id);
+
+    CREATE TABLE chain_account_states (
+        address_id TEXT PRIMARY KEY REFERENCES wallet_addresses(id) ON DELETE CASCADE,
+        chain_raw TEXT NOT NULL,
+        owner_count INTEGER NOT NULL DEFAULT 0,
+        subentry_count INTEGER NOT NULL DEFAULT 0,
+        num_sponsoring INTEGER NOT NULL DEFAULT 0,
+        num_sponsored INTEGER NOT NULL DEFAULT 0,
+        selling_liabilities_raw TEXT NOT NULL DEFAULT '0',
+        frozen_raw TEXT NOT NULL DEFAULT '0',
+        reserved_raw TEXT NOT NULL DEFAULT '0',
+        storage_usage_bytes INTEGER NOT NULL DEFAULT 0,
+        locked_raw TEXT NOT NULL DEFAULT '0',
+        free_raw TEXT NOT NULL DEFAULT '',
+        updated_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX idx_chain_account_states_chain ON chain_account_states(chain_raw);
 
     \(blobAndSecurityTablesSQL)
 

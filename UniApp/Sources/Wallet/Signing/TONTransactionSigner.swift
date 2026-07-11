@@ -17,10 +17,13 @@ import WalletCore
 /// dropping the memo is never acceptable.
 enum TONTransactionSigner {
 
-    /// TON amount attached to a jetton transfer message for gas. TON's
+    /// TON amount attached to **each** jetton transfer message for gas.
     /// Jetton transfer flow sends an internal message to the sender's
     /// jetton wallet; the attached TON funds that message path and excess
     /// is returned. TonAPI's current cookbook uses 0.05 TON.
+    ///
+    /// **P1-004:** multi-recipient jetton sends attach this amount once per
+    /// message (up to 4). Compose fee must reserve `× recipientCount`.
     static let jettonGasAttachNanoton: UInt64 = 50_000_000
     static let jettonGasAttachTON: Decimal = ComposeDecimal.toDisplay(
         Decimal(jettonGasAttachNanoton),

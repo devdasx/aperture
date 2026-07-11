@@ -644,6 +644,24 @@ private actor StellarBalanceHistoryScanner {
             save: false
         )
 
+        // P0-004: subentries / sponsoring / selling liabilities for XLM min balance.
+        try ChainAccountStateRepository(database: database).upsert(
+            addressId: address.id,
+            chain: .stellar,
+            state: ChainAccountStateSnapshot(
+                ownerCount: 0,
+                subentryCount: account.subentryCount,
+                numSponsoring: account.numSponsoring,
+                numSponsored: account.numSponsored,
+                sellingLiabilitiesRaw: account.sellingLiabilitiesStroops,
+                frozenRaw: "0",
+                reservedRaw: "0",
+                storageUsageBytes: 0,
+                lockedRaw: "0",
+                freeRaw: account.rawBalance
+            )
+        )
+
         var isUsed = account.accountExists || EVMHexQuantity.isPositiveDecimalString(account.rawBalance)
         let txByHash = Dictionary(uniqueKeysWithValues: transactions.map { ($0.hash, $0) })
         let events = payments
@@ -687,14 +705,30 @@ private actor StellarBalanceHistoryScanner {
         do {
             let data = try await horizonGET(path: "accounts/\(address)")
             let response = try JSONDecoder().decode(StellarAccountResponse.self, from: data)
-            let native = response.balances.first { $0.assetType == "native" }?.balance ?? "0"
+            let nativeRecord = response.balances.first { $0.assetType == "native" }
+            let native = nativeRecord?.balance ?? "0"
+            let sellLiab = nativeRecord?.sellingLiabilities ?? "0"
             return StellarAccountBalance(
                 rawBalance: Self.rawUnits(decimalAmount: native, decimals: SupportedChain.stellar.nativeDecimals),
-                accountExists: true
+                accountExists: true,
+                subentryCount: max(0, response.subentryCount ?? 0),
+                numSponsoring: max(0, response.numSponsoring ?? 0),
+                numSponsored: max(0, response.numSponsored ?? 0),
+                sellingLiabilitiesStroops: Self.rawUnits(
+                    decimalAmount: sellLiab,
+                    decimals: SupportedChain.stellar.nativeDecimals
+                )
             )
         } catch {
             if Self.isHorizonNotFound(error) {
-                return StellarAccountBalance(rawBalance: "0", accountExists: false)
+                return StellarAccountBalance(
+                    rawBalance: "0",
+                    accountExists: false,
+                    subentryCount: 0,
+                    numSponsoring: 0,
+                    numSponsored: 0,
+                    sellingLiabilitiesStroops: "0"
+                )
             }
             throw error
         }
@@ -888,6 +922,11 @@ private actor StellarBalanceHistoryScanner {
 private struct StellarAccountBalance: Sendable {
     let rawBalance: String
     let accountExists: Bool
+    let subentryCount: Int
+    let numSponsoring: Int
+    let numSponsored: Int
+    /// Native selling liabilities in stroops (base units).
+    let sellingLiabilitiesStroops: String
 }
 
 private struct StellarHistoryEvent: Sendable {
@@ -904,15 +943,27 @@ private struct StellarHistoryEvent: Sendable {
 
 private struct StellarAccountResponse: Decodable {
     let balances: [StellarBalanceRecord]
+    let subentryCount: Int?
+    let numSponsoring: Int?
+    let numSponsored: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case balances
+        case subentryCount = "subentry_count"
+        case numSponsoring = "num_sponsoring"
+        case numSponsored = "num_sponsored"
+    }
 }
 
 private struct StellarBalanceRecord: Decodable {
     let balance: String
     let assetType: String
+    let sellingLiabilities: String?
 
     enum CodingKeys: String, CodingKey {
         case balance
         case assetType = "asset_type"
+        case sellingLiabilities = "selling_liabilities"
     }
 }
 
@@ -1041,6 +1092,7 @@ private actor PolkadotBalanceHistoryScanner {
                 currencyCode: currencyCode
             )
             : [:]
+        // P1-001 / BUG-004: optional probe results — never invent zeros on RPC failure.
         async let assetHubNativeTask = safeAssetHubNativeAccount(address: address.address)
         async let assetHubTask = safeAssetHubBalances(address: address.address, assets: assetTokens)
         async let historyTask: [PolkadotHistoryEvent] = includeHistory
@@ -1051,50 +1103,91 @@ private actor PolkadotBalanceHistoryScanner {
         let assetHubBalances = await assetHubTask
         let priceMap = await pricesTask
         let events = await historyTask
+        let failed = BalanceProbeKeepLastGood.failedChains(
+            chain: .polkadot,
+            nativeProbeSucceeded: assetHubNative != nil,
+            tokenProbeSucceeded: assetHubBalances != nil
+        )
+
+        let txRepo = TransactionRepository(database: database)
+        var isUsed = !events.isEmpty
+
         // The send path targets Polkadot Asset Hub. Do not report relay-chain
         // DOT as spendable here, or the send flow can offer funds it cannot
         // submit with the Asset Hub signer/broadcaster.
-        let nativeTotalPlancks = assetHubNative.totalPlancks
+        // P0-005: spendable DOT is FREE only. Never free+reserved as rawBalance.
+        // P1-001: only rewrite native/account state when the native probe succeeded.
+        if BalanceProbeKeepLastGood.shouldUpsertBalance(probeSucceeded: assetHubNative != nil),
+           let assetHubNative {
+            let freePlancks = assetHubNative.freePlancks
+            let reservedPlancks = assetHubNative.reservedPlancks
+            let frozenPlancks = assetHubNative.frozenPlancks
 
-        let txRepo = TransactionRepository(database: database)
-        try txRepo.upsertBalance(
-            addressId: address.id,
-            tokenSymbol: SupportedChain.polkadot.ticker,
-            tokenContract: nil,
-            decimals: SupportedChain.polkadot.nativeDecimals,
-            rawBalance: nativeTotalPlancks,
-            fiatValueCached: fiatValue(
-                rawBalance: nativeTotalPlancks,
-                decimals: SupportedChain.polkadot.nativeDecimals,
-                symbol: SupportedChain.polkadot.ticker,
-                prices: priceMap
-            ),
-            fiatCurrencyCode: currencyCode,
-            save: false
-        )
-
-        var isUsed = assetHubNative.accountExists
-            || EVMHexQuantity.isPositiveDecimalString(nativeTotalPlancks)
-            || !events.isEmpty
-        for balance in assetHubBalances {
-            if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
-                isUsed = true
-            }
             try txRepo.upsertBalance(
                 addressId: address.id,
-                tokenSymbol: balance.entry.symbol,
-                tokenContract: String(balance.entry.assetId),
-                decimals: balance.entry.decimals,
-                rawBalance: balance.rawBalance,
+                tokenSymbol: SupportedChain.polkadot.ticker,
+                tokenContract: nil,
+                decimals: SupportedChain.polkadot.nativeDecimals,
+                rawBalance: freePlancks,
                 fiatValueCached: fiatValue(
-                    rawBalance: balance.rawBalance,
-                    decimals: balance.entry.decimals,
-                    symbol: balance.entry.symbol,
+                    rawBalance: freePlancks,
+                    decimals: SupportedChain.polkadot.nativeDecimals,
+                    symbol: SupportedChain.polkadot.ticker,
                     prices: priceMap
                 ),
                 fiatCurrencyCode: currencyCode,
                 save: false
             )
+
+            // P0-004/005: free + frozen + reserved for ED / reducible math.
+            // totalPlancks is informational only and must not back the balance row.
+            try ChainAccountStateRepository(database: database).upsert(
+                addressId: address.id,
+                chain: .polkadot,
+                state: ChainAccountStateSnapshot(
+                    ownerCount: 0,
+                    subentryCount: 0,
+                    numSponsoring: 0,
+                    numSponsored: 0,
+                    sellingLiabilitiesRaw: "0",
+                    frozenRaw: frozenPlancks,
+                    reservedRaw: reservedPlancks,
+                    storageUsageBytes: 0,
+                    lockedRaw: "0",
+                    freeRaw: freePlancks
+                )
+            )
+
+            isUsed = isUsed
+                || assetHubNative.accountExists
+                || EVMHexQuantity.isPositiveDecimalString(freePlancks)
+                || EVMHexQuantity.isPositiveDecimalString(reservedPlancks)
+        }
+
+        // P1-001 / BUG-004: only rewrite asset rows when the asset probe succeeded.
+        // `nil` = transport failure — keep last-good local balances.
+        if BalanceProbeKeepLastGood.shouldUpsertBalance(probeSucceeded: assetHubBalances != nil),
+           let assetHubBalances {
+            for balance in assetHubBalances {
+                if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
+                    isUsed = true
+                }
+                try txRepo.upsertBalance(
+                    addressId: address.id,
+                    tokenSymbol: balance.entry.symbol,
+                    tokenContract: String(balance.entry.assetId),
+                    decimals: balance.entry.decimals,
+                    rawBalance: balance.rawBalance,
+                    fiatValueCached: fiatValue(
+                        rawBalance: balance.rawBalance,
+                        decimals: balance.entry.decimals,
+                        symbol: balance.entry.symbol,
+                        prices: priceMap
+                    ),
+                    fiatCurrencyCode: currencyCode,
+                    save: false
+                )
+            }
         }
 
         for event in events.prefix(50) {
@@ -1114,14 +1207,18 @@ private actor PolkadotBalanceHistoryScanner {
             )
         }
 
-        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        // Do not mark unused solely because probes failed — leave is_used alone
+        // when we could not read balances (keep last-good activity flag).
+        if assetHubNative != nil || assetHubBalances != nil || !events.isEmpty {
+            try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        }
         try txRepo.flush()
 
         _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.polkadot],
-            failedChains: [],
+            failedChains: failed,
             interim: false
         )
     }
@@ -1135,24 +1232,26 @@ private actor PolkadotBalanceHistoryScanner {
         }
     }
 
+    /// P1-001 / BUG-004: `nil` on transport failure — never invent zero asset rows.
     private func safeAssetHubBalances(
         address: String,
         assets: [PolkadotAssetRegistry.Entry]
-    ) async -> [PolkadotAssetHubBalance] {
+    ) async -> [PolkadotAssetHubBalance]? {
         do {
             return try await assetHub.balances(address: address, assets: assets)
         } catch {
             log.debug("Polkadot Asset Hub balances failed: \(String(describing: error), privacy: .public)")
-            return assets.map { PolkadotAssetHubBalance(entry: $0, rawBalance: "0") }
+            return nil
         }
     }
 
-    private func safeAssetHubNativeAccount(address: String) async -> PolkadotAccountState {
+    /// P1-001 / BUG-004: `nil` on transport failure — never invent zero DOT.
+    private func safeAssetHubNativeAccount(address: String) async -> PolkadotAccountState? {
         do {
             return try await assetHub.nativeAccount(address: address)
         } catch {
             log.debug("Polkadot Asset Hub native DOT failed: \(String(describing: error), privacy: .public)")
-            return .zero(accountExists: false)
+            return nil
         }
     }
 
@@ -1364,8 +1463,10 @@ private actor PolkadotStatescanClient {
         )
         let free = response.data?.free ?? "0"
         let reserved = response.data?.reserved ?? "0"
+        let frozen = response.data?.frozen ?? "0"
         let total = PolkadotCodec.addDecimalStrings(free, reserved)
-        let exists = EVMHexQuantity.isPositiveDecimalString(total)
+        let exists = EVMHexQuantity.isPositiveDecimalString(free)
+            || EVMHexQuantity.isPositiveDecimalString(reserved)
             || (response.detail?.providers ?? 0) > 0
             || (response.transfersCount ?? 0) > 0
             || (response.extrinsicsCount ?? 0) > 0
@@ -1373,6 +1474,7 @@ private actor PolkadotStatescanClient {
             totalPlancks: total,
             freePlancks: free,
             reservedPlancks: reserved,
+            frozenPlancks: frozen,
             nonce: response.detail?.nonce ?? 0,
             consumers: response.detail?.consumers ?? 0,
             providers: response.detail?.providers ?? 0,
@@ -1528,57 +1630,35 @@ private enum PolkadotCodec {
         return "0x" + bytes.map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Decode `System.Account` storage — delegates to the shared codec (P0-005).
     static func decodeAccountInfo(hex: String) throws -> PolkadotAccountState {
-        let bytes = try hexBytes(hex)
-        guard bytes.count >= 64 else {
-            throw PolkadotBalanceHistoryError.malformed("System.Account storage too short: \(bytes.count) bytes")
+        do {
+            let decoded = try PolkadotAccountBalanceCodec.decodeAccountInfo(hex: hex)
+            return PolkadotAccountState(
+                totalPlancks: decoded.totalPlancks,
+                freePlancks: decoded.freePlancks,
+                reservedPlancks: decoded.reservedPlancks,
+                frozenPlancks: decoded.frozenPlancks,
+                nonce: decoded.nonce,
+                consumers: decoded.consumers,
+                providers: decoded.providers,
+                sufficients: decoded.sufficients,
+                accountExists: EVMHexQuantity.isPositiveDecimalString(decoded.freePlancks)
+                    || EVMHexQuantity.isPositiveDecimalString(decoded.reservedPlancks)
+                    || decoded.nonce > 0
+                    || decoded.consumers > 0
+                    || decoded.providers > 0
+                    || decoded.sufficients > 0
+            )
+        } catch PolkadotAccountBalanceCodec.DecodeError.tooShort(let n) {
+            throw PolkadotBalanceHistoryError.malformed("System.Account storage too short: \(n) bytes")
+        } catch {
+            throw PolkadotBalanceHistoryError.malformed("System.Account decode failed")
         }
-
-        let nonce = UInt32(littleEndianBytes: Array(bytes[0..<4]))
-        let consumers = UInt32(littleEndianBytes: Array(bytes[4..<8]))
-        let providers = UInt32(littleEndianBytes: Array(bytes[8..<12]))
-        let sufficients = UInt32(littleEndianBytes: Array(bytes[12..<16]))
-        let free = decimalStringLittleEndian(Array(bytes[16..<32]))
-        let reserved = decimalStringLittleEndian(Array(bytes[32..<48]))
-        let total = addDecimalStrings(free, reserved)
-        return PolkadotAccountState(
-            totalPlancks: total,
-            freePlancks: free,
-            reservedPlancks: reserved,
-            nonce: nonce,
-            consumers: consumers,
-            providers: providers,
-            sufficients: sufficients,
-            accountExists: EVMHexQuantity.isPositiveDecimalString(total)
-                || nonce > 0
-                || consumers > 0
-                || providers > 0
-                || sufficients > 0
-        )
     }
 
     static func addDecimalStrings(_ lhs: String, _ rhs: String) -> String {
-        let left = lhs.reversed().map { Int(String($0)) ?? 0 }
-        let right = rhs.reversed().map { Int(String($0)) ?? 0 }
-        let count = max(left.count, right.count)
-        var carry = 0
-        var result: [Int] = []
-        result.reserveCapacity(count + 1)
-        for index in 0..<count {
-            let sum = (index < left.count ? left[index] : 0)
-                + (index < right.count ? right[index] : 0)
-                + carry
-            result.append(sum % 10)
-            carry = sum / 10
-        }
-        while carry > 0 {
-            result.append(carry % 10)
-            carry /= 10
-        }
-        while result.count > 1 && result.last == 0 {
-            result.removeLast()
-        }
-        return result.reversed().map(String.init).joined()
+        PolkadotAccountBalanceCodec.addDecimalStrings(lhs, rhs)
     }
 
     private static func decimalStringLittleEndian(_ bytes: [UInt8]) -> String {
@@ -1610,9 +1690,13 @@ private enum PolkadotCodec {
 }
 
 private struct PolkadotAccountState: Sendable {
+    /// free + reserved (display/portfolio total only — never spendable alone).
     let totalPlancks: String
+    /// Free balance — the only amount that may back token_balances.raw_balance.
     let freePlancks: String
     let reservedPlancks: String
+    /// Frozen / held free balance (cannot spend while frozen).
+    let frozenPlancks: String
     let nonce: UInt32
     let consumers: UInt32
     let providers: UInt32
@@ -1624,6 +1708,7 @@ private struct PolkadotAccountState: Sendable {
             totalPlancks: "0",
             freePlancks: "0",
             reservedPlancks: "0",
+            frozenPlancks: "0",
             nonce: 0,
             consumers: 0,
             providers: 0,
@@ -1665,6 +1750,7 @@ private struct PolkadotStatescanAccountResponse: Decodable {
     struct DataBody: Decodable {
         let free: String?
         let reserved: String?
+        let frozen: String?
     }
 
     struct DetailBody: Decodable {
@@ -1771,7 +1857,8 @@ private actor SolanaBalanceHistoryScanner {
         async let tokenTask = tokenBalances(owner: address.address, tokens: tokens)
 
         let native = try await nativeTask
-        let tokenBalances = await tokenTask
+        let tokenProbe = await tokenTask
+        let tokenBalances = tokenProbe.rows
         async let historyTask: [SolanaHistoryEvent] = includeHistory
             ? safeHistory(
                 owner: address.address,
@@ -1801,6 +1888,8 @@ private actor SolanaBalanceHistoryScanner {
         )
 
         var isUsed = native.accountExists || EVMHexQuantity.isPositiveDecimalString(native.lamports)
+        // P1-001 / BUG-004: only upsert SPL rows we actually probed. Failed
+        // per-mint reads are omitted so last-good token balances stay put.
         for balance in tokenBalances {
             if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
                 isUsed = true
@@ -1849,7 +1938,11 @@ private actor SolanaBalanceHistoryScanner {
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.solana],
-            failedChains: [],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: .solana,
+                nativeProbeSucceeded: true,
+                tokenProbeSucceeded: !tokenProbe.anyFailed
+            ),
             interim: false
         )
     }
@@ -1920,33 +2013,40 @@ private actor SolanaBalanceHistoryScanner {
     private func tokenBalances(
         owner: String,
         tokens: [SolanaSupportedToken]
-    ) async -> [SolanaTokenRead] {
+    ) async -> SolanaTokenProbeResult {
         let groupedByProgram = Dictionary(grouping: tokens) {
             SolanaTokenRegistry.tokenProgramId(for: $0.mint)
         }
 
-        return await withTaskGroup(of: [SolanaTokenRead].self) { group in
+        return await withTaskGroup(of: SolanaTokenProbeResult.self) { group in
             for (programId, programTokens) in groupedByProgram {
                 group.addTask {
                     do {
-                        return try await self.tokenBalances(
+                        let rows = try await self.tokenBalances(
                             owner: owner,
                             programId: programId,
                             tokens: programTokens
                         )
+                        return SolanaTokenProbeResult(rows: rows, anyFailed: false)
                     } catch {
                         await self.logTokenProgramFailure(programId: programId, error: error)
+                        // P1-001: per-mint fallback never invents zeros on failure.
                         return await self.tokenBalancesByMintFallback(owner: owner, tokens: programTokens)
                     }
                 }
             }
 
             var rows: [SolanaTokenRead] = []
+            var anyFailed = false
             rows.reserveCapacity(tokens.count)
             for await chunk in group {
-                rows.append(contentsOf: chunk)
+                rows.append(contentsOf: chunk.rows)
+                if chunk.anyFailed { anyFailed = true }
             }
-            return rows.sorted { $0.token.entry.symbol < $1.token.entry.symbol }
+            return SolanaTokenProbeResult(
+                rows: rows.sorted { $0.token.entry.symbol < $1.token.entry.symbol },
+                anyFailed: anyFailed
+            )
         }
     }
 
@@ -1992,28 +2092,35 @@ private actor SolanaBalanceHistoryScanner {
         }
     }
 
+    /// P1-001 / BUG-004: on per-mint transport failure, omit the mint (do not
+    /// invent `rawBalance: "0"` that would wipe last-good SPL rows).
     private func tokenBalancesByMintFallback(
         owner: String,
         tokens: [SolanaSupportedToken]
-    ) async -> [SolanaTokenRead] {
-        await withTaskGroup(of: SolanaTokenRead.self) { group in
+    ) async -> SolanaTokenProbeResult {
+        await withTaskGroup(of: SolanaTokenRead?.self) { group in
             for token in tokens {
                 group.addTask {
                     do {
                         return try await self.tokenBalance(owner: owner, token: token)
                     } catch {
                         await self.logTokenFailure(symbol: token.entry.symbol, error: error)
-                        return SolanaTokenRead(token: token, rawBalance: "0", tokenAccounts: [])
+                        return nil
                     }
                 }
             }
 
             var rows: [SolanaTokenRead] = []
+            var anyFailed = false
             rows.reserveCapacity(tokens.count)
             for await row in group {
-                rows.append(row)
+                if let row {
+                    rows.append(row)
+                } else {
+                    anyFailed = true
+                }
             }
-            return rows
+            return SolanaTokenProbeResult(rows: rows, anyFailed: anyFailed)
         }
     }
 
@@ -2396,6 +2503,12 @@ private struct SolanaTokenRead: Sendable {
     let token: SolanaSupportedToken
     let rawBalance: String
     let tokenAccounts: [String]
+}
+
+/// P1-001: successful SPL rows only; `anyFailed` marks the chain failed on rebuild.
+private struct SolanaTokenProbeResult: Sendable {
+    let rows: [SolanaTokenRead]
+    let anyFailed: Bool
 }
 
 private struct SolanaHistoryEvent: Sendable {

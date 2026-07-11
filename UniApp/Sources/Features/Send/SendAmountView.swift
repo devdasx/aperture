@@ -150,6 +150,11 @@ struct SendAmountView: View {
         .task { await resolvePrices() }
         .task { await model.loadFee() }
         .task { await model.loadUTXOs(walletId: activeWallet?.id) }
+        // P0-006: live recipient probe (activation / dest-tag / memo required).
+        // Send-only — never on receive. Memo/tag entry stays on Send UI.
+        .task(id: recipientProbeKey) {
+            await probeRecipientAccount()
+        }
         // Re-fetch the fee when a material input changes (recipient count,
         // or — for UTXO chains — the selected coins / amount that drive the
         // vsize-dependent fee). The unconditional `.task { loadFee() }`
@@ -196,6 +201,25 @@ struct SendAmountView: View {
     // MARK: - Reserve / activation banner (honest)
 
     private var reserveNote: String? {
+        // P0-006 honesty banners — activation / required tag or memo first.
+        if model.recipientNeedsActivation {
+            switch chain {
+            case .tron:
+                return String(localized: "This recipient isn't activated yet — sending will cost about 1.1 TRX extra to create the account.")
+            case .stellar:
+                return String(localized: "This Stellar account is new — the first payment uses create_account and must meet the minimum starting balance.")
+            case .ripple:
+                return String(localized: "This XRP account is new — the first payment must cover the base reserve to open it.")
+            default:
+                break
+            }
+        }
+        if model.recipientRequiresDestinationTag, chain == .ripple {
+            return String(localized: "This recipient requires a destination tag. Add it from the options menu or go back to the recipient step — without it the deposit can be lost.")
+        }
+        if model.recipientRequiresMemo, chain == .stellar {
+            return String(localized: "This recipient requires a memo. Add it from the options menu or go back to the recipient step — without it the deposit can be lost.")
+        }
         // Standing reserve (XRP, Stellar, Polkadot ED, Solana rent, NEAR).
         switch chain {
         case .ripple:
@@ -208,8 +232,6 @@ struct SendAmountView: View {
             return String(localized: "Solana keeps ~0.00089 SOL as the rent-exempt minimum so the account stays on-chain.")
         case .near:
             return String(localized: "NEAR keeps a small amount locked for account storage; it can't be sent.")
-        case .tron where model.recipientNeedsActivation:
-            return String(localized: "This recipient isn't activated yet — sending will cost about 1.1 TRX extra to create the account.")
         default:
             return nil
         }
@@ -388,6 +410,14 @@ struct SendAmountView: View {
         "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)"
     }
 
+    /// Primary recipient address drives activation / tag / memo probes.
+    private var recipientProbeKey: String {
+        let primary = recipients.first?.address
+            ?? model.amounts.first?.address
+            ?? ""
+        return "\(chain.rawValue)|\(primary)"
+    }
+
     private func syncObservationScopes() {
         let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
         activeBalancesObservation.setWalletId(scopedWalletId)
@@ -412,15 +442,16 @@ struct SendAmountView: View {
     }
 
     /// Read the native + token balance for THIS chain from the active
-    /// wallet's address rows, plus the reserve account state.
+    /// wallet's address rows, plus the reserve account state from GRDB
+    /// (`chain_account_states` — P0-004).
     private func resolveBalances() {
         guard let wallet = activeWallet else { return }
         let selectedToken = token
         let symbolUpper = (selectedToken?.symbol ?? chain.ticker).uppercased()
         var native: Decimal = 0
         var tokenBalance: Decimal?
-        let state = SendAmountMath.AccountState()
-        let addressIds = Set(wallet.addresses.filter { $0.chainRaw == chain.rawValue }.map(\.id))
+        let chainAddresses = wallet.addresses.filter { $0.chainRaw == chain.rawValue }
+        let addressIds = Set(chainAddresses.map(\.id))
         for bal in activeBalancesObservation.balances {
             guard let addressId = bal.addressId ?? bal.address?.id,
                   addressIds.contains(addressId) else { continue }
@@ -434,6 +465,17 @@ struct SendAmountView: View {
                 tokenBalance = (tokenBalance ?? 0) + amount
             }
         }
+
+        // Prefer the send-from address's account state; fall back to preferred.
+        let snapshot = (try? ChainAccountStateRepository(database: .shared).load(
+            walletId: wallet.id,
+            chain: chain,
+            preferredAddress: fromAddress
+        )) ?? .empty
+        let state = snapshot.toComposeAccountState(
+            nativeBalanceDisplay: native,
+            decimals: chain.nativeDecimals
+        )
         model.setBalances(native: native, token: tokenBalance, state: state)
     }
 
@@ -459,6 +501,23 @@ struct SendAmountView: View {
             asset: prices[assetSym]?.amount,
             native: prices[nativeSym]?.amount
         )
+    }
+
+    /// P0-006: probe recipient account and set compose flags for real.
+    private func probeRecipientAccount() async {
+        let address = recipients.first?.address
+            ?? model.amounts.first?.address
+            ?? ""
+        guard !address.isEmpty else {
+            model.setRecipientAccountProbe(.none)
+            return
+        }
+        let result = await SendRecipientAccountProbe.probe(
+            chain: chain,
+            recipientAddress: address
+        )
+        guard !Task.isCancelled else { return }
+        model.setRecipientAccountProbe(result)
     }
 }
 

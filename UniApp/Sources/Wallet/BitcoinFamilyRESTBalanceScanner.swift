@@ -44,6 +44,8 @@ actor BitcoinFamilyRESTBalanceScanner {
             : [:]
 
         // Scan every known address; extend gap when activity found.
+        // P1-001 / BUG-004: never invent zeros on RPC failure — only fold in
+        // successful probes, and skip balance/UTXO writes when any probe fails.
         var totalRaw: Int64 = 0
         var allUTXOs: [SelectedUTXO] = []
         var allHistory: [BitcoinFamilyRESTEvent] = []
@@ -52,6 +54,8 @@ actor BitcoinFamilyRESTBalanceScanner {
         var queue = addressRows.map(\.address)
         var pathByAddress = Dictionary(uniqueKeysWithValues: addressRows.map { ($0.address, $0.path) })
         var loopGuard = 0
+        var anySnapshotFailed = false
+        var anyUTXOFailed = false
 
         while !queue.isEmpty, loopGuard < 12 {
             loopGuard += 1
@@ -66,23 +70,40 @@ actor BitcoinFamilyRESTBalanceScanner {
                 let snapshot = await snap
                 let addrUTXOs = await utxos
                 let addrHistory = await history
-                if let raw = Int64(snapshot.rawBalance) {
-                    let (sum, overflow) = totalRaw.addingReportingOverflow(raw)
-                    totalRaw = overflow ? Int64.max : sum
+
+                if let snapshot {
+                    if let raw = Int64(snapshot.rawBalance) {
+                        let (sum, overflow) = totalRaw.addingReportingOverflow(raw)
+                        totalRaw = overflow ? Int64.max : sum
+                    }
+                    if snapshot.isUsed {
+                        activeAddresses.insert(addr)
+                    }
+                } else {
+                    anySnapshotFailed = true
                 }
-                if snapshot.isUsed || !addrHistory.isEmpty || !addrUTXOs.isEmpty {
+
+                if let addrUTXOs {
+                    if !addrUTXOs.isEmpty {
+                        activeAddresses.insert(addr)
+                    }
+                    allUTXOs.append(contentsOf: addrUTXOs.map { utxo in
+                        SelectedUTXO(
+                            ownerAddress: addr,
+                            txid: utxo.txid,
+                            vout: utxo.vout,
+                            valueSats: utxo.valueSats,
+                            scriptHex: utxo.scriptHex,
+                            confirmed: utxo.confirmed
+                        )
+                    })
+                } else {
+                    anyUTXOFailed = true
+                }
+
+                if !addrHistory.isEmpty {
                     activeAddresses.insert(addr)
                 }
-                allUTXOs.append(contentsOf: addrUTXOs.map { utxo in
-                    SelectedUTXO(
-                        ownerAddress: addr,
-                        txid: utxo.txid,
-                        vout: utxo.vout,
-                        valueSats: utxo.valueSats,
-                        scriptHex: utxo.scriptHex,
-                        confirmed: utxo.confirmed
-                    )
-                })
                 allHistory.append(contentsOf: addrHistory)
             }
 
@@ -113,25 +134,35 @@ actor BitcoinFamilyRESTBalanceScanner {
         }
 
         let prices = await pricesTask
-        let rawBalance = String(max(0, totalRaw))
-        let txRepo = TransactionRepository(database: database)
-        try txRepo.upsertBalance(
-            addressId: address.id,
-            tokenSymbol: chain.ticker,
-            tokenContract: nil,
-            decimals: chain.nativeDecimals,
-            rawBalance: rawBalance,
-            fiatValueCached: fiatValue(
-                rawBalance: rawBalance,
-                decimals: chain.nativeDecimals,
-                symbol: chain.ticker,
-                prices: prices
-            ),
-            fiatCurrencyCode: currencyCode,
-            save: false
+        let snapshotOK = !anySnapshotFailed
+        let utxoOK = !anyUTXOFailed
+        let failed = BalanceProbeKeepLastGood.failedChains(
+            chain: chain,
+            nativeProbeSucceeded: snapshotOK && utxoOK
         )
+        let txRepo = TransactionRepository(database: database)
 
-        let isUsed = !activeAddresses.isEmpty || totalRaw > 0
+        // P1-001: only rewrite native balance when every address snapshot succeeded.
+        // A partial sum undercounts; inventing "0" for failed addresses wipes last-good.
+        if BalanceProbeKeepLastGood.shouldUpsertBalance(probeSucceeded: snapshotOK) {
+            let rawBalance = String(max(0, totalRaw))
+            try txRepo.upsertBalance(
+                addressId: address.id,
+                tokenSymbol: chain.ticker,
+                tokenContract: nil,
+                decimals: chain.nativeDecimals,
+                rawBalance: rawBalance,
+                fiatValueCached: fiatValue(
+                    rawBalance: rawBalance,
+                    decimals: chain.nativeDecimals,
+                    symbol: chain.ticker,
+                    prices: prices
+                ),
+                fiatCurrencyCode: currencyCode,
+                save: false
+            )
+        }
+
         var seenTx = Set<String>()
         for event in allHistory.prefix(80) where seenTx.insert(event.txHash).inserted {
             try txRepo.upsertTransaction(
@@ -150,40 +181,49 @@ actor BitcoinFamilyRESTBalanceScanner {
             )
         }
 
-        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        // Keep last-good is_used when probes failed and we saw no new activity.
+        if snapshotOK || !activeAddresses.isEmpty || !allHistory.isEmpty {
+            let isUsed = !activeAddresses.isEmpty || (snapshotOK && totalRaw > 0)
+            try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        }
         try txRepo.flush()
 
-        let addressedUTXOs = allUTXOs.map {
-            ChainStateRepository.AddressedUTXO(
-                address: $0.ownerAddress ?? address.address,
-                txid: $0.txid,
-                vout: $0.vout,
-                valueSats: $0.valueSats,
-                scriptHex: $0.scriptHex,
-                confirmed: $0.confirmed
-            )
+        // P1-001: never replace UTXO cache with a partial/empty set from failed fetches
+        // (compose would otherwise see empty UTXOs and refuse spends).
+        if BalanceProbeKeepLastGood.shouldReplaceUTXOs(probeSucceeded: utxoOK) {
+            let addressedUTXOs = allUTXOs.map {
+                ChainStateRepository.AddressedUTXO(
+                    address: $0.ownerAddress ?? address.address,
+                    txid: $0.txid,
+                    vout: $0.vout,
+                    valueSats: $0.valueSats,
+                    scriptHex: $0.scriptHex,
+                    confirmed: $0.confirmed
+                )
+            }
+            _ = try ChainStateRepository(database: database)
+                .replaceAddressedUTXOs(
+                    walletId: walletId,
+                    chain: chain,
+                    utxos: addressedUTXOs
+                )
         }
-        _ = try ChainStateRepository(database: database)
-            .replaceAddressedUTXOs(
-                walletId: walletId,
-                chain: chain,
-                utxos: addressedUTXOs
-            )
         _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: Set([chain]),
-            failedChains: [],
+            failedChains: failed,
             interim: false
         )
     }
 
-    private func safeSnapshot(address: String, chain: SupportedChain) async -> BitcoinFamilyRESTSnapshot {
+    /// P1-001 / BUG-004: `nil` on transport failure — never invent `"0"`.
+    private func safeSnapshot(address: String, chain: SupportedChain) async -> BitcoinFamilyRESTSnapshot? {
         do {
             return try await accountSnapshot(address: address, chain: chain)
         } catch {
             log.debug("Snapshot failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
-            return BitcoinFamilyRESTSnapshot(rawBalance: "0", isUsed: false)
+            return nil
         }
     }
 
@@ -209,12 +249,13 @@ actor BitcoinFamilyRESTBalanceScanner {
         }
     }
 
-    private func safeUTXOs(address: String, chain: SupportedChain) async -> [SelectedUTXO] {
+    /// P1-001 / BUG-004: `nil` on transport failure — never invent empty UTXO list.
+    private func safeUTXOs(address: String, chain: SupportedChain) async -> [SelectedUTXO]? {
         do {
             return try await utxoService.fetchUTXOs(address: address, chain: chain)
         } catch {
             log.debug("UTXO fetch failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
-            return []
+            return nil
         }
     }
 

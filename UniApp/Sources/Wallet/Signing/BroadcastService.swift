@@ -540,16 +540,41 @@ struct BroadcastService: Sendable {
         )
     }
 
-    /// XRPL `submit` result object. Accept only tes*/ter*; prefer body hash.
-    /// Local hash only when engine confirmed accept and body omitted hash.
+    /// XRPL `submit` result object.
+    ///
+    /// **P0-007:** Only `tes*` (applied success, i.e. `tesSUCCESS`) is a
+    /// definitive send success. All `ter*` codes mean the transaction was
+    /// **not applied** and may only be retried by the server — treating them
+    /// as success caused false “Sent” + optimistic debits. `ter*` →
+    /// `.broadcastAmbiguous`; `tec`/`tef`/`tem`/`tel` → `.broadcastFailed`.
+    /// Prefer body hash; local hash only after `tes*` when body omits hash.
     static func parseXRPSubmitResponse(_ data: Data, localTxHash: String) throws(SigningError) -> String {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw SigningError.broadcastAmbiguous("unexpected XRP submit response")
         }
-        let engineResult = root["engine_result"] as? String ?? ""
-        if engineResult.hasPrefix("tes") || engineResult.hasPrefix("ter") {
-            if let txJSON = root["tx_json"] as? [String: Any],
+        // Nested `result` (full JSON-RPC envelope) or flat submit object.
+        let payload: [String: Any]
+        if let nested = root["result"] as? [String: Any],
+           nested["engine_result"] != nil || nested["tx_json"] != nil {
+            payload = nested
+        } else {
+            payload = root
+        }
+
+        let engineResult = (payload["engine_result"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = (payload["engine_result_message"] as? String ?? engineResult)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch xrpSubmitOutcome(engineResult) {
+        case .appliedSuccess:
+            if let txJSON = payload["tx_json"] as? [String: Any],
                let hash = (txJSON["hash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !hash.isEmpty {
+                return hash
+            }
+            // Some nodes put the hash at the top level.
+            if let hash = (payload["hash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                !hash.isEmpty {
                 return hash
             }
@@ -560,9 +585,61 @@ struct BroadcastService: Sendable {
                 )
             }
             return local
+
+        case .notAppliedRetryable:
+            // ter* including terQUEUED — not applied; may still land later.
+            // Never report success / write optimistic debit.
+            let detail = message.isEmpty ? engineResult : message
+            throw SigningError.broadcastAmbiguous(
+                detail.isEmpty
+                    ? "XRP network queued or delayed the transaction (not yet applied). Check the explorer before sending again."
+                    : "XRP: \(detail) (not yet applied — check the explorer before sending again)"
+            )
+
+        case .rejected:
+            throw SigningError.broadcastFailed(
+                message.isEmpty ? (engineResult.isEmpty ? "XRP submit rejected" : engineResult) : message
+            )
+
+        case .unknown:
+            if engineResult.isEmpty {
+                throw SigningError.broadcastAmbiguous("unexpected XRP submit response")
+            }
+            throw SigningError.broadcastAmbiguous(
+                message.isEmpty ? "XRP submit outcome unknown: \(engineResult)" : message
+            )
         }
-        let message = root["engine_result_message"] as? String ?? engineResult
-        throw SigningError.broadcastFailed(message.isEmpty ? "XRP submit rejected" : message)
+    }
+
+    /// Classifies an XRPL `engine_result` code for submit honesty (P0-007).
+    enum XRPSubmitOutcome: Sendable, Equatable {
+        /// `tesSUCCESS` (only `tes*` code) — applied to provisional ledger.
+        case appliedSuccess
+        /// `ter*` — not applied; server may retry (includes `terQUEUED`).
+        case notAppliedRetryable
+        /// `tec` / `tef` / `tem` / `tel` — definitive failure for this submit.
+        case rejected
+        case unknown
+    }
+
+    static func xrpSubmitOutcome(_ engineResult: String) -> XRPSubmitOutcome {
+        let code = engineResult.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else { return .unknown }
+        // Official docs: tesSUCCESS is the only success code (tes family).
+        if code == "tesSUCCESS" || code.hasPrefix("tes") {
+            return .appliedSuccess
+        }
+        // Temporary / not applied — must NOT look like a successful send.
+        if code.hasPrefix("ter") {
+            return .notAppliedRetryable
+        }
+        if code.hasPrefix("tec")
+            || code.hasPrefix("tef")
+            || code.hasPrefix("tem")
+            || code.hasPrefix("tel") {
+            return .rejected
+        }
+        return .unknown
     }
 
     /// TronGrid broadcast. Require `result: true`; prefer body `txid`.
