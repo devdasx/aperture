@@ -13,9 +13,8 @@ import Foundation
 /// explicit. Adding a new stablecoin is one line + a SHIPPED.md
 /// entry; the cost is small and the safety is real.
 ///
-/// Source: `docs/coinbase-coverage.txt` audited 2026-06-06. Tokens
-/// marked `OK` in that file (USDC, USDT, DAI, GUSD, PYUSD, USD1,
-/// USDS, USDf) get their real Coinbase spot. Tokens marked `NO`
+/// Tokens with a real Coinbase spot (USDC, USDT, DAI, GUSD, PYUSD,
+/// USD1, USDS, USDf) use market price first. Other USD-pegged names
 /// (USD0, USDai, USDe, AUSD, FRAX, TUSD, RLUSD, USDG, USDP, USDD,
 /// FDUSD, DUSD, lisUSD) need the USDT proxy — they're listed here.
 /// Wrapped-asset proxies like WBTC → BTC, WETH → ETH belong in a

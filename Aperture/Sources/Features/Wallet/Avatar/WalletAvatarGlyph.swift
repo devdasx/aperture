@@ -34,10 +34,9 @@ import SwiftUI
 /// of truth, two render targets.
 ///
 /// **Lucide attribution + license.** The 30 Lucide icons are
-/// distributed under ISC. The full license text and per-icon
-/// provenance live at the repo root in `LUCIDE_ICONS_LICENSE.md`, with
-/// a one-line summary in `Assets.xcassets/README.md` — per Rule #7 §B
-/// priority 3 and §D's per-asset provenance requirement.
+/// distributed under ISC. See `Assets.xcassets/README.md` for a
+/// short provenance note — per Rule #7 §B priority 3 and §D's
+/// per-asset provenance requirement.
 ///
 /// **Glyph-name retirement (2026-06-09 v3).** The pre-v3 cuts of this
 /// enum carried 20 geometric marks (`dot`, `ring`, `rings`, `dots`,
