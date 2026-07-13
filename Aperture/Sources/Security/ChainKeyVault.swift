@@ -27,6 +27,15 @@ enum ChainKeyVault {
         cache.withLock { $0 = keyData }
     }
 
+    /// Reload the in-memory master key after a wipe that already ensured the blob.
+    /// Read-only — safe when a GRDB write transaction just finished notifying observers.
+    static func reloadCache(database: AppDatabase = .shared) {
+        let keyData = try? database.read { db in
+            try LocalSecureBlobStore.read(LocalSecureBlobStore.chainKeyMasterKey, db: db)
+        }
+        cache.withLock { $0 = keyData }
+    }
+
     /// P2-016: bind ciphertext to chain-key purpose AAD so a swapped DB
     /// blob cannot decrypt as a different secret class (parity with
     /// `WalletSecretCrypto` associated data). Existing v2 blobs without

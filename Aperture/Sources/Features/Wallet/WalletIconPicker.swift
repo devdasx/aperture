@@ -1,53 +1,29 @@
 import SwiftUI
 
-/// Wallet-avatar colour customisation. The wallet mark is fixed to
-/// Aperture's iris logo; this sheet only stages and saves the disc
-/// colour.
+/// Wallet-avatar colour customisation. The mark is always Aperture’s
+/// iris; this sheet only changes the disc / home-hero identity colour.
 ///
-/// **Why staging, not live commits.** The pre-2026-06-09 picker
-/// committed every tap straight through GRDB observation reactivity — a
-/// stylistic mistake in retrospect. The user couldn't preview a
-/// gradient + glyph combo without writing it; if they didn't like
-/// the result they had to walk back. The picker stages every edit
-/// in `@State` and lands them only on Save — Apple's iOS Settings →
-/// Appearance pattern. The user explores freely; commitment is
-/// explicit.
+/// **Immediate apply.** Each tap writes through GRDB and refreshes home
+/// chrome — no Save. Cancel only dismisses the sheet.
 ///
-/// **Per Rule #15:** `NavigationStack`-rooted, `navigationTitle("Wallet icon")`,
-/// `.navigationBarTitleDisplayMode(.inline)`. Cancel sits in
-/// `.topBarLeading`; Save lives at the bottom of the content as a
-/// `UniButton(.primary)` because it's the commit action (Rule #19).
-///
-/// **Rule #4 carries no exception here.** Every colour flows through
-/// `UniColors.WalletAvatar.gradientStops(for:)` and other named roles.
-///
-/// **Rule #9 (i18n).** Every string the user reads is a
-/// `LocalizedStringKey` or `Text(...)` with a localized key.
+/// **Palette.** Named chromatic list (no black / grey, no freeform
+/// custom colour). Neutrals already stored on a wallet still hydrate;
+/// they simply are not offered here.
 struct WalletIconPickerSheet: View {
     let walletId: UUID
 
     @StateObject private var walletRecordsObservation = WalletRecordsObservation()
     @Environment(\.dismiss) private var dismiss
 
-    // MARK: - Staged spec (commit on Save, discard on Cancel)
-
-    /// The gradient the user is currently previewing.
-    @State private var stagedGradient: WalletAvatarGradient = .graphite
-    /// Whether the user picked a custom colour via the native colour
-    /// picker (2026-06-19) — overrides `stagedGradient` when true.
-    @State private var usesCustomColor: Bool = false
-    /// The native colour-picker selection. Only meaningful when
-    /// `usesCustomColor` is true; seeded from a persisted custom hex.
-    @State private var stagedCustomColor: Color = .blue
-    /// Whether the staged spec has been initialised from the wallet
-    /// record. Guards against re-seeding on every body re-render.
+    @State private var stagedGradient: WalletAvatarGradient = .blue
     @State private var didSeed: Bool = false
+    /// Serialises GRDB avatar writes so rapid taps always persist the
+    /// **latest** staged colour (never drop Rose because Green was mid-write).
+    @State private var writeTask: Task<Void, Never>?
 
     private var wallet: WalletRecord? {
         walletRecordsObservation.wallets.first { $0.id == walletId }
     }
-
-    // MARK: - Body
 
     var body: some View {
         NavigationStack {
@@ -66,6 +42,8 @@ struct WalletIconPickerSheet: View {
                 }
             }
             .onAppear { seedIfNeeded() }
+            // Do not cancel `writeTask` on dismiss — the last colour must
+            // still flush to GRDB after the sheet closes.
         }
     }
 
@@ -73,35 +51,48 @@ struct WalletIconPickerSheet: View {
 
     @ViewBuilder
     private func content(_ wallet: WalletRecord) -> some View {
+        // Logo stays pinned above the list so colour taps always show on the
+        // mark — scrolling the palette must not hide the live preview.
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: UniSpacing.xl) {
-                    livePreview(wallet)
-                    colorSection
-                }
-                .padding(.horizontal, UniSpacing.l)
+            livePreview(wallet)
                 .padding(.top, UniSpacing.m)
-                .padding(.bottom, UniSpacing.xl)
+                .padding(.bottom, UniSpacing.s)
+                .frame(maxWidth: .infinity)
+                .background(UniColors.Background.primary)
+                .zIndex(1)
+
+            List {
+                Section {
+                    ForEach(WalletAvatarGradient.pickerCases, id: \.self) { gradient in
+                        colorRow(gradient, wallet: wallet)
+                    }
+                } header: {
+                    Text("Colour")
+                        .font(UniTypography.footnote)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .textCase(.uppercase)
+                } footer: {
+                    Text("Colour applies immediately to this wallet’s icon and home card.")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                }
             }
-            saveBar(wallet)
+            .uniListPageChrome()
         }
+        .background(UniColors.Background.primary)
     }
 
-    // MARK: - Live preview
+    // MARK: - Live preview (pinned; not part of the scrolling list)
 
-    /// The 96pt avatar at the top of the sheet. The wallet mark stays
-    /// fixed to Aperture's iris; only the colour changes.
     @ViewBuilder
     private func livePreview(_ wallet: WalletRecord) -> some View {
-        let customColorAnimationKey = usesCustomColor ? UniColors.WalletAvatar.hex(from: stagedCustomColor) : ""
         VStack(spacing: UniSpacing.s) {
             WalletAvatar(
                 spec: stagedSpec(for: wallet),
                 size: .editor
             )
             .animation(.smooth(duration: 0.18), value: stagedGradient)
-            .animation(.smooth(duration: 0.18), value: usesCustomColor)
-            .animation(.smooth(duration: 0.18), value: customColorAnimationKey)
 
             Text(verbatim: wallet.name)
                 .font(UniTypography.body)
@@ -109,66 +100,19 @@ struct WalletIconPickerSheet: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(verbatim: wallet.name))
     }
 
-    // MARK: - Colour section
-
-    /// A horizontal scrollable row of 12 gradient swatches, each a
-    /// 40pt circle filled with its gradient. The selected swatch
-    /// carries a 2pt ink ring offset 4pt outside the swatch — the
-    /// classic iOS selection mark, restrained.
-    @ViewBuilder
-    private var colorSection: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
-            sectionLabel("Colour")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: UniSpacing.s) {
-                    ForEach(WalletAvatarGradient.allCases, id: \.self) { gradient in
-                        gradientSwatch(gradient)
-                    }
-                }
-                .padding(.horizontal, 4) // breathing room for the selection ring
-                .padding(.vertical, 4)
-            }
-
-            // Native colour picker (2026-06-19) — pick any colour beyond
-            // the curated presets. Selecting one overrides the preset
-            // swatch; tapping a preset above clears it. The trailing tick
-            // marks when a custom colour is the active choice.
-            ColorPicker(selection: $stagedCustomColor, supportsOpacity: false) {
-                HStack(spacing: UniSpacing.s) {
-                    Image(systemName: "eyedropper.halffull")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(UniColors.Icon.secondary)
-                        .frame(width: 28)
-                    Text("Custom colour")
-                        .font(UniTypography.body)
-                        .foregroundStyle(UniColors.Text.primary)
-                    if usesCustomColor {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(UniColors.Tint.accent)
-                    }
-                }
-            }
-            .onChange(of: stagedCustomColor) { _, _ in
-                // Any movement of the colour well means the user wants
-                // their custom colour (seed assigns before this fires
-                // only when a custom hex existed, which is also correct).
-                usesCustomColor = true
-            }
-        }
-    }
+    // MARK: - Colour list
 
     @ViewBuilder
-    private func gradientSwatch(_ gradient: WalletAvatarGradient) -> some View {
-        // A preset is "active" only when no custom colour is in play.
-        let isActive = (gradient == stagedGradient) && !usesCustomColor
+    private func colorRow(_ gradient: WalletAvatarGradient, wallet: WalletRecord) -> some View {
+        let isActive = gradient == stagedGradient
         Button {
-            stagedGradient = gradient
-            usesCustomColor = false // picking a preset clears the custom colour
+            select(gradient, wallet: wallet)
         } label: {
-            ZStack {
+            HStack(spacing: UniSpacing.s) {
                 Circle()
                     .fill(
                         LinearGradient(
@@ -177,102 +121,115 @@ struct WalletIconPickerSheet: View {
                             endPoint: .bottom
                         )
                     )
-                    .frame(width: 40, height: 40)
-                Circle()
-                    .stroke(
-                        isActive ? UniColors.Text.primary : Color.clear,
-                        lineWidth: 2
-                    )
-                    .frame(width: 48, height: 48)
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        Circle()
+                            .strokeBorder(UniColors.Separator.regular.opacity(0.35), lineWidth: 0.5)
+                    }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(gradient.displayName)
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text(gradient.displayDetail)
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                if isActive {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(UniColors.Icon.accent)
+                        .accessibilityHidden(true)
+                }
             }
-            .frame(width: 52, height: 52, alignment: .center)
-            .contentShape(Circle())
+            .uniListRowHitTarget()
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .uniHaptic(.selection, trigger: isActive)
-        .accessibilityLabel(Text(verbatim: gradient.rawValue.capitalized))
+        .buttonStyle(.uniListRow)
+        .uniListRowSurface()
+        .accessibilityLabel(Text(gradient.displayName))
+        .accessibilityHint(Text(gradient.displayDetail))
         .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+        .uniHaptic(.selection, trigger: isActive)
     }
 
-    // MARK: - Save bar
+    // MARK: - Selection + live write
 
-    /// A floating Save button anchored to the bottom of the sheet,
-    /// inside a `GlassEffectContainer` so the commit affordance lives
-    /// on the system's functional layer.
-    @ViewBuilder
-    private func saveBar(_ wallet: WalletRecord) -> some View {
-        GlassEffectContainer(spacing: 0) {
-            UniButton(
-                title: "Save",
-                variant: .primary,
-                isEnabled: true
-            ) {
-                commit(wallet)
-            }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.bottom, UniSpacing.s)
-            .padding(.top, UniSpacing.s)
+    private func select(_ gradient: WalletAvatarGradient, wallet: WalletRecord) {
+        guard gradient != stagedGradient || wallet.avatarSpec.customColorHex != nil else {
+            return
         }
+        stagedGradient = gradient
+        apply(wallet)
     }
 
-    // MARK: - Section label
+    /// Paint home chrome **first**, then debounce-persist. Never re-read a
+    /// stale observation into chrome after write — that was clobbering Rose
+    /// (etc.) back to the previous colour (often Green) under the sheet.
+    private func apply(_ wallet: WalletRecord) {
+        let walletId = wallet.id
+        let name = wallet.name
+        let spec = stagedSpec(for: wallet)
 
-    @ViewBuilder
-    private func sectionLabel(_ key: LocalizedStringKey) -> some View {
-        Text(key)
-            .font(UniTypography.footnote)
-            .fontWeight(.semibold)
-            .foregroundStyle(UniColors.Text.secondary)
-            .textCase(.uppercase)
-            .tracking(0.5)
+        // Immediate: balance card + app bar track the list checkmark.
+        WalletHomeSwipeChrome.shared.applyIdentity(
+            walletId: walletId,
+            name: name,
+            spec: spec
+        )
+
+        // Coalesce GRDB writes — only the last staged colour is saved.
+        writeTask?.cancel()
+        writeTask = Task { @MainActor in
+            // Tiny debounce so flinging through the list doesn't stampede GRDB.
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+
+            let latest = stagedSpec(for: wallet)
+            _ = try? await WalletCommandRepository(database: AppDatabase.shared)
+                .updateAvatar(id: walletId, spec: latest)
+            guard !Task.isCancelled else { return }
+
+            WalletCustomSvgRenderer.invalidate(walletId: walletId)
+            // Re-affirm the **written** spec — do not refresh from observation
+            // (it may still hold the previous gradient for a tick).
+            WalletHomeSwipeChrome.shared.applyIdentity(
+                walletId: walletId,
+                name: name,
+                spec: latest
+            )
+        }
     }
 
     // MARK: - Seeding
 
-    /// Initialise the staged spec from the wallet's current persisted
-    /// avatar. Runs once on first appear via `didSeed`.
     private func seedIfNeeded() {
         guard !didSeed, let wallet else { return }
         let current = wallet.avatarSpec
-        stagedGradient = current.gradient
-        // Restore a previously-picked custom colour so re-opening the
-        // picker shows it selected (2026-06-19).
-        if let hex = current.customColorHex {
-            usesCustomColor = true
-            stagedCustomColor = UniColors.WalletAvatar.color(fromHex: hex)
+        // Custom hex / neutrals: land on a chromatic default for the list.
+        if current.customColorHex != nil || current.gradient.isNeutralMonochrome {
+            stagedGradient = .blue
         } else {
-            usesCustomColor = false
+            stagedGradient = current.gradient
         }
         didSeed = true
     }
 
-    // MARK: - Spec composition
+    // MARK: - Spec
 
-    /// The currently-staged spec, used both for the live preview and
-    /// for the Save commit. Always includes the wallet's derived
-    /// badge so the preview matches what the user will see on the
-    /// home / list / switcher surfaces.
     private func stagedSpec(for wallet: WalletRecord) -> WalletAvatarSpec {
         WalletAvatarSpec.walletMark(
             gradient: stagedGradient,
             badge: WalletAvatarBadge.derive(from: wallet.kind),
-            customColorHex: usesCustomColor ? UniColors.WalletAvatar.hex(from: stagedCustomColor) : nil
+            customColorHex: nil
         )
     }
 
-    // MARK: - Commit
-
-    private func commit(_ wallet: WalletRecord) {
-        let spec = stagedSpec(for: wallet)
-        Task { @MainActor in
-            _ = try? await WalletCommandRepository(database: AppDatabase.shared)
-                .updateAvatar(id: wallet.id, spec: spec)
-            WalletCustomSvgRenderer.invalidate(walletId: wallet.id)
-            dismiss()
-        }
-    }
-
-    // MARK: - Missing fallback
+    // MARK: - Missing
 
     private var missing: some View {
         VStack(spacing: UniSpacing.s) {
@@ -287,5 +244,6 @@ struct WalletIconPickerSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(UniSpacing.xl)
+        .background(UniColors.Background.primary)
     }
 }

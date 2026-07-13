@@ -55,7 +55,7 @@ struct OnboardingSettingsView: View {
                             trailing: languageRowTrailing
                         )
                     }
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
 
                     NavigationLink(value: OnboardingSettingsDestination.appearance) {
                         OnboardingSettingsRow(
@@ -64,10 +64,10 @@ struct OnboardingSettingsView: View {
                             trailing: theme.label
                         )
                     }
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
 
                     OnboardingHapticToggleRow(isOn: $hapticEnabled)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                 }
 
                 // About — version and legal surface available pre-wallet.
@@ -79,12 +79,10 @@ struct OnboardingSettingsView: View {
                             trailing: LocalizedStringKey(AboutInfo.versionString)
                         )
                     }
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Settings"))
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: OnboardingSettingsDestination.self) { destination in
@@ -153,7 +151,6 @@ private struct OnboardingSettingsRow: View {
                     .truncationMode(.tail)
             }
         }
-        .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
     }
 }
@@ -177,7 +174,6 @@ private struct OnboardingHapticToggleRow: View {
             }
         }
         .tint(UniColors.Button.Primary.tint)
-        .padding(.vertical, UniSpacing.xxs)
         .uniHaptic(.selection, trigger: isOn)
     }
 }
@@ -203,7 +199,7 @@ private struct OnboardingAboutView: View {
                         .font(UniTypography.subheadline)
                         .foregroundStyle(UniColors.Text.secondary)
                 }
-                .padding(.vertical, UniSpacing.xxs)
+                .uniListRowSurface()
 
                 HStack {
                     Text("Prices")
@@ -214,7 +210,7 @@ private struct OnboardingAboutView: View {
                         .font(UniTypography.subheadline)
                         .foregroundStyle(UniColors.Text.secondary)
                 }
-                .padding(.vertical, UniSpacing.xxs)
+                .uniListRowSurface()
             }
 
             Section {
@@ -224,14 +220,15 @@ private struct OnboardingAboutView: View {
                             .font(UniTypography.body)
                             .foregroundStyle(UniColors.Text.primary)
                         Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
+                        Image(systemName: UniDirectionalSymbol.disclosure)
+                            .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(UniColors.Icon.tertiary)
                             .accessibilityHidden(true)
                     }
                     .uniListRowHitTarget()
                 }
                 .buttonStyle(.uniListRow)
+                .uniListRowSurface()
 
                 Button { onTapPrivacy() } label: {
                     HStack {
@@ -239,14 +236,15 @@ private struct OnboardingAboutView: View {
                             .font(UniTypography.body)
                             .foregroundStyle(UniColors.Text.primary)
                         Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
+                        Image(systemName: UniDirectionalSymbol.disclosure)
+                            .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(UniColors.Icon.tertiary)
                             .accessibilityHidden(true)
                     }
                     .uniListRowHitTarget()
                 }
                 .buttonStyle(.uniListRow)
+                .uniListRowSurface()
             }
 
             Section {
@@ -258,7 +256,7 @@ private struct OnboardingAboutView: View {
                     .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.insetGrouped)
+        .uniListPageChrome()
         .navigationTitle(Text("About"))
         .navigationBarTitleDisplayMode(.large)
     }

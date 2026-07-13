@@ -47,6 +47,9 @@ struct ReceiveQRDetailView: View {
     @State private var isShowingSolanaAccountSearch: Bool = false
     @State private var isSwitchingSolanaPath: Bool = false
     @State private var solanaPathSwitchError: String?
+    /// Pending path style when a passphrase wallet must enter the BIP-39 phrase first.
+    @State private var pendingSolanaPathStyle: SolanaPathStyle?
+    @State private var isShowingSolanaPassphrase: Bool = false
     /// Native SOL (and optional fiat) per path style for the Address path menu.
     @State private var solanaPathBalanceLabels: [SolanaPathStyle: String] = [:]
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
@@ -66,9 +69,18 @@ struct ReceiveQRDetailView: View {
 
     private var displayedAddress: String {
         if chain == .bitcoin {
-            return bitcoinOverrideAddress
-                ?? preferredReceiveAddress(for: .bitcoin)
-                ?? selectedBitcoinChoice?.address
+            // Path-search override wins when set. Otherwise the type picker
+            // (`selectedBitcoinChoice`) must win over the DB preferred row —
+            // previously preferred always won, so Change type only moved the
+            // checkmark while QR/address stayed on BIP84 (or whatever was
+            // preferred at provision time).
+            if let override = bitcoinOverrideAddress, !override.isEmpty {
+                return override
+            }
+            if let selected = selectedBitcoinChoice?.address, !selected.isEmpty {
+                return selected
+            }
+            return preferredReceiveAddress(for: .bitcoin)
                 ?? bitcoinChoices.first?.address
                 ?? address
         }
@@ -113,8 +125,22 @@ struct ReceiveQRDetailView: View {
         return bitcoinChoices.first
     }
 
+    /// Multi-type picker only when HD / compressed keys can produce more
+    /// than one address form. Uncompressed WIF (`5…`) is legacy-only.
     private var showsBitcoinTypePicker: Bool {
         chain == .bitcoin && bitcoinChoices.count > 1
+    }
+
+    /// Path search needs an HD mnemonic (or equivalent). Single-key imports
+    /// (including uncompressed WIF) have no alternate derivation paths.
+    private var showsBitcoinPathSearch: Bool {
+        guard chain == .bitcoin, let wallet = activeWallet else { return false }
+        switch wallet.kind {
+        case .created, .importedMnemonic:
+            return true
+        case .importedKey, .watchOnly:
+            return false
+        }
     }
 
     private var activeSolanaAddressRecord: WalletAddressRecord? {
@@ -140,7 +166,8 @@ struct ReceiveQRDetailView: View {
 
     private var canSwitchSolanaPath: Bool {
         guard chain == .solana, let wallet = activeWallet else { return false }
-        guard wallet.hasPassphrase == false else { return false }
+        // Passphrase wallets can switch after entering the passphrase
+        // (session-cached; never empty-passphrase derive).
         return wallet.kind == .created || wallet.kind == .importedMnemonic
     }
 
@@ -232,6 +259,24 @@ struct ReceiveQRDetailView: View {
             .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
+        .sheet(isPresented: $isShowingSolanaPassphrase) {
+            ReceiveSolanaPassphraseSheet(
+                onSubmit: { entered in
+                    isShowingSolanaPassphrase = false
+                    guard let style = pendingSolanaPathStyle else { return }
+                    pendingSolanaPathStyle = nil
+                    performSolanaPathSwitch(to: style, passphrase: entered)
+                },
+                onCancel: {
+                    isShowingSolanaPassphrase = false
+                    pendingSolanaPathStyle = nil
+                }
+            )
+            .apertureEnvironment()
+            .uniSheetDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
         .task(id: "\(activeWalletIdRaw)-\(chain.rawValue)-\(address)") {
             bitcoinOverrideAddress = nil
             evmOverrideAddress = nil
@@ -244,6 +289,9 @@ struct ReceiveQRDetailView: View {
             guard let key = bitcoinSelectionStorageKey,
                   BitcoinReceiveAddressType(rawValue: newValue) != nil else { return }
             AppPreferenceStore.shared.set(newValue, forKey: key)
+            // Drop any path-search override so the new type's address shows.
+            bitcoinOverrideAddress = nil
+            persistBitcoinReceiveTypePreferenceIfPossible(raw: newValue)
         }
         .onChange(of: justCopiedAt) { _, newValue in
             guard newValue != nil else { return }
@@ -274,7 +322,9 @@ struct ReceiveQRDetailView: View {
     private var actionRow: some View {
         HStack(spacing: UniSpacing.s) {
             UniButton(
-                verbatim: isCopyButtonCopied ? "Copied" : "Copy",
+                // Catalog keys "Copy" / "Copied" — never `verbatim`, or the
+                // labels stay English while Share (localized `title:`) flips.
+                title: isCopyButtonCopied ? "Copied" : "Copy",
                 variant: .primary,
                 tint: isCopyButtonCopied ? UniColors.Feedback.Success.foreground : nil
             ) {
@@ -384,14 +434,143 @@ struct ReceiveQRDetailView: View {
 
         let savedRaw = bitcoinSelectionStorageKey.map { AppPreferenceStore.shared.string($0, default: "") }
         let savedType = savedRaw.flatMap(BitcoinReceiveAddressType.init(rawValue:))
+        // Prefer an explicit user choice when still valid; otherwise the
+        // resolver default (BIP84 for mnemonic / compressed keys; BIP44 only
+        // for uncompressed WIF).
         let preferredType = savedType.flatMap { saved in
             resolution.choices.contains(where: { $0.type == saved }) ? saved : nil
         } ?? resolution.defaultType
         selectedBitcoinTypeRaw = preferredType.rawValue
+
+        // Stamp BIP84 as preferred when that is the active default and
+        // nothing was saved yet — keeps DB preferred in line with the QR.
+        if savedType == nil,
+           preferredType == .bip84,
+           resolution.choices.contains(where: { $0.type == .bip84 }) {
+            if let key = bitcoinSelectionStorageKey {
+                AppPreferenceStore.shared.set(BitcoinReceiveAddressType.bip84.rawValue, forKey: key)
+            }
+            persistBitcoinReceiveTypePreferenceIfPossible(raw: BitcoinReceiveAddressType.bip84.rawValue)
+        }
+    }
+
+    /// Keep wallet_addresses + chain_states in sync with the type the user
+    /// picked so home/history preferred receive matches the QR they see.
+    private func persistBitcoinReceiveTypePreferenceIfPossible(raw: String) {
+        guard chain == .bitcoin,
+              let wallet = activeWallet,
+              let type = BitcoinReceiveAddressType(rawValue: raw),
+              let choice = bitcoinChoices.first(where: { $0.type == type }) else {
+            return
+        }
+        let walletId = wallet.id
+        let address = choice.address
+        let derivationPath = type.accountZeroPath
+        let chainRaw = SupportedChain.bitcoin.rawValue
+        let decimals = SupportedChain.bitcoin.nativeDecimals
+        Task {
+            do {
+                try AppDatabase.shared.write { db in
+                    let existingIdRaw = try String.fetchOne(
+                        db,
+                        sql: """
+                        SELECT id FROM wallet_addresses
+                        WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                        LIMIT 1
+                        """,
+                        arguments: [walletId.uuidString, chainRaw, address]
+                    )
+                    let addressId = existingIdRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+
+                    try db.execute(
+                        sql: """
+                        UPDATE wallet_addresses
+                        SET is_receive_preferred = 0
+                        WHERE wallet_id = ? AND chain_raw = ?
+                        """,
+                        arguments: [walletId.uuidString, chainRaw]
+                    )
+
+                    if existingIdRaw != nil {
+                        try db.execute(
+                            sql: """
+                            UPDATE wallet_addresses
+                            SET derivation_path = ?,
+                                is_receive_preferred = 1
+                            WHERE id = ?
+                            """,
+                            arguments: [derivationPath, addressId.uuidString]
+                        )
+                    } else {
+                        try db.execute(
+                            sql: """
+                            INSERT INTO wallet_addresses
+                            (id, wallet_id, chain_raw, address, derivation_path,
+                             is_used, is_receive_preferred, last_scanned_at_ms)
+                            VALUES (?, ?, ?, ?, ?, 0, 1, NULL)
+                            """,
+                            arguments: [
+                                addressId.uuidString,
+                                walletId.uuidString,
+                                chainRaw,
+                                address,
+                                derivationPath
+                            ]
+                        )
+                    }
+
+                    try db.execute(
+                        sql: """
+                        INSERT INTO chain_states
+                        (id, wallet_id, chain_raw, address, derivation_path,
+                         native_balance_raw, native_decimals, native_fiat,
+                         native_fiat_numeric, total_fiat, total_fiat_numeric,
+                         token_count, fiat_currency_code, sync_state_raw)
+                        VALUES (?, ?, ?, ?, ?, '0', ?, '0', 0, '0', 0, 0, ?, 'idle')
+                        ON CONFLICT(wallet_id, chain_raw) DO UPDATE SET
+                            address = excluded.address,
+                            derivation_path = excluded.derivation_path
+                        """,
+                        arguments: [
+                            UUID().uuidString,
+                            walletId.uuidString,
+                            chainRaw,
+                            address,
+                            derivationPath,
+                            decimals,
+                            CurrencyPreference.defaultCode
+                        ]
+                    )
+                }
+            } catch {
+                // Preference key + on-screen address already updated; DB stamp
+                // is best-effort so a write failure must not block the switch.
+            }
+        }
     }
 
     @MainActor
     private func switchSolanaPath(to style: SolanaPathStyle) {
+        guard canSwitchSolanaPath, let wallet = activeWallet, isSwitchingSolanaPath == false else { return }
+        solanaPathSwitchError = nil
+
+        if wallet.hasPassphrase {
+            // Prefer session passphrase; otherwise prompt (never empty-derive).
+            Task {
+                if let session = await BIP39PassphraseSession.shared.passphrase(for: wallet.id) {
+                    performSolanaPathSwitch(to: style, passphrase: session)
+                } else {
+                    pendingSolanaPathStyle = style
+                    isShowingSolanaPassphrase = true
+                }
+            }
+            return
+        }
+        performSolanaPathSwitch(to: style, passphrase: "")
+    }
+
+    @MainActor
+    private func performSolanaPathSwitch(to style: SolanaPathStyle, passphrase: String) {
         guard canSwitchSolanaPath, let wallet = activeWallet, isSwitchingSolanaPath == false else { return }
         isSwitchingSolanaPath = true
         solanaPathSwitchError = nil
@@ -404,17 +583,45 @@ struct ReceiveQRDetailView: View {
 
         Task {
             do {
+                if hasPassphrase {
+                    await BIP39PassphraseSession.shared.remember(walletId: walletId, passphrase: passphrase)
+                    _ = await SolanaPathProvisioning.ensureBothAccountZeroPathsIfPossible(
+                        walletId: walletId,
+                        passphrase: passphrase,
+                        database: database
+                    )
+                } else {
+                    _ = await SolanaPathProvisioning.ensureBothAccountZeroPathsIfPossible(
+                        walletId: walletId,
+                        passphrase: "",
+                        database: database
+                    )
+                }
+
                 let result = try await Task.detached(priority: .userInitiated) {
                     try SolanaReceivePathResolver.resolve(
                         walletId: walletId,
                         walletKind: walletKind,
                         hasPassphrase: hasPassphrase,
+                        passphrase: passphrase,
                         style: style,
                         account: account,
                         database: database
                     )
                 }.value
                 try persistSolanaReceiveAddress(walletId: walletId, result: result)
+                // Rebuild so home balance/history flip to the newly preferred path.
+                let code = AppPreferenceStore.shared.string(
+                    CurrencyPreference.storageKey,
+                    default: CurrencyPreference.defaultCode
+                )
+                _ = try? ChainStateRepository(database: database).rebuild(
+                    walletId: walletId,
+                    fiatCurrencyCode: code,
+                    onlyChains: [.solana],
+                    failedChains: [],
+                    interim: false
+                )
                 solanaOverrideAddress = result.address
                 reloadSolanaPathBalances()
             } catch {
@@ -437,23 +644,27 @@ struct ReceiveQRDetailView: View {
         let database = AppDatabase.shared
 
         do {
-            if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database) {
-                try SolanaPathProvisioning.ensureBothAccountZeroPaths(
-                    walletId: walletId,
-                    words: words,
-                    passphrase: "",
-                    database: database
-                )
-            }
+            // Dual-path heal: empty passphrase only for non-passphrase wallets;
+            // passphrase wallets use the session cache when available (P1 #7).
+            _ = await SolanaPathProvisioning.ensureBothAccountZeroPathsIfPossible(
+                walletId: walletId,
+                database: database
+            )
 
             let style = selectedSolanaPathStyle ?? .phantom
             let account = selectedSolanaPathAccount
             let current = displayedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sessionPass = hasPassphrase
+                ? await BIP39PassphraseSession.shared.passphrase(for: walletId)
+                : Optional.some("")
+            // Without a known passphrase, skip re-derive (would use wrong seed).
+            guard let passphrase = sessionPass else { return }
             let result = try await Task.detached(priority: .userInitiated) {
                 try SolanaReceivePathResolver.resolve(
                     walletId: walletId,
                     walletKind: walletKind,
                     hasPassphrase: hasPassphrase,
+                    passphrase: passphrase,
                     style: style,
                     account: account,
                     database: database
@@ -612,10 +823,14 @@ struct ReceiveQRDetailView: View {
         ToolbarItem(placement: .topBarTrailing) {
             if chain == .bitcoin {
                 Menu {
-                    Button("Search paths") {
-                        isShowingBitcoinPathSearch = true
+                    if showsBitcoinPathSearch {
+                        Button("Search paths") {
+                            isShowingBitcoinPathSearch = true
+                        }
                     }
 
+                    // Only when multiple types exist. Uncompressed WIF (`5…`)
+                    // is legacy-only — do not show Change type at all.
                     if showsBitcoinTypePicker {
                         Menu("Change type") {
                             ForEach(bitcoinChoices) { choice in
@@ -635,12 +850,6 @@ struct ReceiveQRDetailView: View {
                                 }
                             }
                         }
-                    } else if let choice = selectedBitcoinChoice {
-                        Button {
-                        } label: {
-                            Text("\(choice.type.title) - \(choice.type.subtitle)")
-                        }
-                        .disabled(true)
                     }
 
                     Button("Address info") {
@@ -754,10 +963,14 @@ private enum SolanaReceivePathResolver {
     /// WalletCore's default Solana path is Trust (`m/44'/501'/0'`); custom
     /// path strings via `getKey` have historically produced the wrong
     /// address while the UI still checkmarked Phantom.
+    ///
+    /// Passphrase wallets **must** supply the real BIP-39 passphrase
+    /// (empty string is only valid when `hasPassphrase == false`).
     static func resolve(
         walletId: UUID,
         walletKind: WalletKind,
         hasPassphrase: Bool,
+        passphrase: String,
         style: SolanaPathStyle,
         account: Int,
         database: AppDatabase
@@ -765,7 +978,7 @@ private enum SolanaReceivePathResolver {
         guard walletKind == .created || walletKind == .importedMnemonic else {
             throw SolanaReceivePathSwitchError.unsupportedWallet
         }
-        guard hasPassphrase == false else {
+        if hasPassphrase, passphrase.isEmpty {
             throw SolanaReceivePathSwitchError.passphraseWallet
         }
         guard let words = try WalletSecretPersistence.loadMnemonic(for: walletId, database: database),
@@ -783,7 +996,8 @@ private enum SolanaReceivePathResolver {
             throw SolanaReceivePathSwitchError.invalidMnemonic
         }
 
-        let seed = BIP39.deriveSeed(words: normalizedWords, passphrase: "")
+        let resolvedPassphrase = hasPassphrase ? passphrase : ""
+        let seed = BIP39.deriveSeed(words: normalizedWords, passphrase: resolvedPassphrase)
         let path = style.derivationPath(account: account)
         let address: String
         switch style {
@@ -799,6 +1013,53 @@ private enum SolanaReceivePathResolver {
             derivationPath: path,
             address: address
         )
+    }
+}
+
+/// BIP-39 passphrase entry for Solana path switch on passphrase wallets.
+private struct ReceiveSolanaPassphraseSheet: View {
+    let onSubmit: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var passphrase: String = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: UniSpacing.l) {
+                VStack(alignment: .leading, spacing: UniSpacing.s) {
+                    Image(systemName: "key.horizontal")
+                        .font(.system(size: 40, weight: .light))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(UniColors.Brand.mark)
+                        .accessibilityHidden(true)
+                    UniBody(
+                        text: "This wallet has a passphrase. Enter it to derive Phantom and Trust Wallet Solana paths — it never leaves this iPhone.",
+                        color: UniColors.Text.secondary
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                UniTextField(
+                    placeholder: "Passphrase",
+                    text: $passphrase,
+                    isSecure: true
+                )
+                Spacer()
+            }
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.m)
+            .navigationTitle("Passphrase")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { onCancel() }.tint(UniColors.Button.text)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Continue") { onSubmit(passphrase) }.tint(UniColors.Button.text)
+                        .fontWeight(.semibold)
+                        .disabled(passphrase.isEmpty)
+                }
+            }
+        }
     }
 }
 
@@ -864,6 +1125,16 @@ private enum BitcoinReceiveAddressType: String, CaseIterable, Identifiable {
             return "Wrapped SegWit, starts with 3."
         case .bip44:
             return "Legacy, starts with 1."
+        }
+    }
+
+    /// Standard account-0 / receive-0 path for this address type.
+    var accountZeroPath: String {
+        switch self {
+        case .bip86: return "m/86'/0'/0'/0/0"
+        case .bip84: return "m/84'/0'/0'/0/0"
+        case .bip49: return "m/49'/0'/0'/0/0"
+        case .bip44: return "m/44'/0'/0'/0/0"
         }
     }
 }
@@ -940,6 +1211,8 @@ private enum BitcoinReceiveAddressResolver {
         let keyData = decoded.keyData
         guard let privateKey = PrivateKey(data: keyData) else { return nil }
 
+        // Mainnet uncompressed WIF starts with "5" (payload 33 bytes, no
+        // compression flag). Only P2PKH/legacy is valid — no type picker.
         if decoded.isUncompressedWIF {
             guard let address = p2pkhAddress(privateKey: privateKey, compressed: false) else { return nil }
             return BitcoinReceiveAddressResolution(
@@ -948,6 +1221,7 @@ private enum BitcoinReceiveAddressResolver {
             )
         }
 
+        // Compressed WIF (K/L) or hex: multiple forms possible; default BIP84.
         var choices: [BitcoinReceiveAddressChoice] = []
         if let address = bip84Address(privateKey: privateKey) {
             choices.append(BitcoinReceiveAddressChoice(type: .bip84, address: address))
@@ -959,7 +1233,9 @@ private enum BitcoinReceiveAddressResolver {
             choices.append(BitcoinReceiveAddressChoice(type: .bip44, address: address))
         }
         guard !choices.isEmpty else { return nil }
-        return BitcoinReceiveAddressResolution(choices: choices, defaultType: .bip84)
+        let defaultType: BitcoinReceiveAddressType =
+            choices.contains(where: { $0.type == .bip84 }) ? .bip84 : (choices.first?.type ?? .bip84)
+        return BitcoinReceiveAddressResolution(choices: choices, defaultType: defaultType)
     }
 
     private static func mnemonicBIP49Address(wallet: HDWallet) -> String? {
@@ -1045,7 +1321,8 @@ private enum BitcoinReceiveAddressResolver {
     }
 
     private static func decodeBitcoinPrivateKey(_ raw: String) -> (keyData: Data, isUncompressedWIF: Bool)? {
-        let hex = raw.hasPrefix("0x") || raw.hasPrefix("0X") ? String(raw.dropFirst(2)) : raw
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hex = trimmed.hasPrefix("0x") || trimmed.hasPrefix("0X") ? String(trimmed.dropFirst(2)) : trimmed
         if hex.count == 64,
            hex.allSatisfy(\.isHexDigit),
            let data = Data(apertureReceiveBitcoinHex: hex),
@@ -1053,13 +1330,17 @@ private enum BitcoinReceiveAddressResolver {
             return (data, false)
         }
 
-        guard let payload = WalletCore.Base58.decode(string: raw) else { return nil }
+        guard let payload = WalletCore.Base58.decode(string: trimmed) else { return nil }
+        // Uncompressed mainnet WIF: version 0x80 + 32 key bytes (Base58 usually
+        // starts with "5"). Compressed: + trailing 0x01 (usually K/L).
         let isUncompressed = payload.count == 33
         let isCompressed = payload.count == 34 && payload.last == 0x01
         guard payload.first == 0x80, isUncompressed || isCompressed else { return nil }
         let keyData = Data(payload.dropFirst().prefix(32))
         guard PrivateKey.isValid(data: keyData, curve: CoinType.bitcoin.curve) else { return nil }
-        return (keyData, isUncompressed)
+        // Prefer payload shape; also treat leading "5" as uncompressed WIF.
+        let looksUncompressedWIF = isUncompressed || trimmed.hasPrefix("5")
+        return (keyData, looksUncompressedWIF && !isCompressed)
     }
 
     private static func bip84Address(privateKey: PrivateKey) -> String? {

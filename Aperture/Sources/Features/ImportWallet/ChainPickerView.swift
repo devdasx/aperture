@@ -32,16 +32,14 @@ struct ChainPickerView: View {
                         chainRow(chain)
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
     }
 
     private func chainRow(_ chain: SupportedChain) -> some View {
@@ -64,12 +62,11 @@ struct ChainPickerView: View {
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: UniDirectionalSymbol.disclosure)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
                 .accessibilityHidden(true)
         }
-        .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
     }
 

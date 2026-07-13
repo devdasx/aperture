@@ -46,6 +46,6 @@ enum AssetCatalogSeeder {
                 )
             }
         }
-        log.info("Asset catalog seed finished.")
+        log.debug("Asset catalog seed finished.")
     }
 }

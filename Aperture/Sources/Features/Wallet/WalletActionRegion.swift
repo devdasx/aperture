@@ -1,47 +1,100 @@
 import SwiftUI
 
 /// Send / Receive action pair for asset-detail screens, plus an optional Scan
-/// action for wallet home. Circular Liquid Glass buttons centered with labels
-/// beneath — the iOS Wallet / Apple-app pattern. `GlassEffectContainer` wraps
-/// them so the material reads as one cohesive surface.
+/// action for wallet home.
+///
+/// **Style toggle.** Flip `WalletActionRegion.chromeStyle` to compare designs:
+/// - `.circularGlass` — circular Liquid Glass + caption under each (current)
+/// - `.filledCapsule` — UniButton capsules with icon + title
 ///
 /// **Disabled state.** Watch-only wallets cannot send (no signing key).
 /// Receive remains available because receiving doesn't require a key.
 /// `canSend` gates Send; Receive is always on.
 struct WalletActionRegion: View {
+    /// Revert path: set to `.circularGlass` to restore the icon-circle design.
+    enum ChromeStyle: Sendable {
+        /// Full capsule UniButtons (icon + title inside). Default.
+        case filledCapsule
+        /// Legacy: 56pt glass circles with captions underneath.
+        case circularGlass
+    }
+
+    /// Single switch for A/B. Change this one value to revert.
+    static var chromeStyle: ChromeStyle = .circularGlass
+
     let canSend: Bool
     let onSend: () -> Void
     let onReceive: () -> Void
     var onScan: (() -> Void)? = nil
 
     var body: some View {
+        Group {
+            switch Self.chromeStyle {
+            case .filledCapsule:
+                filledCapsuleChrome
+            case .circularGlass:
+                circularGlassChrome
+            }
+        }
+        .padding(.vertical, UniSpacing.m)
+    }
+
+    // MARK: - Filled capsule (current)
+
+    private var filledCapsuleChrome: some View {
+        HStack(spacing: UniSpacing.s) {
+            UniButton(
+                title: "Send",
+                variant: .primary,
+                systemImage: "arrow.up.right",
+                isEnabled: canSend,
+                action: onSend
+            )
+            .accessibilityLabel(Text("Send"))
+
+            UniButton(
+                title: "Receive",
+                variant: .secondary,
+                systemImage: "arrow.down.left",
+                isEnabled: true,
+                action: onReceive
+            )
+            .accessibilityLabel(Text("Receive"))
+
+            if let onScan {
+                UniButton(
+                    title: "Scan",
+                    variant: .secondary,
+                    systemImage: "qrcode.viewfinder",
+                    isEnabled: true,
+                    action: onScan
+                )
+                .accessibilityLabel(Text("Scan"))
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Circular glass (legacy — set chromeStyle = .circularGlass)
+
+    private var circularGlassChrome: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
-            // `HStack` defaults to hugging its intrinsic content at
-            // the leading edge — fine when an outer VStack centers
-            // it, but inside a `List` row (post-2026-06-08 native-
-            // List rebuild) the row's content area is wider than the
-            // triplet, so the triplet was rendering shifted to the
-            // left. `Spacer()`s on both sides + `.frame(maxWidth:
-            // .infinity)` on the HStack distribute the buttons
-            // around the row's center regardless of the parent. The
-            // old ScrollView placement worked by coincidence; the
-            // List placement requires the explicit centering.
             HStack(spacing: UniSpacing.xl) {
                 Spacer(minLength: 0)
-                actionButton(
+                circularActionButton(
                     icon: "arrow.up.right",
                     label: "Send",
                     isEnabled: canSend,
                     action: onSend
                 )
-                actionButton(
+                circularActionButton(
                     icon: "arrow.down.left",
                     label: "Receive",
                     isEnabled: true,
                     action: onReceive
                 )
                 if let onScan {
-                    actionButton(
+                    circularActionButton(
                         icon: "qrcode.viewfinder",
                         label: "Scan",
                         isEnabled: true,
@@ -52,24 +105,15 @@ struct WalletActionRegion: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .padding(.vertical, UniSpacing.m)
     }
 
     @ViewBuilder
-    private func actionButton(
+    private func circularActionButton(
         icon: String,
         label: LocalizedStringKey,
         isEnabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        // Per Rule #19: every glass CTA flows through `UniButton`. The
-        // `.actionCircle` variant carries the circular hit-shape that
-        // matches the painted glass — fixing the 2026-06-08 bug where
-        // taps near the corners of the 56×56 square frame fell outside
-        // the visible circle's hit region. (Hit-test was using the SF
-        // Symbol's intrinsic bounds — only the central glyph was
-        // tappable.) `UniButton` now owns the haptic, the disabled-state
-        // opacity, and the accessibility label.
         VStack(spacing: UniSpacing.xs) {
             UniButton(
                 title: label,

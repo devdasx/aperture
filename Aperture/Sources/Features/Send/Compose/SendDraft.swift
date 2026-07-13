@@ -144,11 +144,11 @@ enum StellarMemoInference: Equatable, Sendable {
         case .empty:
             return nil
         case .text:
-            return "Text"
+            return String.apertureLocalized("Text")
         case .id, .invalidID:
-            return "ID"
+            return String.apertureLocalized("ID")
         case .hashHex, .invalidHash:
-            return "Hash"
+            return String.apertureLocalized("Hash")
         }
     }
 
@@ -164,11 +164,11 @@ enum StellarMemoInference: Equatable, Sendable {
     var validationError: String? {
         switch self {
         case .text(let text) where text.utf8.count > 28:
-            return "Memo text must be 28 bytes or less."
+            return String.apertureLocalized("Memo text must be 28 bytes or less.")
         case .invalidID:
-            return "Memo ID must be a whole number from 0 to 18,446,744,073,709,551,615."
+            return String.apertureLocalized("Memo ID must be a whole number from 0 to 18,446,744,073,709,551,615.")
         case .invalidHash:
-            return "Memo hash must be exactly 32 bytes, written as 64 hex characters."
+            return String.apertureLocalized("Memo hash must be exactly 32 bytes, written as 64 hex characters.")
         default:
             return nil
         }

@@ -48,13 +48,13 @@ enum SettingsDestination: Hashable, Codable {
     case about
 
     /// Whether this destination may be auto-restored on a cold launch.
-    /// The Security screen is auth-gated (passcode-only) — restoring
-    /// straight back into it would re-show the screen the user
-    /// authenticated for minutes ago without a fresh challenge, which is
-    /// exactly the bypass the user reported (2026-06-17). So `.security`
-    /// (and anything pushed beneath it, e.g. `.autoLock`) is excluded:
-    /// the user lands on the Settings root and re-enters Security with a
-    /// fresh passcode prompt. Mirrors
+    /// The Security screen is auth-gated (Face ID first when enabled,
+    /// passcode fallback) — restoring straight back into it would re-show
+    /// the screen the user authenticated for minutes ago without a fresh
+    /// challenge, which is exactly the bypass the user reported
+    /// (2026-06-17). So `.security` (and anything pushed beneath it, e.g.
+    /// `.autoLock`) is excluded: the user lands on the Settings root and
+    /// re-enters Security with a fresh auth challenge. Mirrors
     /// `WalletHomeDestination.isColdLaunchRestorable`.
     var isColdLaunchRestorable: Bool {
         switch self {
@@ -97,6 +97,9 @@ struct SettingsView: View {
     @State private var splitDetailPath: [SettingsDestination]
     @State private var protectedNavigationDestination: SettingsDestination?
     @State private var isShowingProtectedNavigationGate = false
+    /// When true, passcode sheet may auto-prompt Face ID; when false, Face ID
+    /// already ran via `SensitiveActionAuth` and failed — keypad first.
+    @State private var protectedGateAutoPromptBiometrics = true
 
     init(showsCloseButton: Bool = false, allowsSplitLayout: Bool = true) {
         self.showsCloseButton = showsCloseButton
@@ -130,6 +133,11 @@ struct SettingsView: View {
     /// exactly once. Empty string = no deep link.
     @GRDBStorage("settingsDeepLink") private var settingsDeepLink: String = ""
 
+    /// Active main tab — when the user leaves Settings (Wallet / Activity /
+    /// Markets), any auth-gated push such as Security must pop so the next
+    /// visit re-enters through the passcode gate.
+    @GRDBStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
+
     private var theme: ThemePreference {
         ThemePreference.stored(themeRaw)
     }
@@ -159,6 +167,16 @@ struct SettingsView: View {
         .sheet(isPresented: $isShowingProtectedNavigationGate) {
             protectedNavigationGate
         }
+        // Auth-gated Security must not stay pushed when the user leaves
+        // the Settings tab, or after create/import forces a main-screen
+        // route (security bypass if the stack lingered in memory).
+        .onChange(of: selectedTabRaw) { _, newRaw in
+            guard MainTab(rawValue: newRaw) != .settings else { return }
+            dismissAuthGatedSettingsScreens()
+        }
+        .onChange(of: TabReselectSignal.shared.settingsStackResetToken) { _, _ in
+            clearSettingsNavigationStack()
+        }
     }
 
     private var usesSplitLayout: Bool {
@@ -176,7 +194,7 @@ struct SettingsView: View {
                             dismiss()
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 17, weight: .regular))
                         }
                         .accessibilityLabel(Text("Close"))
                     }
@@ -255,7 +273,7 @@ struct SettingsView: View {
                         iconTint: .blue
                     )
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             // Section 2 — Security
@@ -272,7 +290,7 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.uniListRow)
                 .tag(SettingsDestination.security)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             // Section 3 — Preferences (existing + new hide toggles)
@@ -285,7 +303,7 @@ struct SettingsView: View {
                         iconTint: .indigo
                     )
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 NavigationLink(value: SettingsDestination.appearance) {
                     SettingsRow(
@@ -295,7 +313,7 @@ struct SettingsView: View {
                         iconTint: .gray
                     )
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 NavigationLink(value: SettingsDestination.currency) {
                     SettingsRow(
@@ -305,7 +323,7 @@ struct SettingsView: View {
                         iconTint: .green
                     )
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 // Preferences hosts haptics, transaction display, and
                 // Hide small balances. Home hide-balance is also available
@@ -318,7 +336,7 @@ struct SettingsView: View {
                         iconTint: .orange
                     )
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             // Section 4 — About
@@ -331,7 +349,7 @@ struct SettingsView: View {
                         iconTint: .gray
                     )
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 if SettingsInternalVisibility.showsDiagnostics {
                     NavigationLink(value: SettingsDestination.diagnostics) {
@@ -342,12 +360,11 @@ struct SettingsView: View {
                             iconTint: .purple
                         )
                     }
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             }
 
-            // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
-            // here from the removed Advanced screen (2026-06-19).
+            // Reset Aperture (terminal nuclear hatch).
             ResetApertureSection()
     }
 
@@ -370,31 +387,24 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var protectedNavigationGate: some View {
-        NavigationStack {
-            PinCodeView(
-                mode: .verify,
-                onComplete: { _ in
-                    guard let destination = protectedNavigationDestination else {
-                        isShowingProtectedNavigationGate = false
-                        return
-                    }
-                    protectedNavigationDestination = nil
+        SensitiveAuthPasscodeSheet(
+            accessContext: .accessSecurity,
+            autoPromptBiometrics: protectedGateAutoPromptBiometrics,
+            allowsBiometrics: true,
+            onComplete: {
+                guard let destination = protectedNavigationDestination else {
                     isShowingProtectedNavigationGate = false
-                    completeProtectedNavigation(to: destination)
-                },
-                onCancel: {
-                    protectedNavigationDestination = nil
-                    isShowingProtectedNavigationGate = false
-                },
-                allowsBiometrics: false,
-                showsNavigationControls: false,
-                accessContext: .accessSecurity
-            )
-        }
-        .apertureEnvironment()
-        .uniSheetDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(UniColors.Background.primary)
+                    return
+                }
+                protectedNavigationDestination = nil
+                isShowingProtectedNavigationGate = false
+                completeProtectedNavigation(to: destination)
+            },
+            onCancel: {
+                protectedNavigationDestination = nil
+                isShowingProtectedNavigationGate = false
+            }
+        )
     }
 
     private func navigateToProtectedDestination(_ destination: SettingsDestination) {
@@ -403,7 +413,17 @@ struct SettingsView: View {
             return
         }
         protectedNavigationDestination = destination
-        isShowingProtectedNavigationGate = true
+        Task { @MainActor in
+            let gate = await SensitiveActionAuth.gatePreferringBiometric()
+            switch gate {
+            case .authorized:
+                protectedNavigationDestination = nil
+                completeProtectedNavigation(to: destination)
+            case .presentPasscode(let autoPrompt):
+                protectedGateAutoPromptBiometrics = autoPrompt
+                isShowingProtectedNavigationGate = true
+            }
+        }
     }
 
     private func completeProtectedNavigation(to destination: SettingsDestination) {
@@ -447,6 +467,53 @@ struct SettingsView: View {
         ScreenRestoration.saveSettingsStack([splitSelection] + splitDetailPath)
     }
 
+    /// Pop Security (and anything under it) when the user leaves the
+    /// Settings tab. Re-entering Security always requires a fresh
+    /// passcode / biometric challenge.
+    private func dismissAuthGatedSettingsScreens() {
+        var changed = false
+        if let idx = navigationPath.firstIndex(where: { !$0.isColdLaunchRestorable }) {
+            navigationPath.removeSubrange(idx...)
+            changed = true
+        }
+        if let selection = splitSelection, !selection.isColdLaunchRestorable {
+            splitSelection = usesSplitLayout ? Self.defaultSplitSelection : nil
+            splitDetailPath.removeAll()
+            changed = true
+        } else if splitDetailPath.contains(where: { !$0.isColdLaunchRestorable }) {
+            if let idx = splitDetailPath.firstIndex(where: { !$0.isColdLaunchRestorable }) {
+                splitDetailPath.removeSubrange(idx...)
+                changed = true
+            }
+        }
+        if isShowingProtectedNavigationGate {
+            isShowingProtectedNavigationGate = false
+            protectedNavigationDestination = nil
+            changed = true
+        }
+        guard changed else { return }
+        if usesSplitLayout {
+            saveSplitStack()
+        } else {
+            ScreenRestoration.saveSettingsStack(navigationPath)
+        }
+    }
+
+    /// Full stack wipe — used after create/import when the app routes to
+    /// the main Wallet home. Mirrors the cleared GRDB preference.
+    private func clearSettingsNavigationStack() {
+        navigationPath.removeAll()
+        splitSelection = usesSplitLayout ? Self.defaultSplitSelection : nil
+        splitDetailPath.removeAll()
+        isShowingProtectedNavigationGate = false
+        protectedNavigationDestination = nil
+        ScreenRestoration.saveSettingsStack(
+            usesSplitLayout
+                ? (splitSelection.map { [$0] } ?? [])
+                : []
+        )
+    }
+
     private static let defaultSplitSelection: SettingsDestination = .wallets
 
     private static func splitState(from stack: [SettingsDestination]) -> (selection: SettingsDestination, detailPath: [SettingsDestination]) {
@@ -485,9 +552,7 @@ struct SettingsView: View {
 private extension View {
     func settingsRootListChrome() -> some View {
         self
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Settings"))
             .navigationBarTitleDisplayMode(.large)
     }
@@ -525,17 +590,23 @@ struct SettingsIconTile: View {
                     .frame(width: 29, height: 29)
                     .overlay {
                         Image(systemName: systemImage)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15, weight: .regular))
                             .symbolRenderingMode(.monochrome)
                             .foregroundStyle(.white)
                             .minimumScaleFactor(0.72)
                             .padding(4)
                     }
             } else {
+                // Fixed icon slot — without a height, rows collapsed to the
+                // text line only and looked too short (height bug).
                 Image(systemName: systemImage)
                     .font(.system(size: 18, weight: .regular))
                     .foregroundStyle(compactTint)
-                    .frame(width: 28, alignment: .center)
+                    .frame(
+                        width: UniListMetrics.iconSlot,
+                        height: UniListMetrics.iconSlot,
+                        alignment: .center
+                    )
             }
         }
         .accessibilityHidden(true)
@@ -569,7 +640,6 @@ private struct SettingsRow: View {
                     .truncationMode(.tail)
             }
         }
-        .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
     }
 }
@@ -595,7 +665,7 @@ private struct AboutView: View {
                         .font(UniTypography.subheadline)
                         .foregroundStyle(UniColors.Text.secondary)
                 }
-                .padding(.vertical, UniSpacing.xxs)
+                .uniListRowSurface()
             }
 
             // Legal + support — each opens the live page on aperturex.io
@@ -616,14 +686,14 @@ private struct AboutView: View {
                     .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.insetGrouped)
+        .uniListPageChrome()
         .navigationTitle(Text("About"))
         .navigationBarTitleDisplayMode(.large)
     }
 
     /// A row that opens a web page outside the app. The trailing
-    /// `arrow.up.right` glyph signals the tap leaves the app (vs the
-    /// `chevron.right` used for in-app push navigation).
+    /// `arrow.up.forward` glyph signals the tap leaves the app (vs
+    /// `chevron.forward` for in-app push). Both mirror correctly in RTL.
     @ViewBuilder
     private func externalRow(_ title: LocalizedStringKey, _ urlString: String) -> some View {
         if let url = URL(string: urlString) {
@@ -633,14 +703,12 @@ private struct AboutView: View {
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Text.primary)
                     Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(UniColors.Icon.tertiary)
-                        .accessibilityHidden(true)
+                    UniExternalLinkGlyph()
                 }
                 .uniListRowHitTarget()
             }
             .buttonStyle(.uniListRow)
+            .uniListRowSurface()
             .accessibilityHint(Text("Opens outside Aperture"))
         }
     }
@@ -674,7 +742,7 @@ struct PreferencesView: View {
         List {
             Section {
                 HapticToggleRow(isOn: $hapticEnabled)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
             }
 
             // Transaction-detail amount display. Activity lists always show
@@ -691,8 +759,7 @@ struct PreferencesView: View {
                     }
                 }
                 .tint(UniColors.Button.Primary.tint)
-                .padding(.vertical, UniSpacing.xxs)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             } header: {
                 Text("Transactions")
             } footer: {
@@ -712,9 +779,8 @@ struct PreferencesView: View {
                             .font(UniTypography.body)
                             .foregroundStyle(UniColors.Text.primary)
                     }
-                    .padding(.vertical, UniSpacing.xxs)
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             } footer: {
                 Text("Also available from Home → Min value. Assets below the threshold stay hidden from portfolio totals.")
                     .font(UniTypography.footnote)
@@ -722,9 +788,7 @@ struct PreferencesView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Preferences"))
         .navigationBarTitleDisplayMode(.large)
     }
@@ -747,7 +811,6 @@ private struct HapticToggleRow: View {
             }
         }
         .tint(UniColors.Button.Primary.tint)
-        .padding(.vertical, UniSpacing.xxs)
         // Haptic fires inside UniToggle (`.toggle` per handoff)
     }
 }
@@ -768,7 +831,6 @@ private struct HideBalanceToggleRow: View {
             }
         }
         .tint(UniColors.Button.Primary.tint)
-        .padding(.vertical, UniSpacing.xxs)
         // Haptic fires inside UniToggle (`.toggle` per handoff)
     }
 }
@@ -785,21 +847,23 @@ struct HideSmallBalancesPicker: View {
                         raw = option.rawValue
                     } label: {
                         HStack {
-                            Text(LocalizedStringKey(option.label(currencyCode: currencyCode)))
+                            // `label` is already fully localized (Show all /
+                            // Under %@ + formatted amount). Use verbatim so
+                            // SwiftUI does not re-key the composed string.
+                            Text(verbatim: option.label(currencyCode: currencyCode))
                                 .font(UniTypography.body)
                                 .foregroundStyle(UniColors.Text.primary)
                             Spacer()
                             if raw == option.rawValue {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.system(size: 15, weight: .regular))
                                     .foregroundStyle(UniColors.Icon.accent)
                             }
                         }
-                        .padding(.vertical, UniSpacing.xxs)
                         .uniListRowHitTarget()
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             } footer: {
                 Text("Holdings worth less than this amount are hidden from the wallet screen. They're still in the local store — only the display is filtered.")
@@ -808,7 +872,7 @@ struct HideSmallBalancesPicker: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .listStyle(.insetGrouped)
+        .uniListPageChrome()
         .navigationTitle(Text("Hide small balances"))
         .navigationBarTitleDisplayMode(.large)
         .uniHaptic(.selection, trigger: raw)

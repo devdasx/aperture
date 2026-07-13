@@ -42,6 +42,7 @@ struct ApertureApp: App {
     init() {
         let appInitStart = Date()
         Self.diagnostic(.info, "App init started")
+        InputActivityRelay.bootstrap()
 
         // 0) Fresh-install guard. iOS Keychain items survive app
         //    deletion by default; without this call a user who
@@ -79,6 +80,15 @@ struct ApertureApp: App {
         let currencyStart = Date()
         CurrencyPreference.bootstrapIfNeeded()
         Self.diagnostic(.debug, "Currency preference bootstrapped", start: currencyStart)
+
+        // 4) Publish Appearance before the first frame so UniColors
+        //    resolve Midnight vs Dark correctly (both use dark style).
+        let themeRaw = AppPreferenceStore.shared.string(
+            "themePreference",
+            default: ThemePreference.defaultRaw
+        )
+        ApertureAppearanceResolution.current =
+            ThemePreference.stored(themeRaw).apertureAppearance
 
         Self.diagnostic(.info, "App init finished", start: appInitStart)
     }
@@ -251,6 +261,9 @@ private struct AppRoot: View {
     /// key — extended on 2026-06-13 from sheet contents to the WHOLE
     /// content tree. See `rootDirectionKey`.
     @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    /// Keeps the detached lock-overlay window's color traits in sync with
+    /// Settings → Appearance (Midnight vs true-black Dark).
+    @GRDBStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
 
     @Environment(\.autoLockController) private var lockController
 
@@ -324,10 +337,10 @@ private struct AppRoot: View {
             activeSurface
                 .id(recoveryPresentationID)
         }
-        // `.smooth(duration: 0.55)` spring on the splash → content
-        // crossfade. SwiftUI crossfades the if/else branches via the
-        // default `.opacity` transition; the spring controls timing.
-        .animation(.smooth(duration: 0.55), value: isShowingSplash)
+        // Apple-style open: splash fades out; main content scales up
+        // slightly while fading in (same curve as the post-splash
+        // passcode reveal in `LockOverlayRoot`).
+        .animation(Self.openScreenAnimation, value: isShowingSplash)
         // Publish the simplified phase so descendant surfaces
         // still see `.splash` / `.onboarding` as before. The
         // `.transitioning` middle state is gone.
@@ -336,10 +349,15 @@ private struct AppRoot: View {
             recoveryGate.refresh(from: AppDatabase.shared)
             lockController.refreshLaunchLockState()
             mountLockOverlayWindowIfNeeded()
+            applyLockOverlayAppearance()
             syncLockOverlay(lockVisible: isLockSurfaceVisible)
         }
         .onChange(of: isLockSurfaceVisible) { _, visible in
+            if visible { applyLockOverlayAppearance() }
             syncLockOverlay(lockVisible: visible)
+        }
+        .onChange(of: themeRaw) { _, _ in
+            applyLockOverlayAppearance()
         }
         // App-wide Reset Aperture (design_handoff_reset) — presented HERE, at
         // the app root above `RootGate`, NOT from the Settings tab. That's what
@@ -357,6 +375,10 @@ private struct AppRoot: View {
         }
     }
 
+    /// Shared open-screen curve: soft ease, ~half a second — reads like
+    /// a system first-frame reveal (not a bouncy spring).
+    private static let openScreenAnimation: Animation = .easeOut(duration: 0.48)
+
     @ViewBuilder
     private var activeSurface: some View {
         if isShowingSplash {
@@ -371,12 +393,9 @@ private struct AppRoot: View {
                     // simulators. User-initiated haptics stay lazy.
                     isShowingSplash = false
                     recoveryGate.refresh(from: AppDatabase.shared)
-                    // Let the lock overlay take over: on a locked
-                    // cold launch `AppLockView` becomes visible the
-                    // instant the splash hands off (opaque, no
-                    // fade-in — so the splash → home crossfade
-                    // running underneath can never peek through).
-                    // Recovery replaces lock/home until acknowledged.
+                    // Reveal passcode (if locked) with the same open
+                    // animation as `RootGate`. Same page background as
+                    // splash, so the scale+fade never flashes home chrome.
                     lockController.isSplashActive = false
                 }
             )
@@ -399,7 +418,7 @@ private struct AppRoot: View {
                 }
             )
             .id(rootDirectionKey)
-            .transition(.opacity)
+            .transition(Self.openScreenTransition)
         } else {
             RootGate(logoNamespace: logoNamespace, phase: .onboarding)
                 // Direction-keyed identity (Rule #12 §G at the root —
@@ -409,8 +428,16 @@ private struct AppRoot: View {
                 // is instant: the `.animation` above is keyed on
                 // `isShowingSplash`, which doesn't change here.
                 .id(rootDirectionKey)
-                .transition(.opacity)
+                .transition(Self.openScreenTransition)
         }
+    }
+
+    /// Opacity-only open. Do **not** scale the inserted tree: scaling
+    /// `RootGate` / `NavigationStack` on cold launch clips the UIKit
+    /// nav-bar principal, so the wallet pill briefly shows only the
+    /// avatar + chevron with a missing name (screen recording 2026-07-13).
+    private static var openScreenTransition: AnyTransition {
+        .opacity
     }
 
     // MARK: - Lock overlay window plumbing
@@ -446,6 +473,33 @@ private struct AppRoot: View {
         window.isHidden = false
         window.isUserInteractionEnabled = isLockSurfaceVisible
         lockOverlayWindow = window
+        applyLockOverlayAppearance()
+    }
+
+    /// Push the user's Appearance choice into the lock overlay's UIKit
+    /// trait tree. `UniColors` resolve through `ApertureAppearanceTrait`;
+    /// a detached `UIWindow` does not always inherit the main window's
+    /// bridged environment, so without this Midnight falls back to the
+    /// pure-black system dark page and looks like "Dark" mode.
+    private func applyLockOverlayAppearance() {
+        let theme = ThemePreference.stored(themeRaw)
+        ApertureAppearanceResolution.current = theme.apertureAppearance
+        ApertureAppearanceSync.apply(theme)
+        guard let host = lockOverlayWindow?.rootViewController else { return }
+        let appearance = theme.apertureAppearance
+        host.traitOverrides[ApertureAppearanceTrait.self] = appearance
+        lockOverlayWindow?.traitOverrides[ApertureAppearanceTrait.self] = appearance
+        switch theme {
+        case .system:
+            host.overrideUserInterfaceStyle = .unspecified
+            lockOverlayWindow?.overrideUserInterfaceStyle = .unspecified
+        case .cloud:
+            host.overrideUserInterfaceStyle = .light
+            lockOverlayWindow?.overrideUserInterfaceStyle = .light
+        case .midnight, .dark:
+            host.overrideUserInterfaceStyle = .dark
+            lockOverlayWindow?.overrideUserInterfaceStyle = .dark
+        }
     }
 
     /// Touch routing for the always-mounted overlay window. iOS skips
@@ -492,17 +546,15 @@ private struct AppRoot: View {
 
 // MARK: - Lock overlay root
 
-/// Root view of the detached lock overlay window. Two layers, both
-/// optional, both above EVERYTHING in the main window (including
-/// presented sheets and fullScreenCovers — the reason this lives in
-/// its own window at all):
+/// Root view of the detached lock overlay window. Hosts `AppLockView`
+/// above EVERYTHING in the main window (including sheets and covers).
 ///
-/// 1. **`AppLockView`** — mounted while `AutoLockController.isLocked`.
-///    Inserts instantly (it lands beneath the privacy mask on a
-///    background-return, and stays transparent until the splash hands
-///    off on a locked cold launch); fades out over the standard
-///    0.55s smooth spring on unlock, revealing the untouched content
-///    tree underneath.
+/// **Cold launch (PIN on):** stays invisible while the splash plays,
+/// then opens with the same fade + slight scale as main content.
+/// Page fill matches splash, so home chrome never peeks through.
+///
+/// **Background return:** inserts fully opaque (privacy) and fades out
+/// only on unlock.
 private struct LockOverlayRoot: View {
     @Environment(\.autoLockController) private var lockController
 
@@ -518,27 +570,31 @@ private struct LockOverlayRoot: View {
     /// change while unlocked, when this renders nothing.
     @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
+    /// Same open curve as `AppRoot.openScreenAnimation`.
+    private static let openScreenAnimation: Animation = .easeOut(duration: 0.48)
+
     var body: some View {
         ZStack {
             if lockController.isLocked {
                 AppLockView()
-                    // Invisible while the splash plays — a locked cold
-                    // launch shows the full splash first, then the
-                    // lock snaps in opaque at the handoff beat (no
-                    // crossfade shimmer of the home underneath).
+                    // Cold-launch gate: hidden under splash, then fade in
+                    // when `isSplashActive` flips false. No scale — same
+                    // UIKit layout risk as RootGate’s open transition.
+                    // Mid-session locks already have `isSplashActive ==
+                    // false`, so they land fully opaque immediately.
                     .opacity(lockController.isSplashActive ? 0 : 1)
-                    // Insert instantly; fade ONLY on unlock. An
-                    // animated insertion would let the content shine
-                    // through a half-opaque lock for half a second.
+                    // Mid-session insert is instant (privacy). Unlock
+                    // still fades out over the content tree.
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
         }
         // Direction-keyed identity for the overlay content — see the
         // `languageCode` property doc. Flips only on LTR ↔ RTL.
         .id(LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr")
-        // Unlock fade — same 0.55s smooth spring the splash → content
-        // crossfade uses, so the lock's exit reads as one system.
-        .animation(.smooth(duration: 0.55), value: lockController.isLocked)
+        .animation(Self.openScreenAnimation, value: lockController.isSplashActive)
+        // Unlock fade — matches the open-screen duration so exit and
+        // cold-launch reveal feel like one system.
+        .animation(.easeOut(duration: 0.48), value: lockController.isLocked)
     }
 }
 

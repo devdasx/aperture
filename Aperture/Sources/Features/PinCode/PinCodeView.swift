@@ -15,9 +15,11 @@ import SwiftUI
 ///   16-minute cap from the fifth failure) disables input with a
 ///   countdown under the dots — brute-force protection that survives
 ///   app kill. No wipe: the recovery path is the recovery phrase.
-///   `.verify` is biometric-first by default; callers that must be
-///   passcode-only (Security gate, wallet removal, Reset Aperture —
-///   user direction 2026-06-13) pass `allowsBiometrics: false`.
+///   `.verify` is biometric-first by default when the user enabled Face ID
+///   / Touch ID in Security. Product policy (2026-07): never force
+///   passcode-only while biometrics are enabled — use
+///   `SensitiveActionAuth.gate` preflight + `allowsBiometrics: true` on
+///   the fallback sheet so Face ID works for turn-off, export, send, etc.
 ///
 /// **Design rationale (Rule #17 §H).** Every PIN entry in the app — first
 /// setup, unlock, transaction confirmation, Settings change — uses this
@@ -48,6 +50,11 @@ struct PinCodeView: View {
         static let removeWallet = AccessContext(title: "Remove Wallet", icon: .system("wallet.bifold"))
         static let viewWalletSecrets = AccessContext(title: "View Wallet Secrets", icon: .system("key"))
 
+        /// Localized title for display. AccessContext stores the English catalog key.
+        var localizedTitle: String {
+            String.apertureLocalizedKey(title)
+        }
+
         static func signTransaction(chain: SupportedChain, symbol: String, contract: String?) -> AccessContext {
             let cleanedSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
             let displaySymbol: String
@@ -56,8 +63,13 @@ struct PinCodeView: View {
             } else {
                 displaySymbol = cleanedSymbol.isEmpty ? chain.displayName : cleanedSymbol.uppercased()
             }
+            // Pre-localized: symbol is runtime data, not a catalog key.
+            let title = String(
+                format: String.apertureLocalized("Sign %@ Transaction"),
+                displaySymbol
+            )
             return AccessContext(
-                title: "Sign \(displaySymbol) Transaction",
+                title: title,
                 icon: .asset(chain: chain, symbol: displaySymbol, contract: contract)
             )
         }
@@ -99,15 +111,20 @@ struct PinCodeView: View {
     /// auto-prompt never fires, even when the device supports biometrics
     /// and the user has them enabled. The Forgot affordance is unaffected.
     ///
-    /// Per user direction 2026-06-13, the passcode-only gates are:
-    /// the Settings → Security entry gate, wallet removal, and Reset
-    /// Aperture. Biometric-first remains the policy everywhere else
-    /// (app unlock, secret reveals, transaction signing).
+    /// When `false`, this verify is passcode-only: no Face ID auto-prompt
+    /// and no biometric keypad key. Prefer the shared
+    /// `SensitiveActionAuth.gate` preflight instead of forcing passcode-only
+    /// for Security / remove / export — biometric-first is product policy.
     ///
-    /// Ignored in `.set` / `.confirm` modes — they never offer
-    /// biometrics regardless. This stays the ONE PIN surface per
-    /// Rule #17; policy is a parameter, never a second component.
+    /// Ignored in `.set` / `.confirm` modes — they never offer biometrics.
     var allowsBiometrics: Bool = true
+
+    /// When `allowsBiometrics` is true, whether to auto-fire Face ID / Touch ID
+    /// as soon as the verify screen appears. Set `false` when
+    /// `SensitiveActionAuth` already attempted biometrics and is falling back
+    /// to the passcode sheet (avoids an immediate second system prompt).
+    /// The keypad leading biometric key still works when `allowsBiometrics`.
+    var autoPromptBiometrics: Bool = true
 
     /// Optional, `.verify` only. When non-nil AND it returns a value, the
     /// wrong-passcode line reads "Wrong passcode. N attempts remaining."
@@ -205,6 +222,17 @@ struct PinCodeView: View {
             keypad
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // App page chrome (Cloud / Midnight / Dark) — not system dark black.
+        // Callers that wrap this in a NavigationStack still inherit system
+        // chrome; painting primary here keeps Midnight (#191A1E) visible
+        // instead of OLED pure black used only by the explicit Dark theme.
+        .background(UniColors.Background.primary.ignoresSafeArea())
+        .toolbarBackground(UniColors.Background.primary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        // Passcode entry is always LTR: phone-style keypad (1-2-3 left→right),
+        // dots fill left→right, delete key bottom-right — independent of app
+        // language / RTL layout direction.
+        .environment(\.layoutDirection, .leftToRight)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -220,21 +248,16 @@ struct PinCodeView: View {
             // else — the GRDB record survives app kill, so a user
             // who force-quits mid-lockout lands back in the countdown.
             refreshLockout()
-            // Auto-fire biometrics on `.verify` entry when
-            // the user has biometrics enabled. Matches iOS's own
-            // pattern (Settings → Touch ID & Passcode prompts biometric
-            // ID immediately rather than waiting for an icon tap).
-            // Runs once per view instance via SwiftUI's `.task`
-            // lifecycle — exactly the right cadence here. The user
-            // can still abort and type the passcode manually if the
-            // biometric prompt fails or the user dismisses it.
-            // Skipped during an active lockout — matching iOS's own
-            // passcode-lockout behavior, no input path stays open.
-            // Skipped entirely when the caller declared this verify
-            // passcode-only (`allowsBiometrics: false` — Security
-            // gate / wallet removal / Reset, user direction
-            // 2026-06-13).
+            // Fresh LAContext — a long-lived view must not keep a stale
+            // "Face ID unavailable" flag that hides the biometric key.
+            _ = biometricService.refresh()
+            // Auto-fire biometrics on `.verify` entry when allowed.
+            // Prefer `SensitiveActionAuth.gate` to run Face ID *before*
+            // this sheet appears; when falling back after a failed Face ID,
+            // callers pass `autoPromptBiometrics: false` so we don't double-prompt.
+            // Skipped during lockout. User can still tap the biometric key.
             guard allowsBiometrics,
+                  autoPromptBiometrics,
                   !isLockedOut,
                   biometricService.isAvailable,
                   PinCodePreference.isBiometricEnabled()
@@ -323,7 +346,7 @@ struct PinCodeView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 17, weight: .regular))
                     }
                     .accessibilityLabel(Text("Options"))
                 }
@@ -331,8 +354,12 @@ struct PinCodeView: View {
         }
     }
 
+    /// Brand iris solid (`Mark` / mark-black.svg) — not the circular app
+    /// seal. Template-tinted with `UniColors.Brand.mark` so Cloud uses
+    /// ink (`#0B0D11`) and Midnight / Dark use cloud light (`#F5F5F7`).
     private var markView: some View {
-        ApertureAppLogo(size: 92, irisScale: 0.66)
+        ApertureIrisView(ringColor: UniColors.Brand.mark)
+            .frame(width: 72, height: 72)
     }
 
     /// Handoff title — centered, with a short mode-specific subtitle.
@@ -438,6 +465,8 @@ struct PinCodeView: View {
         guard allowsBiometrics else { return false }
         guard case .verify = mode else { return false }
         guard !isLockedOut else { return false }
+        // Availability is refreshed in `.task` / before authenticate — do not
+        // call `refresh()` here (side effects during body evaluation).
         guard biometricService.isAvailable else { return false }
         return PinCodePreference.isBiometricEnabled()
     }
@@ -458,7 +487,7 @@ struct PinCodeView: View {
     private var statusLine: some View {
         Group {
             if mode == .verify, isLockedOut {
-                Text("Try again in \(lockoutCountdown)")
+                Text(verbatim: String(format: String.apertureLocalized("Try again in %@"), lockoutCountdown))
                     .foregroundStyle(UniColors.Text.secondary)
             } else if let error = inlineError {
                 errorText(error)
@@ -481,11 +510,22 @@ struct PinCodeView: View {
         case .mismatch:
             return Text("Those don’t match. Try again.")
         case .incorrect:
-            guard let n = attemptsLeft else { return Text("Wrong passcode.") }
-            let attempts = n == 1
-                ? Text("1 attempt remaining")
-                : Text("\(n) attempts remaining")
-            return Text("Wrong passcode. \(attempts).")
+            guard let n = attemptsLeft else {
+                return Text(String.apertureLocalized("Wrong passcode."))
+            }
+            let attemptsSuffix: String
+            if n == 1 {
+                attemptsSuffix = String.apertureLocalized("1 attempt remaining")
+            } else {
+                attemptsSuffix = String(
+                    format: String.apertureLocalized("%lld attempts remaining"),
+                    Int64(n)
+                )
+            }
+            return Text(verbatim: String(
+                format: String.apertureLocalized("Wrong passcode. %@."),
+                attemptsSuffix
+            ))
         }
     }
 
@@ -539,6 +579,7 @@ struct PinCodeView: View {
             onDelete: deleteDigit,
             onLeadingKey: startBiometricUnlock
         )
+        .environment(\.layoutDirection, .leftToRight)
         .padding(.horizontal, 36)
         .padding(.bottom, 28)
     }
@@ -570,6 +611,8 @@ struct PinCodeView: View {
 
     @MainActor
     private func requestBiometricUnlock() async {
+        // Re-check hardware before the system prompt (lockout may have cleared).
+        _ = biometricService.refresh()
         guard shouldOfferBiometricUnlock else {
             return
         }
@@ -744,7 +787,7 @@ private struct PasscodeAccessPill: View {
         HStack(spacing: 7) {
             icon
 
-            Text(verbatim: context.title)
+            Text(verbatim: context.localizedTitle)
                 .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
@@ -765,7 +808,7 @@ private struct PasscodeAccessPill: View {
                 .frame(width: 18, height: 18)
         case .system(let name):
             Image(systemName: name)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(UniColors.Text.primary)
                 .frame(width: 18, height: 18)
         case .asset(let chain, let symbol, let contract):
@@ -806,6 +849,9 @@ struct UniNumberKeypad: View {
             }
         }
         .frame(maxWidth: 560)
+        // Always phone-pad order (1–2–3 L→R, delete bottom-right), even when
+        // the app language is RTL (ar/he/fa/ur).
+        .environment(\.layoutDirection, .leftToRight)
     }
 
     private func digitRow(_ digits: [Int]) -> some View {
@@ -915,6 +961,8 @@ struct UniNumberKeypad: View {
 
 struct UniNumberKeyButtonStyle: ButtonStyle {
     static let keyHeight: CGFloat = 72
+    /// Digit / delete / biometric key — crisp tap, not a full commit.
+    var haptic: UniHaptic = .contextualImpact(.tap)
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -926,6 +974,9 @@ struct UniNumberKeyButtonStyle: ButtonStyle {
                     .frame(width: 68, height: 68)
                     .opacity(configuration.isPressed ? 1 : 0)
                     .scaleEffect(configuration.isPressed ? 1 : 0.72)
+            }
+            .background {
+                UniHapticPressProbe(isPressed: configuration.isPressed, haptic: haptic)
             }
             .animation(.snappy(duration: 0.16), value: configuration.isPressed)
     }

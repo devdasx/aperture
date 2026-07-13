@@ -154,6 +154,13 @@ struct WalletReadyView: View {
                 // The seed + encrypted mnemonic are in GRDB — wipe the
                 // plaintext secrets before the user moves on.
                 state.zeroSensitiveState()
+                // Wait for the NavigationStack push onto this screen to
+                // finish before dismissing the fullScreenCover. Instant
+                // persist + onDone() was tearing the cover down mid-push
+                // (or right after a zero-duration swap), which felt like a
+                // non-native jump instead of a normal navigation transition.
+                try? await Task.sleep(for: .milliseconds(380))
+                guard !Task.isCancelled else { return }
                 finishIfNeeded()
             } catch {
                 Self.log.error(
@@ -180,7 +187,12 @@ struct WalletReadyView: View {
     private func finishIfNeeded() {
         guard !didComplete else { return }
         didComplete = true
-        onDone()
+        // Animate cover dismissal; route-to-main happens in onDone.
+        var transaction = Transaction(animation: .default)
+        transaction.disablesAnimations = false
+        withTransaction(transaction) {
+            onDone()
+        }
     }
 
     /// Turn the real persist error into an honest, diagnosable message.

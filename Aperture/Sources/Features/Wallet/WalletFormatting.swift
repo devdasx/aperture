@@ -7,41 +7,47 @@ import Foundation
 enum WalletFormatting {
     static let hiddenAmount = "••••••"
 
-    // MARK: - Cached formatters / styles (2026-06-14 perf)
+    // MARK: - Cached formatters / styles (2026-06-14 perf, 2026-07-12 race-safe)
     //
-    // Allocating a `RelativeDateTimeFormatter` (a heavy Foundation class)
-    // on every call was a confirmed Activity-list scroll-lag source — one
-    // allocation per transaction row per render (~12x the cost of reuse).
-    // `FormatStyle` values are lightweight structs but were also rebuilt
-    // per call across 20+ amount labels. These cached instances move that
-    // cost out of the render hot path.
+    // Allocating a `RelativeDateTimeFormatter` on every call was a confirmed
+    // Activity-list scroll-lag source. We still cache them — but **per locale**,
+    // never mutating a shared instance after creation (setting `.locale` on a
+    // static formatter while lists format concurrently is undefined).
     //
-    // **Concurrency.** `RelativeDateTimeFormatter`'s formatting call, like
-    // `DateFormatter`/`ISO8601DateFormatter`, is safe to invoke from
-    // multiple threads (Foundation formatters are thread-safe for read
-    // formatting since iOS 7); `nonisolated(unsafe)` matches the existing
-    // `static let iso8601` pattern in the network adapters. `FormatStyle`
-    // values are `Sendable`.
+    // Lookup is lock-guarded; formatters are only configured at insert time.
 
-    /// Reused relative-date formatter. Configured once; never mutated
-    /// after init, so concurrent `localizedString(for:relativeTo:)` calls
-    /// are safe.
-    nonisolated(unsafe) private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        formatter.dateTimeStyle = .numeric
-        return formatter
-    }()
+    private enum RelativeStyle {
+        case compact
+        case activity
+    }
 
-    /// Friendlier relative-date formatter for activity rows. The wallet
-    /// header uses compact time ("2m ago"), but activity subtitles need
-    /// spoken labels ("1 minute ago") so the row reads naturally.
-    nonisolated(unsafe) private static let activityRelativeFormatter: RelativeDateTimeFormatter = {
+    private static let relativeFormatterLock = NSLock()
+    /// Key: "\(locale.identifier)|compact|activity"
+    nonisolated(unsafe) private static var relativeFormatterCache: [String: RelativeDateTimeFormatter] = [:]
+
+    private static func relativeFormatter(
+        style: RelativeStyle,
+        locale: Locale
+    ) -> RelativeDateTimeFormatter {
+        let key = "\(locale.identifier)|\(style == .compact ? "c" : "a")"
+        relativeFormatterLock.lock()
+        defer { relativeFormatterLock.unlock() }
+        if let cached = relativeFormatterCache[key] {
+            return cached
+        }
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        formatter.dateTimeStyle = .named
+        formatter.locale = locale
+        switch style {
+        case .compact:
+            formatter.unitsStyle = .abbreviated
+            formatter.dateTimeStyle = .numeric
+        case .activity:
+            formatter.unitsStyle = .full
+            formatter.dateTimeStyle = .named
+        }
+        relativeFormatterCache[key] = formatter
         return formatter
-    }()
+    }
 
     /// Absolute fallback date style (>1 week ago). Value type, reused.
     private static let absoluteDateStyle = Date.FormatStyle.dateTime.month(.abbreviated).day()
@@ -60,21 +66,62 @@ enum WalletFormatting {
 
     // MARK: - Fiat
 
+    /// Default display precision for portfolio / balance fiat amounts.
+    /// At least 2 fraction digits (standard money), up to **3** so a real
+    /// value like `107.535` is not rounded away to `107.54` / `107.53`.
+    /// Markets can still request a wider range via the overload.
+    static let fiatDisplayFractionDigits: ClosedRange<Int> = 2...3
+
     /// Format a fiat amount with the supplied currency code, in the
     /// user's current locale. Uses `Decimal.FormatStyle.Currency` so
     /// grouping separators, decimal separators, symbol position, and
     /// negative-number conventions all follow the user's locale.
     ///
-    /// Example: `123456.78` + `"USD"` →
-    /// - en_US: `"$123,456.78"`
-    /// - de_DE: `"123.456,78 $"`
-    /// - ar_SA: `"١٢٣٬٤٥٦٫٧٨ US$"` (Arabic-Indic digits in ar locales)
+    /// Currency symbols are **narrow** (no region disambiguation):
+    /// Foundation often emits `US$` / `CA$` / `AU$` when the in-app
+    /// locale is not that currency's home region — we collapse those to
+    /// `$` so the hero and every list reads `$107.535`, not `US$ 107.54`.
+    ///
+    /// Example: `107.535` + `"USD"` → `"$107.535"` (third digit kept).
     static func fiat(_ amount: Decimal, currencyCode: String) -> String {
-        amount.formatted(.currency(code: currencyCode))
+        fiat(amount, currencyCode: currencyCode, fractionLength: fiatDisplayFractionDigits)
+    }
+
+    /// Same as `fiat(_:currencyCode:)` with optional fraction precision
+    /// (markets / compact stats). Still applies narrow currency symbols.
+    static func fiat(
+        _ amount: Decimal,
+        currencyCode: String,
+        fractionLength: ClosedRange<Int>
+    ) -> String {
+        simplifyCurrencySymbols(
+            in: amount.formatted(
+                .currency(code: currencyCode)
+                    .locale(ApertureLocalization.currentLocale)
+                    .precision(.fractionLength(fractionLength))
+            )
+        )
     }
 
     static func fiat(_ amount: Decimal, currencyCode: String, hidden: Bool) -> String {
         hidden ? hiddenAmount : fiat(amount, currencyCode: currencyCode)
+    }
+
+    /// Collapse Foundation region-disambiguated symbols (`US$`, `CA$`,
+    /// `AU$`, `NZ$`, `HK$`, …) to the plain glyph (`$`). Leaves `€`, `£`,
+    /// `¥`, `R$`, and other non-prefixed symbols unchanged.
+    static func simplifyCurrencySymbols(in formatted: String) -> String {
+        // Two Latin letters + `$` is Foundation's disambiguation form.
+        formatted.replacingOccurrences(
+            of: #"[A-Z]{2}\$"#,
+            with: "$",
+            options: .regularExpression
+        )
+    }
+
+    /// Narrow a currency-run alone (for `fiatParts` styling).
+    static func simplifyCurrencySymbol(_ symbol: String) -> String {
+        simplifyCurrencySymbols(in: symbol)
     }
 
     // MARK: - Fiat parts (balance-card three-run rendering)
@@ -84,8 +131,9 @@ enum WalletFormatting {
     /// **muted**, the integer in **primary**, and the decimals in a
     /// **fainter tint** (handoff `design_handoff_balance_card 2`).
     ///
-    /// - `currency`: the currency symbol / code run (`"US$"`, `"JOD"`,
-    ///   `"€"`), positioned per the locale (prefix in en, suffix in de).
+    /// - `currency`: the currency symbol / code run (`"$"`, `"JOD"`,
+    ///   `"€"` — never region-disambiguated `US$` / `CA$`), positioned
+    ///   per the locale (prefix in en, suffix in de).
     /// - `integer`: the grouped integer run including the grouping
     ///   separators and any sign (`"12,480"`).
     /// - `fraction`: the decimal run *including its leading separator*
@@ -119,7 +167,10 @@ enum WalletFormatting {
     ///   dropped; the card re-introduces a single gap when laying out.
     static func fiatParts(_ amount: Decimal, currencyCode: String) -> FiatParts {
         let attributed = amount.formatted(
-            .currency(code: currencyCode).attributed
+            .currency(code: currencyCode)
+                .locale(ApertureLocalization.currentLocale)
+                .precision(.fractionLength(fiatDisplayFractionDigits))
+                .attributed
         )
 
         var currency = ""
@@ -169,7 +220,9 @@ enum WalletFormatting {
         }
 
         let integerTrimmed = integer.trimmingCharacters(in: .whitespaces)
-        let currencyTrimmed = currency.trimmingCharacters(in: .whitespaces)
+        let currencyTrimmed = simplifyCurrencySymbol(
+            currency.trimmingCharacters(in: .whitespaces)
+        )
         return FiatParts(
             currency: currencyTrimmed,
             integer: integerTrimmed.isEmpty ? "0" : integerTrimmed,
@@ -226,20 +279,29 @@ enum WalletFormatting {
     /// "2m ago" / "yesterday" / "Mar 4". Compact, locale-aware.
     /// Falls back to the absolute date when the relative formatter
     /// produces something less honest than the absolute (>~7 days ago).
+    ///
+    /// Uses `ApertureLocalization.currentLocale` (in-app language), not
+    /// process/`Locale.current`, so Settings → Language is honored.
     static func relativeTime(_ date: Date, reference: Date = Date()) -> String {
+        let locale = ApertureLocalization.currentLocale
         let elapsed = reference.timeIntervalSince(date)
         if elapsed > 60 * 60 * 24 * 7 {
             // More than a week — show absolute date in the user's
             // locale. Honest about how long ago.
-            return date.formatted(absoluteDateStyle)
+            return date.formatted(absoluteDateStyle.locale(locale))
         }
-        return relativeFormatter.localizedString(for: date, relativeTo: reference)
+        return relativeFormatter(style: .compact, locale: locale)
+            .localizedString(for: date, relativeTo: reference)
     }
 
     /// "A moment ago" / "1 minute ago" / "2 weeks ago" for activity
     /// subtitles. Unlike `relativeTime`, this never falls back to an
     /// absolute date because the activity list now carries fiat value on
     /// the trailing subtitle and uses this line as the time anchor.
+    ///
+    /// Relative phrases ("Yesterday", "2 days ago") come from Foundation
+    /// and must use the in-app locale — `Locale.current` alone still
+    /// follows the process language when the user overrides Settings.
     static func activityRelativeTime(_ date: Date, reference: Date = Date()) -> String {
         let elapsed = reference.timeIntervalSince(date)
         if abs(elapsed) < 60 {
@@ -247,7 +309,11 @@ enum WalletFormatting {
                 ? String.apertureLocalized("In a moment")
                 : String.apertureLocalized("A moment ago")
         }
-        return sentenceCased(activityRelativeFormatter.localizedString(for: date, relativeTo: reference))
+        let locale = ApertureLocalization.currentLocale
+        return sentenceCased(
+            relativeFormatter(style: .activity, locale: locale)
+                .localizedString(for: date, relativeTo: reference)
+        )
     }
 
     private static func sentenceCased(_ text: String) -> String {

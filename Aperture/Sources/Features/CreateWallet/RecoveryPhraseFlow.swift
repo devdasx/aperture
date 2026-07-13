@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// Destinations the recovery-phrase flow can push within its
 /// `NavigationStack`. Encoded as a value enum so a hoisted
@@ -14,33 +15,20 @@ enum RecoveryPhraseDestination: Hashable, Codable {
     /// no longer used by the current flow. Kept so any cached
     /// `NavigationPath` from a prior session doesn't crash on decode.
     case biometric
-    /// Terminal persistence handoff. Persists the generated wallet, then
-    /// hands the user back to the app.
+    /// Legacy terminal screen. Create flow no longer pushes this — it
+    /// routes through `.provisioning` instead. Kept for path decode only.
     case walletReady
+    /// Real progress handoff: encrypt + save keys, then dismiss to main.
+    case provisioning(requiresBackup: Bool, manualBackup: Bool)
 }
 
 /// Root content view for create-wallet presentations. The presenter supplies
 /// the single slide-up cover; this view owns the `NavigationStack` after that.
-/// Onboarding starts directly at the recovery phrase, then pushes the
-/// passcode / Face ID setup and wallet-ready screens natively.
-///
-/// **State.** Owns a `CreateWalletState` for the duration of the cover —
-/// the same instance backs `RecoveryPhraseView` (mnemonic + word-count
-/// picker + passphrase entry) and `WalletReadyView` (which persists the
-/// wallet). Released on dismiss; the passphrase lives only in-memory
-/// (Rule #2 §A.7 honesty).
-///
-/// **Rule #12 compliance.** The cover's content is wrapped by the
-/// presenter (`OnboardingView`) with `.id(sheetDirectionKey)` and
-/// `.apertureEnvironment()`, so a mid-flight LTR ↔ RTL flip rebuilds this
-/// tree while preserving the hoisted `navigationPath`.
+/// Flow (onboarding): recovery phrase → passcode → Face ID → **process** (last).
+/// Flow (add wallet): recovery phrase → **process** (last; no passcode force).
 struct RecoveryPhraseFlow: View {
-    /// Hoisted navigation path — owned by `OnboardingView`, passed in as
-    /// a binding. Survives `.id` rebuilds.
     @Binding var navigationPath: NavigationPath
 
-    /// Fires when the user dismisses the entire flow — close button on the
-    /// root screen, or successful persistence in `WalletReadyView`.
     let onDismiss: () -> Void
 
     /// Set after the user leaves the recovery phrase without completing a
@@ -48,10 +36,18 @@ struct RecoveryPhraseFlow: View {
     /// flag and the wallet row is saved with `requiresBackup == true`.
     let onUserContinuedWithoutVerifiedBackup: () -> Void
 
-    /// Shared mnemonic + passphrase state for the entire cover. Built
-    /// once on construction so every push destination reads from the
-    /// same generated phrase.
+    /// When `true` (onboarding create only), push passcode setup if this
+    /// device has no PIN yet. When `false` (add wallet from home / settings),
+    /// never force passcode — the user may have disabled it on purpose.
+    var requiresPasscodeSetup: Bool = false
+
     @State private var state = CreateWalletState()
+    /// Pending backup flags while the user is on PIN setup (before
+    /// provisioning). Cleared once provisioning is pushed.
+    @State private var pendingRequiresBackup = true
+    @State private var pendingManualBackup = false
+    /// Prevents double-tap Continue / PIN finish from stacking destinations.
+    @State private var isAdvancing = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -59,60 +55,71 @@ struct RecoveryPhraseFlow: View {
             .navigationDestination(for: RecoveryPhraseDestination.self) { destination in
                 switch destination {
                 case .backupVerify:
-                    // P2-017: phrase verification before PIN/ready (same as Settings).
                     BackupVerifyView(state: state, onVerified: {
-                        navigationPath.append(nextStepAfterVerifiedBackup())
+                        // Verified write-down → still PIN if needed, then provision.
+                        continueAfterPhrase(requiresBackup: false, manualBackup: true)
                     })
                 case .pinSetup:
+                    // Passcode set → confirm → Face ID (inside PinSetupFlow).
+                    // Only when that whole chain finishes do we open process.
                     PinSetupFlow(
                         onFinish: {
-                            navigationPath.append(RecoveryPhraseDestination.walletReady)
+                            // Last security step done → process is always last.
+                            guard !isAdvancing else { return }
+                            isAdvancing = true
+                            pushProvisioning(
+                                requiresBackup: pendingRequiresBackup,
+                                manualBackup: pendingManualBackup
+                            )
                         },
                         onBack: {
-                            // User tapped the leading back chevron on the
-                            // `.set` step. Pop the parent NavigationStack
-                            // so the user returns to RecoveryPhraseView.
-                            // The closure guards against an empty path
-                            // because SwiftUI calls toolbar item actions
-                            // outside the regular layout pass.
-                            if !navigationPath.isEmpty {
-                                navigationPath.removeLast()
-                            }
+                            isAdvancing = false
+                            popAnimated()
                         }
                     )
                 case .biometric:
-                    // P3-002: legacy path only (cached NavigationPath).
-                    // Forward into the real PIN+biometric setup rather than
-                    // a dead placeholder screen.
+                    // Legacy path: same full PIN + Face ID chain, then process.
                     PinSetupFlow(
                         onFinish: {
-                            navigationPath.append(RecoveryPhraseDestination.walletReady)
+                            guard !isAdvancing else { return }
+                            isAdvancing = true
+                            pushProvisioning(
+                                requiresBackup: pendingRequiresBackup,
+                                manualBackup: pendingManualBackup
+                            )
                         },
                         onBack: {
-                            if !navigationPath.isEmpty {
-                                navigationPath.removeLast()
-                            }
+                            isAdvancing = false
+                            popAnimated()
                         }
                     )
                 case .walletReady:
-                    WalletReadyView(
+                    // Legacy path only (old NavigationPath). Route into the
+                    // modern provisioning screen immediately.
+                    Color.clear
+                        .navigationBarBackButtonHidden(true)
+                        .task {
+                            pushProvisioning(requiresBackup: true, manualBackup: false)
+                        }
+                case .provisioning(let requiresBackup, let manualBackup):
+                    CreateWalletProvisioningView(
                         state: state,
-                        requiresBackup: false,
-                        manualBackup: true
-                    ) {
-                        WalletCompletionNoticeCenter.enqueue(.created)
-                        ScreenRestoration.routeToMainScreenNow()
-                        onDismiss()
-                    }
+                        requiresBackup: requiresBackup,
+                        manualBackup: manualBackup,
+                        onFinished: {
+                            var transaction = Transaction(animation: .default)
+                            transaction.disablesAnimations = false
+                            withTransaction(transaction) {
+                                onDismiss()
+                            }
+                        },
+                        onRequiresBackupFlag: {
+                            onUserContinuedWithoutVerifiedBackup()
+                        }
+                    )
                 }
             }
         }
-        // The `fullScreenCover` content otherwise has a transparent
-        // background — the underlying `OnboardingView` (slide copy,
-        // page-indicator dots, CTAs) would bleed through behind the
-        // recovery-phrase grid. An opaque system background on the
-        // `NavigationStack` itself prevents the bleed without touching
-        // the inner view layouts.
         .background(UniColors.Background.primary.ignoresSafeArea())
     }
 
@@ -124,24 +131,59 @@ struct RecoveryPhraseFlow: View {
     private func recoveryPhraseScreen(showsCloseButton: Bool) -> some View {
         RecoveryPhraseView(
             state: state,
-            onClose: onDismiss,
+            onClose: {
+                onDismiss()
+            },
             onContinue: {
-                // P2-017: always verify the phrase before PIN / ready.
-                navigationPath.append(RecoveryPhraseDestination.backupVerify)
+                // Immediate navigation — never block on the phrase screen.
+                continueAfterPhrase(requiresBackup: true, manualBackup: false)
             },
             showsCloseButton: showsCloseButton
         )
     }
 
-    /// After a successful backup verify challenge: PIN setup if needed,
-    /// otherwise wallet-ready with `requiresBackup == false`.
-    private func nextStepAfterVerifiedBackup() -> RecoveryPhraseDestination {
-        if PinCodeStorage.hasPin { return .walletReady }
-        let activeWalletId = ActiveWalletPointer.rawValue
-        if !activeWalletId.isEmpty { return .walletReady }
-        return .pinSetup
+    /// After the phrase (or verify): from **onboarding only**, open PIN when
+    /// this device has none. From home/settings create, skip straight to
+    /// provisioning — never re-prompt after the user disabled passcode.
+    private func continueAfterPhrase(requiresBackup: Bool, manualBackup: Bool) {
+        guard !isAdvancing else { return }
+        isAdvancing = true
+        pendingRequiresBackup = requiresBackup
+        pendingManualBackup = manualBackup
+        if requiresPasscodeSetup, !PinCodeStorage.hasPin {
+            // Allow re-advance if the user backs out of PIN setup.
+            isAdvancing = false
+            pushAnimated(.pinSetup)
+            return
+        }
+        pushProvisioning(requiresBackup: requiresBackup, manualBackup: manualBackup)
     }
 
+    /// Push the modern process screen right away so Continue never freezes
+    /// on the recovery phrase while keys encrypt / save.
+    private func pushProvisioning(requiresBackup: Bool, manualBackup: Bool) {
+        pushAnimated(.provisioning(requiresBackup: requiresBackup, manualBackup: manualBackup))
+    }
+
+    private func pushAnimated(_ destination: RecoveryPhraseDestination) {
+        Task { @MainActor in
+            await Task.yield()
+            var transaction = Transaction(animation: .default)
+            transaction.disablesAnimations = false
+            withTransaction(transaction) {
+                navigationPath.append(destination)
+            }
+        }
+    }
+
+    private func popAnimated() {
+        guard !navigationPath.isEmpty else { return }
+        var transaction = Transaction(animation: .default)
+        transaction.disablesAnimations = false
+        withTransaction(transaction) {
+            navigationPath.removeLast()
+        }
+    }
 }
 
 // MARK: - Previews
@@ -153,13 +195,4 @@ struct RecoveryPhraseFlow: View {
         onUserContinuedWithoutVerifiedBackup: {}
     )
     .preferredColorScheme(.light)
-}
-
-#Preview("Dark") {
-    RecoveryPhraseFlow(
-        navigationPath: .constant(NavigationPath()),
-        onDismiss: {},
-        onUserContinuedWithoutVerifiedBackup: {}
-    )
-    .preferredColorScheme(.dark)
 }

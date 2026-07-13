@@ -1,5 +1,4 @@
 import SwiftUI
-import OSLog
 
 /// Push destinations within the Import Wallet flow. Mirrors the
 /// `RecoveryPhraseFlow` pattern — value-typed enum with associated
@@ -14,6 +13,10 @@ enum ImportDestination: Hashable, Codable, Identifiable {
     case watchOnlyChainPicker
     case watchOnlyEntry(SupportedChain)
     case watchOnlyReview(SupportedChain)
+    /// Onboarding only: passcode → Face ID before the process screen.
+    case pinSetup(ImportResult)
+    /// Shared process screen: encrypt / save with real progress — always last.
+    case provisioning(ImportResult)
 
     var id: Self { self }
 }
@@ -32,31 +35,20 @@ struct ImportWalletFlow: View {
     /// dismisses the cover. Carries a description of what was imported
     /// so the parent can show an appropriate confirmation later.
     ///
-    /// **Persistence happens before this fires.** The active commit
-    /// path calls `state.persist(result:into:)` inside the commit
-    /// handler; the wallet and its seed, if any, are in GRDB by the time the parent sees the
-    /// `onCompleted` callback.
+    /// **Persistence happens before this fires.** Commit screens push the
+    /// shared process view, which runs `state.persist` with real progress;
+    /// the wallet is in GRDB before `onCompleted` runs.
     let onCompleted: (ImportResult) -> Void
+
+    /// When `true` (onboarding import only), require passcode + Face ID
+    /// before the process screen if this device has no PIN yet.
+    var requiresPasscodeSetup: Bool = false
 
     @State private var state = ImportWalletState()
 
-    /// Set when `persist` throws. Navigation stays in place so the user can
-    /// retry from the same commit screen after reading or emailing details.
-    @State private var persistErrorReport: ApertureErrorReport?
     @State private var duplicateImport: DuplicateImportPresentation?
-
-    /// True while `persistThen` is running (derive + write to GRDB +
-    /// fire first refresh). Passed down to the active commit
-    /// screen so its `UniButton` shows the native loading spinner while
-    /// the wallet is being saved — the work takes a real beat, and a
-    /// silent button reads as a frozen app (Rule #28: the work stays
-    /// off-main; the view just reflects the state).
-    @State private var isCommitting = false
-
-    private static let log = Logger(
-        subsystem: "com.thuglife.aperture",
-        category: "import-wallet-flow"
-    )
+    /// Prevents double-tap Import from stacking process screens.
+    @State private var isAdvancing = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -71,9 +63,9 @@ struct ImportWalletFlow: View {
                 case .mnemonicEntry:
                     MnemonicEntryView(
                         state: state,
-                        isCommitting: isCommitting,
+                        isCommitting: false,
                         onContinue: {
-                            persistThen(.mnemonic)
+                            pushProvisioning(.mnemonic)
                         }
                     )
                 case .iCloudRestore:
@@ -109,9 +101,9 @@ struct ImportWalletFlow: View {
                     PrivateKeyReviewView(
                         state: state,
                         chain: chain,
-                        isCommitting: isCommitting,
+                        isCommitting: false,
                         onCommit: {
-                            persistThen(.privateKey(chain))
+                            pushProvisioning(.privateKey(chain))
                         }
                     )
                 case .watchOnlyChainPicker:
@@ -131,19 +123,61 @@ struct ImportWalletFlow: View {
                     WatchOnlyReviewView(
                         state: state,
                         chain: chain,
-                        isCommitting: isCommitting,
+                        isCommitting: false,
                         onCommit: {
-                            persistThen(.watchOnly(chain))
+                            pushProvisioning(.watchOnly(chain))
                         }
+                    )
+                case .pinSetup(let result):
+                    // Passcode → Face ID, then process (last step).
+                    PinSetupFlow(
+                        onFinish: {
+                            guard !isAdvancing else { return }
+                            isAdvancing = true
+                            pushProvisioningDestination(result)
+                        },
+                        onBack: {
+                            isAdvancing = false
+                            if !navigationPath.isEmpty {
+                                navigationPath.removeLast()
+                            }
+                        }
+                    )
+                case .provisioning(let result):
+                    WalletSetupProcessView(
+                        mode: processMode(for: result),
+                        perform: { onProgress in
+                            let repository = WalletCommandRepository()
+                            _ = try await state.persist(
+                                result: result,
+                                into: repository,
+                                onProgress: onProgress
+                            )
+                            state.zeroSensitiveInput()
+                        },
+                        onFinished: {
+                            // User tapped Open Wallet on the process screen.
+                            onCompleted(result)
+                        },
+                        onDuplicateImport: { match in
+                            // Pop the process screen so the user returns to the
+                            // commit screen under the duplicate sheet.
+                            if !navigationPath.isEmpty {
+                                navigationPath.removeLast()
+                            }
+                            isAdvancing = false
+                            duplicateImport = DuplicateImportPresentation(
+                                match: match,
+                                result: result,
+                                returnsToPreviousScreen: result != .mnemonic
+                            )
+                        },
+                        logCategory: "import-wallet-provisioning"
                     )
                 }
             }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .sheet(item: $persistErrorReport) { report in
-            ApertureErrorReportSheet(report: report)
-                .apertureEnvironment()
-        }
         .sheet(item: $duplicateImport) { duplicate in
             AlreadyImportedWalletSheet(
                 walletName: duplicate.match.name,
@@ -156,61 +190,57 @@ struct ImportWalletFlow: View {
         }
     }
 
-    /// Persist the imported wallet via `WalletCommandRepository`, then fire
-    /// `onCompleted` so the parent can dismiss. On failure the flow
-    /// does NOT complete — completing without a persisted seed would
-    /// hand the parent a zombie wallet with no key material in GRDB.
-    /// Instead the error is logged, an alert names the
-    /// failure, and navigation stays in place so the user can retry
-    /// the commit from the same screen.
-    private func persistThen(_ result: ImportResult) {
-        // Suppress a double-commit: the button is already showing its
-        // loading spinner + disabled, but guard the async path too.
-        guard !isCommitting else { return }
-        isCommitting = true
-        let repository = WalletCommandRepository()
+    /// After import commit: onboarding may need passcode + Face ID first;
+    /// process screen is always the last step.
+    private func pushProvisioning(_ result: ImportResult) {
+        guard !isAdvancing else { return }
+        if requiresPasscodeSetup, !PinCodeStorage.hasPin {
+            isAdvancing = false
+            Task { @MainActor in
+                await Task.yield()
+                var transaction = Transaction(animation: .default)
+                transaction.disablesAnimations = false
+                withTransaction(transaction) {
+                    navigationPath.append(ImportDestination.pinSetup(result))
+                }
+            }
+            return
+        }
+        isAdvancing = true
+        pushProvisioningDestination(result)
+    }
+
+    private func pushProvisioningDestination(_ result: ImportResult) {
         Task { @MainActor in
-            defer { isCommitting = false }
-            do {
-                _ = try await state.persist(result: result, into: repository)
-                // Seed / key bytes are now encrypted in GRDB —
-                // the plaintext inputs have no reason to outlive the
-                // flow.
-                state.zeroSensitiveInput()
-                finishImport(result)
-            } catch WalletCommandRepositoryError.alreadyImported(let match) {
-                duplicateImport = DuplicateImportPresentation(
-                    match: match,
-                    result: result,
-                    returnsToPreviousScreen: result != .mnemonic
-                )
-            } catch {
-                Self.log.error(
-                    "Wallet import persist failed: \(String(describing: error), privacy: .public)"
-                )
-                let message = String.apertureLocalized("Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.")
-                persistErrorReport = ApertureErrorReport(
-                    context: "Import wallet",
-                    title: "Couldn't save your wallet",
-                    message: message,
-                    error: error,
-                    recoverySuggestion: "Try importing again from the same screen. If it keeps failing, email support with the advanced details.",
-                    metadata: [
-                        "importResult": String(describing: result)
-                    ]
-                )
+            await Task.yield()
+            var transaction = Transaction(animation: .default)
+            transaction.disablesAnimations = false
+            withTransaction(transaction) {
+                navigationPath.append(ImportDestination.provisioning(result))
             }
         }
     }
 
+    private func processMode(for result: ImportResult) -> WalletSetupProcessMode {
+        switch result {
+        case .mnemonic, .privateKey: return .importWallet
+        case .watchOnly: return .watchOnly
+        }
+    }
+
     private func finishImport(_ result: ImportResult) {
-        WalletCompletionNoticeCenter.enqueue(.imported)
+        // No success alert — land on main with first-refresh only.
+        WalletFirstRefreshPresentationCenter.markNewWallet(
+            ActiveWalletPointer.currentId,
+            kind: .imported
+        )
         ScreenRestoration.routeToMainScreenNow()
         onCompleted(result)
     }
 
     private func tryAnotherWallet(after duplicate: DuplicateImportPresentation) {
         duplicateImport = nil
+        isAdvancing = false
         state.resetInput(for: duplicate.result)
         if duplicate.returnsToPreviousScreen, !navigationPath.isEmpty {
             navigationPath.removeLast()
@@ -313,7 +343,7 @@ private struct ImportMethodSelectionView: View {
                     info: .iCloud,
                     onPick: { onPick(.iCloudRestore) }
                 )
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 methodRow(
                     systemImage: "text.book.closed",
@@ -321,7 +351,7 @@ private struct ImportMethodSelectionView: View {
                     info: .recoveryPhrase,
                     onPick: { onPick(.mnemonicEntry) }
                 )
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 methodRow(
                     systemImage: "key.horizontal",
@@ -329,7 +359,7 @@ private struct ImportMethodSelectionView: View {
                     info: .privateKey,
                     onPick: { onPick(.keyChainPicker) }
                 )
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 methodRow(
                     systemImage: "eye",
@@ -337,7 +367,7 @@ private struct ImportMethodSelectionView: View {
                     info: .watchOnly,
                     onPick: { onPick(.watchOnlyChainPicker) }
                 )
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
@@ -355,9 +385,7 @@ private struct ImportMethodSelectionView: View {
                 .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle("Import wallet")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -366,7 +394,7 @@ private struct ImportMethodSelectionView: View {
                     onDismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text("Cancel"))
             }
@@ -379,7 +407,7 @@ private struct ImportMethodSelectionView: View {
     /// inside the List row with no gesture ambiguity.
     private func methodRow(
         systemImage: String,
-        title: LocalizedStringKey,
+        title: String,
         info: ImportInfo,
         onPick: @escaping () -> Void
     ) -> some View {
@@ -391,7 +419,7 @@ private struct ImportMethodSelectionView: View {
                         .foregroundStyle(UniColors.Icon.secondary)
                         .frame(width: 28, alignment: .center)
                         .accessibilityHidden(true)
-                    Text(title)
+                    Text(LocalizedStringKey(title))
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Text.primary)
                     Spacer(minLength: 0)
@@ -411,13 +439,15 @@ private struct ImportMethodSelectionView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(Text("About \(Text(title))"))
+            .accessibilityLabel(Text(verbatim: String(
+                format: String.apertureLocalized("About %@"),
+                String.apertureLocalizedKey(title)
+            )))
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: UniDirectionalSymbol.disclosure)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
                 .accessibilityHidden(true)
         }
-        .padding(.vertical, UniSpacing.xxs)
     }
 }

@@ -21,13 +21,14 @@ struct DiagnosticsLogView: View {
                         DiagnosticsLogRow(entry: entry)
                     }
                 } header: {
-                    Text("\(entries.count) recent entries")
+                    Text(verbatim: String(
+                        format: String.apertureLocalized("%lld recent entries"),
+                        Int64(entries.count)
+                    ))
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Diagnostics Logs"))
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -42,8 +43,9 @@ struct DiagnosticsLogView: View {
                 Button {
                     copyLogs()
                 } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    UniCopySymbol(isCopied: copied)
                 }
+                .uniCopySymbolAnimation(value: copied)
                 .accessibilityLabel(Text("Copy logs"))
 
                 if let exportURL {
@@ -73,11 +75,11 @@ struct DiagnosticsLogView: View {
             let text = await DiagnosticsLogStore.shared.copyableText()
             await MainActor.run {
                 UIPasteboard.general.string = text
-                copied = true
+                withAnimation(.snappy(duration: 0.28)) { copied = true }
             }
             try? await Task.sleep(for: .seconds(1.2))
             await MainActor.run {
-                copied = false
+                withAnimation(.snappy(duration: 0.28)) { copied = false }
             }
         }
     }

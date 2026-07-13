@@ -33,6 +33,9 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     from: "7.11.1"
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios.git
+    from: "4.6.0"
 
 targets:
   Aperture:
@@ -41,6 +44,10 @@ targets:
     deploymentTarget: "26.0"
     sources:
       - path: Aperture/Sources
+        excludes:
+          - Private/**
+      - path: Aperture/Sources/Private
+        optional: true
       - path: Aperture/Resources
     dependencies:
       - package: WalletCore
@@ -49,6 +56,8 @@ targets:
         product: WalletCoreSwiftProtobuf
       - package: GRDB
         product: GRDB
+      - package: Lottie
+        product: Lottie
     # API keys come from the local, gitignored Secrets.xcconfig. Keep
     # Secrets.xcconfig.template committed as the value-free setup guide.
     configFiles:

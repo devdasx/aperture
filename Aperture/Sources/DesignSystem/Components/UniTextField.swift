@@ -126,7 +126,10 @@ enum TextDirection {
 /// `CLAUDE.md` Rule #19 §D for the canonical-primitive extension
 /// protocol this contract follows.
 struct UniTextField: View {
-    let placeholder: LocalizedStringKey
+    /// English catalog key for the empty-field prompt. Resolved at render
+    /// through `String.apertureLocalizedKey` so in-app language changes
+    /// (not just system locale) reach UIKit-backed `TextField`/`SecureField`.
+    let placeholder: String
     @Binding var text: String
 
     var font: Font = UniTypography.body
@@ -295,14 +298,31 @@ struct UniTextField: View {
 
     // MARK: - Input control variant
 
+    /// Placeholder resolved for the user's in-app language preference.
+    private var localizedPlaceholder: String {
+        String.apertureLocalizedKey(placeholder)
+    }
+
     @ViewBuilder
     private var inputControl: some View {
+        // Use `prompt:` + already-localized verbatim text. Passing a
+        // `LocalizedStringKey` into `TextField`/`SecureField` resolves
+        // via Bundle preferred localizations (process launch language),
+        // which stays English while the rest of Aperture follows the
+        // Settings → Language choice.
+        let prompt = Text(verbatim: localizedPlaceholder)
         if isSecure && !isRevealed {
-            SecureField(placeholder, text: $text)
+            SecureField(text: $text, prompt: prompt) {
+                EmptyView()
+            }
         } else if axis == .vertical {
-            TextField(placeholder, text: $text, axis: .vertical)
+            TextField(text: $text, prompt: prompt, axis: .vertical) {
+                EmptyView()
+            }
         } else {
-            TextField(placeholder, text: $text)
+            TextField(text: $text, prompt: prompt) {
+                EmptyView()
+            }
         }
     }
 
@@ -363,7 +383,9 @@ struct UniTextField: View {
 /// same color, radius, padding, focus, and direction behavior as the
 /// single-line primitive, but keeps interior pasted newlines intact.
 struct UniTextArea: View {
-    let placeholder: LocalizedStringKey
+    /// English catalog key — resolved via `apertureLocalizedKey` (see
+    /// `UniTextField.placeholder`).
+    let placeholder: String
     @Binding var text: String
 
     var directionPolicy: TextDirection.Policy = .automatic
@@ -385,7 +407,7 @@ struct UniTextArea: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             if text.isEmpty {
-                Text(placeholder)
+                Text(verbatim: String.apertureLocalizedKey(placeholder))
                     .font(font)
                     .foregroundStyle(UniColors.Input.placeholder)
                     .padding(.horizontal, horizontalPadding + UniSpacing.xxs)

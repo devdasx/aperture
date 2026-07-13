@@ -76,8 +76,8 @@ enum WalletSupportedRowBuilders {
         // static `AssetCatalog` so non-DB call sites keep working
         // unchanged. The two sources are provably identical
         // (`AssetCatalogTests`), so the rendered list is the same.
-        // Sum natives across every address on the chain (e.g. Solana Phantom
-        // + Trust paths each hold their own token_balances row).
+        // Sum natives across held rows. Callers that care about Solana dual-path
+        // already pass preferred-path-only balances (home `displayAddressIds`).
         var nativeAmount: [SupportedChain: Decimal] = [:]
         var nativeFiat: [SupportedChain: Decimal] = [:]
         var nativeCurrency: [SupportedChain: String] = [:]

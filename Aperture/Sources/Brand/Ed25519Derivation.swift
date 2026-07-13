@@ -282,6 +282,65 @@ enum SolanaPathProvisioning {
             }
         }
     }
+
+    /// Provision dual Solana paths when the correct passphrase is known.
+    ///
+    /// - No-passphrase wallets: derives with `""` (same as create/import).
+    /// - Passphrase wallets: uses `passphrase` if provided, else the session
+    ///   cache from a prior send/receive entry. **Never** falls back to empty
+    ///   string for `hasPassphrase` wallets (would create wrong addresses).
+    /// - Returns `true` when paths were written / already present after ensure.
+    @discardableResult
+    static func ensureBothAccountZeroPathsIfPossible(
+        walletId: UUID,
+        passphrase: String? = nil,
+        database: AppDatabase = .shared
+    ) async -> Bool {
+        let hasPassphrase = (try? database.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT has_passphrase FROM wallets WHERE id = ?",
+                arguments: [walletId.uuidString]
+            )
+        }) ?? true
+
+        let words: [String]
+        do {
+            guard let loaded = try WalletSecretPersistence.loadMnemonic(for: walletId, database: database),
+                  !loaded.isEmpty else {
+                return false
+            }
+            words = loaded
+        } catch {
+            return false
+        }
+
+        let resolved: String
+        if hasPassphrase {
+            if let passphrase {
+                resolved = passphrase
+            } else if let session = await BIP39PassphraseSession.shared.passphrase(for: walletId) {
+                resolved = session
+            } else {
+                // Cannot safely derive without the real passphrase.
+                return false
+            }
+        } else {
+            resolved = ""
+        }
+
+        do {
+            try ensureBothAccountZeroPaths(
+                walletId: walletId,
+                words: words,
+                passphrase: resolved,
+                database: database
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
 }
 
 enum SolanaPathProvisioningError: Error {

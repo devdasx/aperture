@@ -86,7 +86,7 @@ struct WalletHomeNetworksView: View {
                             isSelected: isSelected(chain),
                             toggle: { toggle(chain) }
                         )
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                     }
                 } footer: {
                     Text("Pick the networks to show in your wallet home. When none are picked, every network is visible.")
@@ -96,12 +96,10 @@ struct WalletHomeNetworksView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Networks"))
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

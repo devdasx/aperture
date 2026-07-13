@@ -132,7 +132,7 @@ struct WalletAvatarBadgeOverlay: View {
                 .fill(UniColors.WalletAvatar.badgeColor(for: badge))
                 .frame(width: innerDiameter, height: innerDiameter)
             Image(systemName: badge.systemImage)
-                .font(.system(size: glyphPointSize, weight: .semibold))
+                .font(.system(size: glyphPointSize, weight: .regular))
                 .foregroundStyle(Color.white)
         }
         .accessibilityHidden(true)

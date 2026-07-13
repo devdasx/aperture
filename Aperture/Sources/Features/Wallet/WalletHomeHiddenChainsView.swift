@@ -66,7 +66,7 @@ struct WalletHomeHiddenChainsView: View {
                         subtitle: chain.ticker,
                         isHidden: bindingFor(chain)
                     )
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             } footer: {
                 Text("Hiding a chain hides every coin and token on it from the wallet home. The addresses stay in your wallet — only the display changes.")
@@ -75,9 +75,7 @@ struct WalletHomeHiddenChainsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Hidden chains"))
         .navigationBarTitleDisplayMode(.large)
         .uniHaptic(.selection, trigger: hiddenJSON)

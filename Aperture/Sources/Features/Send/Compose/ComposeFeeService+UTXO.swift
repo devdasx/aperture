@@ -79,28 +79,11 @@ extension ComposeFeeService {
         }
     }
 
-    /// Bitcoin fee ladder — **only** `https://mempool.space/api/v1/fees/recommended`.
-    ///
-    /// Does not rotate to blockstream.info (that endpoint is for other
-    /// Esplora REST uses / failover). Does not use Electrum `estimatefee`.
-    /// Throws if mempool.space is unreachable so Send never invents a rate.
+    /// Bitcoin fee ladder — mempool.space only, via `RPCClient` / shared
+    /// rate limiter + circuit breaker (P1 #9 — never a bare URLSession).
     private func fetchMempoolSpaceRecommendedFees() async throws -> UTXORates {
-        guard let url = URL(string: "https://mempool.space/api/v1/fees/recommended") else {
-            throw RPCError.invalidResponse("mempool.space fee URL")
-        }
-        let data: Data
-        do {
-            let (body, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                throw RPCError.invalidResponse("mempool.space fees HTTP \(http.statusCode)")
-            }
-            data = body
-        } catch let rpc as RPCError {
-            throw rpc
-        } catch {
-            throw RPCError.network(error.localizedDescription)
-        }
-        return try parseEsploraRecommendedFees(data)
+        let rates = try await BitcoinMempoolSpaceClient.shared.recommendedFees()
+        return UTXORates(slow: rates.slow, normal: rates.normal, fast: rates.fast)
     }
 
     /// Esplora recommended fees for non-BTC chains that share the shape

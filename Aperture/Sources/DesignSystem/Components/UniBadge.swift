@@ -14,7 +14,7 @@ struct UniBadge: View {
         HStack(spacing: UniSpacing.xxs) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .regular))
             }
             Text(text)
                 .font(UniTypography.caption2.weight(.semibold))

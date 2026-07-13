@@ -170,7 +170,7 @@ struct ReceiveBitcoinPathSearchSheet: View {
                 to: $indexTo
             )
 
-            Text("This run checks \(targetCountLabel). Keep searches under \(BitcoinPathSearchRequest.maxTargets) addresses so the phone stays responsive.")
+            Text(verbatim: String(format: String.apertureLocalized("This run checks %@. Keep searches under %lld addresses so the phone stays responsive."), targetCountLabel, Int64(BitcoinPathSearchRequest.maxTargets)))
                 .font(UniTypography.caption1)
                 .foregroundStyle(UniColors.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -181,7 +181,7 @@ struct ReceiveBitcoinPathSearchSheet: View {
     }
 
     private var saveCard: some View {
-        Toggle(isOn: $saveFoundAddresses) {
+        UniToggle(isOn: $saveFoundAddresses) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Save found paths")
                     .font(UniTypography.body)
@@ -311,7 +311,7 @@ struct ReceiveBitcoinPathSearchSheet: View {
     }
 
     private func compactNumberField(
-        _ placeholder: LocalizedStringKey,
+        _ placeholder: String,
         text: Binding<String>
     ) -> some View {
         UniTextField(

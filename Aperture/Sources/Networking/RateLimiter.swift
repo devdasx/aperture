@@ -101,11 +101,11 @@ actor TokenBucket {
             // is 5 req/s, we need 0.14 s.
             let neededTokens = 1 - availableTokens
             let waitSeconds = neededTokens / limit.requestsPerSecond
-            // Cap the sleep so a misconfigured rate doesn't pin a
-            // task forever. 60 s is well beyond any reasonable
-            // single-request wait; after 60 s we fall through and
-            // try again.
-            let cappedWait = min(waitSeconds, 60)
+            // Cap the sleep so a saturated provider cannot pin a scan
+            // job (and pull-to-refresh / task groups) for tens of seconds.
+            // Prefer fail-fast `.rateLimited` so callers rotate or skip;
+            // background refresh can try again later.
+            let cappedWait = min(waitSeconds, Self.maxTokenWaitSeconds)
             do {
                 try await Task.sleep(for: .seconds(cappedWait))
             } catch {
@@ -119,9 +119,16 @@ actor TokenBucket {
         let neededTokens = max(0, 1 - availableTokens)
         let waitSeconds = limit.requestsPerSecond > 0
             ? neededTokens / limit.requestsPerSecond
-            : 60
-        throw RPCError.rateLimited(retryAfter: Date().addingTimeInterval(min(waitSeconds, 60)))
+            : Self.maxTokenWaitSeconds
+        throw RPCError.rateLimited(
+            retryAfter: Date().addingTimeInterval(min(waitSeconds, Self.maxTokenWaitSeconds))
+        )
     }
+
+    /// Max seconds a consumer will sleep waiting for a local token.
+    /// Kept short so multi-chain balance batches (and PTR) cannot stall
+    /// on one throttled endpoint for ~30–60s.
+    private static let maxTokenWaitSeconds: Double = 2
 
     private func refill() {
         let now = Self.clock.now

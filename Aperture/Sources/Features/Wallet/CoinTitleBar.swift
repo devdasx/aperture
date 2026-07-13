@@ -39,17 +39,20 @@ struct CoinTitleBar: View {
     private var iconSymbol: String { tokenSymbol ?? chain.ticker }
     private var contract: String? { catalogEntry?.contract }
 
+    /// Matches toolbar title weight; list rows keep `AssetLogoMetrics.standard`.
+    private static let navMarkSize: CGFloat = 20
+
     var body: some View {
-        // `UniSpacing.s` (12pt) reads as a clear two-space gap between the
-        // verb, the coin mark, the full name, and the trailing "to" —
-        // `UniSpacing.xs` (8pt) read as one tight space.
-        HStack(spacing: UniSpacing.s) {
+        // Single-space gaps between verb / mark / name / trailing "to"
+        // (`xxs` ≈ one space at body size; `s` looked like double spaces).
+        HStack(spacing: UniSpacing.xxs) {
             Text(verb)
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)
             if showsIcon {
+                // Nav title text is ~17pt — list `standard` (42) dwarfs it.
                 CoinMark(chain: chain, tokenSymbol: iconSymbol, contract: contract)
-                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
+                    .frame(width: Self.navMarkSize, height: Self.navMarkSize)
             }
             Text(verbatim: fullName)
                 .font(UniTypography.bodyEmphasized)

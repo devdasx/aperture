@@ -38,8 +38,8 @@ struct AssetPickerAssetRow: View {
             }
             Spacer(minLength: UniSpacing.s)
             AssetPickerBalanceColumn(totals: totals, currencyCode: currencyCode)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: UniDirectionalSymbol.disclosure)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, 4)
@@ -76,8 +76,8 @@ struct AssetPickerNetworkRow: View {
             }
             Spacer(minLength: UniSpacing.s)
             AssetPickerBalanceColumn(totals: totals, currencyCode: currencyCode)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: UniDirectionalSymbol.disclosure)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, 4)

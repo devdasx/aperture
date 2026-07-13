@@ -217,7 +217,13 @@ struct ReceiveView: View {
         ) { _ in
             Button("OK", role: .cancel) {}
         } message: { chain in
-            Text("This wallet has no \(chain.displayName) address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment.")
+            Text(verbatim: String(
+                format: String.apertureLocalized(
+                    "This wallet has no %@ address yet, so there is nothing to receive to on this network. Aperture may still be deriving your accounts; try again in a moment."
+                ),
+                locale: ApertureLocalization.currentLocale,
+                chain.displayName
+            ))
         }
     }
 

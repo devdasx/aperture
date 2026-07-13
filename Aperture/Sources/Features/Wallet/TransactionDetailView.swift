@@ -44,6 +44,8 @@ struct TransactionDetailView: View {
     /// Drives the shared inline "Copied" confirmation + success haptic.
     /// One timestamp for the whole screen — every copy affordance writes it.
     @State private var lastCopiedAt: Date?
+    /// Accessibility / icon key of the last copied field (for checkmark morph).
+    @State private var lastCopiedName: String?
 
     /// The user's display currency — drives the hero's fiat conversion.
     @GRDBStorage(CurrencyPreference.storageKey)
@@ -142,15 +144,11 @@ struct TransactionDetailView: View {
             commonSection(tx)
             transactionActionsSection(tx)
         }
-        .listStyle(.insetGrouped)
+        .uniListPageChrome()
         .frame(maxWidth: .infinity)
     }
 
     /// `true` while the off-main fetch is still in flight AND nothing has
-    /// landed yet. Drives the inline `.redacted` skeletons — the structure
-    /// is present from frame one, the placeholder shimmer is the loading
-    /// affordance (no separate "Loading details…" banner, no pop-in).
-    private var isSkeleton: Bool { detail == nil && isLoading }
 
     /// The centered status hero, folded into the List as its first row so it
     /// scrolls with the detail sections (one scroll surface). A cleared,
@@ -251,20 +249,17 @@ struct TransactionDetailView: View {
                 divider
                 keyValueRow(
                     label: "When",
-                    value: date.formatted(date: .abbreviated, time: .standard)
+                    value: date.formatted(
+                        Date.FormatStyle(date: .abbreviated, time: .standard)
+                            .locale(ApertureLocalization.currentLocale)
+                    )
                 )
             }
 
-            // Network fee: show the stored fee instantly when present;
-            // otherwise hold the row's place with a redacted placeholder
-            // until the live fee lands.
+            // Network fee: show when present; no skeleton/shimmer while loading.
             if let feeText = feeDisplay(tx) {
                 divider
                 keyValueRow(label: "Network fee", value: feeText, monospaced: true)
-            } else if isSkeleton {
-                divider
-                keyValueRow(label: "Network fee", value: skeletonFee, monospaced: true)
-                    .redacted(reason: .placeholder)
             }
 
             divider
@@ -284,16 +279,36 @@ struct TransactionDetailView: View {
             Button {
                 shareTransactionScreenshot(tx)
             } label: {
-                Label("Share screenshot", systemImage: "photo.on.rectangle.angled")
+                actionRowLabel("Share screenshot", systemImage: "photo.on.rectangle.angled")
             }
+            .buttonStyle(.uniListRow)
             .disabled(isRenderingShareImage)
+            .uniListRowSurface()
 
             if let url = detail?.explorerURL ?? explorerFallbackURL(tx) {
                 Link(destination: url) {
-                    Label("View on explorer", systemImage: "safari")
+                    actionRowLabel("View on explorer", systemImage: "safari")
                 }
+                // Link defaults to accent blue — force primary body ink.
+                .tint(UniColors.Text.primary)
+                .foregroundStyle(UniColors.Text.primary)
+                .uniListRowSurface()
             }
         }
+    }
+
+    /// Primary ink for title + icon (black in Cloud, light ink in Midnight/Dark).
+    private func actionRowLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
+        Label {
+            Text(title)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.primary)
+        } icon: {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(UniColors.Text.primary)
+        }
+        .uniListRowHitTarget()
     }
 
     /// Native progress overlay shown while the transaction screenshot renders.
@@ -310,12 +325,8 @@ struct TransactionDetailView: View {
 
     // MARK: - Stage 3 — chain-specific sections
 
-    /// The chain-specific sections. Once the fetch lands, the real payload
-    /// renders. While it's in flight (`isSkeleton`), the FULL section
-    /// scaffolding for the stored chain's family is rendered with
-    /// `.redacted(reason: .placeholder)` — so the complete screen layout is
-    /// present from frame one and the real values just replace the
-    /// placeholders in one smooth pass (no two-phase reveal, no layout jump).
+    /// Chain-specific sections once the live detail fetch lands. No
+    /// skeleton/shimmer scaffolding while loading.
     @ViewBuilder
     private func payloadSections(_ tx: TransactionRecord) -> some View {
         switch detail?.payload {
@@ -324,83 +335,9 @@ struct TransactionDetailView: View {
         case .solana(let sol):   solanaSections(sol)
         case .generic(let rows): genericSection(rows)
         case nil:
-            if isSkeleton {
-                skeletonSections
-            } else {
-                EmptyView()
-            }
+            EmptyView()
         }
     }
-
-    // MARK: Skeleton scaffolding (in-place placeholders while fetching)
-
-    /// Picks which skeleton sections to show from the STORED chain's family
-    /// (already resolved via `resolvedChain`), so the structure the user is
-    /// about to see is present immediately. EVM → Transaction + Gas & fee;
-    /// Bitcoin family → Transaction + Inputs + Outputs; Solana → Transaction
-    /// + Balance changes; everything else (XRPL / TRON / TON / NEAR / Aptos /
-    /// Polkadot / Stellar / Sui) → a single generic "On-chain
-    /// detail" section. If the chain can't be resolved at all, the generic
-    /// scaffold is the safe minimum.
-    @ViewBuilder
-    private var skeletonSections: some View {
-        switch resolvedChain?.family {
-        case .evm:
-            skeletonSection(title: "Transaction", rowCount: 5)
-            skeletonSection(title: "Gas & fee", rowCount: 5, monospaced: true)
-        case .bitcoin:
-            skeletonSection(title: "Transaction", rowCount: 5, monospaced: true)
-            skeletonSection(title: "Inputs", rowCount: 2)
-            skeletonSection(title: "Outputs", rowCount: 2)
-        case .ed25519 where resolvedChain == .solana:
-            skeletonSection(title: "Transaction", rowCount: 4, monospaced: true)
-            skeletonSection(title: "Balance changes", rowCount: 2)
-        default:
-            skeletonSection(title: "On-chain detail", rowCount: 5)
-        }
-    }
-
-    /// One redacted section: a real `sectionCard` with `rowCount`
-    /// key/value rows of fixed-width dummy strings, blurred by the native
-    /// `.redacted(reason: .placeholder)` so the shimmer reads as an honest
-    /// placeholder — never a fabricated real value (Rule #16).
-    private func skeletonSection(
-        title: LocalizedStringKey,
-        rowCount: Int,
-        monospaced: Bool = false
-    ) -> some View {
-        sectionCard(title: title) {
-            ForEach(0..<rowCount, id: \.self) { index in
-                if index > 0 { divider }
-                skeletonRow(monospaced: monospaced)
-            }
-        }
-        .redacted(reason: .placeholder)
-    }
-
-    /// One redacted dummy row. BOTH label and value are `Text(verbatim:)` —
-    /// these placeholders are shimmer-only (redacted, never visibly rendered
-    /// and never localized), so they must NOT enter the string catalog
-    /// (Rule #20). Mirrors `keyValueRow`'s native `LabeledContent` layout.
-    private func skeletonRow(monospaced: Bool) -> some View {
-        LabeledContent {
-            keyValueText(
-                monospaced ? skeletonMono : skeletonValue,
-                monospaced: monospaced,
-                valueColor: UniColors.Text.primary
-            )
-        } label: {
-            Text(verbatim: skeletonLabel)
-        }
-    }
-
-    // Fixed-width dummy strings — clearly placeholders under the native
-    // redaction blur; never read as real chain data (Rule #16).
-    private var skeletonLabel: String { "Placeholder" }
-    private var skeletonValue: String { "Placeholder value" }
-    private var skeletonMono: String { "0x00000000000000" }
-    private var skeletonNumber: String { "000000" }
-    private var skeletonFee: String { "0.00000000 —" }
 
     // MARK: Bitcoin
 
@@ -479,7 +416,7 @@ struct TransactionDetailView: View {
                     } label: {
                         monoValue(address, truncate: true)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniTactile)
                     .accessibilityLabel(Text("Copy address"))
                 } else {
                     UniBody(text: "Non-standard script", color: UniColors.Text.secondary)
@@ -602,7 +539,7 @@ struct TransactionDetailView: View {
                     } label: {
                         monoValue(WalletFormatting.shortAddress(token, prefix: 8, suffix: 6), truncate: false)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniTactile)
                     .accessibilityLabel(Text("Copy token contract"))
                 } else {
                     // Empty/malformed contract — render "—" (finding #15).
@@ -616,8 +553,8 @@ struct TransactionDetailView: View {
             }
             HStack(spacing: UniSpacing.xxs) {
                 monoCaption(WalletFormatting.shortAddress(transfer.from, prefix: 6, suffix: 4))
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 10, weight: .semibold))
+                Image(systemName: UniDirectionalSymbol.flow)
+                    .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(UniColors.Icon.tertiary)
                 monoCaption(WalletFormatting.shortAddress(transfer.to, prefix: 6, suffix: 4))
             }
@@ -713,7 +650,7 @@ struct TransactionDetailView: View {
                 } label: {
                     monoValue(WalletFormatting.shortAddress(change.account, prefix: 8, suffix: 6), truncate: false)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniTactile)
                 .accessibilityLabel(Text("Copy account"))
                 Spacer(minLength: UniSpacing.s)
                 Text(verbatim: solanaChangeAmount(change))
@@ -750,10 +687,11 @@ struct TransactionDetailView: View {
                     .lineLimit(3)
                     .environment(\.layoutDirection, .leftToRight)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Copy \(field.label)"))
+            .buttonStyle(.uniTactile)
+            .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("Copy %@"), field.label)))
         } label: {
             Text(LocalizedStringKey(field.label))
+                .foregroundStyle(UniColors.Text.secondary)
         }
     }
 
@@ -795,6 +733,7 @@ struct TransactionDetailView: View {
             keyValueText(value, monospaced: monospaced, valueColor: valueColor)
         } label: {
             Text(label)
+                .foregroundStyle(UniColors.Text.secondary)
         }
     }
 
@@ -806,19 +745,23 @@ struct TransactionDetailView: View {
         full: String,
         accessibilityName: String
     ) -> some View {
-        LabeledContent {
+        let isCopied = lastCopiedName == accessibilityName
+        return LabeledContent {
             Button {
                 copy(full, name: accessibilityName)
             } label: {
                 HStack(spacing: UniSpacing.xs) {
                     monoValue(display, truncate: false)
-                    Image(systemName: "doc.on.doc")
+                    UniCopySymbol(isCopied: isCopied, pointSize: 15)
+                        .foregroundStyle(isCopied ? UniColors.Feedback.Success.foreground : UniColors.Text.link)
                 }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Copy \(accessibilityName)"))
+            .buttonStyle(.uniTactile)
+            .uniCopySymbolAnimation(value: isCopied)
+            .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("Copy %@"), accessibilityName)))
         } label: {
             Text(label)
+                .foregroundStyle(UniColors.Text.secondary)
         }
     }
 
@@ -940,20 +883,22 @@ struct TransactionDetailView: View {
     }
 
     private func copyBlockButton(_ value: String, name: String) -> some View {
-        Button {
+        let isCopied = lastCopiedName == name
+        return Button {
             copy(value, name: name)
         } label: {
             HStack(spacing: UniSpacing.xs) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Copy")
+                UniCopySymbol(isCopied: isCopied, pointSize: 13)
+                Text(isCopied ? "Copied" : "Copy")
                     .font(UniTypography.footnote)
+                    .contentTransition(.opacity)
             }
-            .foregroundStyle(UniColors.Text.link)
+            .foregroundStyle(isCopied ? UniColors.Feedback.Success.foreground : UniColors.Text.link)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Copy \(name)"))
+        .buttonStyle(.uniTactile)
+        .uniCopySymbolAnimation(value: isCopied)
+        .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("Copy %@"), name)))
     }
 
     // MARK: - Missing state
@@ -1149,8 +1094,10 @@ struct TransactionDetailView: View {
         guard !isRenderingShareImage else { return }
         ReceiptScreenshotFlash.play()
         isRenderingShareImage = true
-        defer { isRenderingShareImage = false }
 
+        // ImageRenderer is main-actor-bound, but run the render as an async
+        // Task so the share button returns immediately and the loading flag
+        // can paint before the (sometimes heavy) snapshot work.
         let direction = TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing
         let status = statusForDisplay(tx) ?? .pending
         let when = detail?.blockTime ?? tx.occurredAt
@@ -1164,31 +1111,38 @@ struct TransactionDetailView: View {
             statusText: statusText(status),
             status: status,
             whenText: Self.receiptDateTimeFormatter.string(from: when),
-            networkText: resolvedChain?.displayName ?? String(localized: "Unknown network"),
+            networkText: resolvedChain?.displayName ?? String.apertureLocalized("Unknown network"),
             networkFeeText: feeDisplay(tx),
             hashText: WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 12, suffix: 10),
             appStoreText: ApertureWeb.appStoreDisplay
         )
-        let renderer = ImageRenderer(
-            content: TransactionScreenshotView(receipt: receipt)
-                .environment(\.colorScheme, colorScheme)
-        )
-        renderer.scale = displayScale
-        guard let image = renderer.uiImage else {
-            screenshotShareFailed = true
-            return
+        let scheme = colorScheme
+        let scale = displayScale
+
+        Task { @MainActor in
+            defer { isRenderingShareImage = false }
+            await Task.yield()
+            let renderer = ImageRenderer(
+                content: TransactionScreenshotView(receipt: receipt)
+                    .environment(\.colorScheme, scheme)
+            )
+            renderer.scale = scale
+            guard let image = renderer.uiImage else {
+                screenshotShareFailed = true
+                return
+            }
+            screenshotShareItem = TransactionScreenshotShareItem(
+                image: image,
+                appStoreURL: URL(string: ApertureWeb.appStore)
+            )
         }
-        screenshotShareItem = TransactionScreenshotShareItem(
-            image: image,
-            appStoreURL: URL(string: ApertureWeb.appStore)
-        )
     }
 
     private func screenshotDirectionLabel(_ direction: TransactionDirection) -> String {
         switch direction {
-        case .incoming: return String(localized: "Received")
-        case .outgoing: return String(localized: "Sent")
-        case .internal: return String(localized: "Internal")
+        case .incoming: return String.apertureLocalized("Received")
+        case .outgoing: return String.apertureLocalized("Sent")
+        case .internal: return String.apertureLocalized("Internal")
         }
     }
 
@@ -1199,8 +1153,18 @@ struct TransactionDetailView: View {
             [[UTType.plainText.identifier: value]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )
-        lastCopiedAt = Date()
+        withAnimation(.snappy(duration: 0.28)) {
+            lastCopiedName = name
+            lastCopiedAt = Date()
+        }
         UniHapticEngine.shared.play(.success)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard lastCopiedName == name else { return }
+            withAnimation(.snappy(duration: 0.28)) {
+                lastCopiedName = nil
+            }
+        }
     }
 
     // MARK: - Derived values
@@ -1415,7 +1379,7 @@ private struct TransactionScreenshotView: View {
                     }
 
                     Image(systemName: statusSymbol)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 18, weight: .regular))
                         .foregroundStyle(statusForeground)
                         .frame(width: 30, height: 30)
                         .background(Circle().fill(statusBackground))
@@ -1489,7 +1453,7 @@ private struct TransactionScreenshotView: View {
         HStack(spacing: 10) {
             ApertureAppLogo(size: 38)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Aperture")
+                Text(verbatim: "Aperture")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(UniColors.Text.primary)
                 Text("Transaction receipt")
@@ -1580,19 +1544,43 @@ private struct TransactionScreenshotView: View {
 private struct TransactionScreenshotShareItem: Identifiable {
     let id = UUID()
     let image: UIImage
+    /// Optional marketing link — included as plain text only so the share
+    /// sheet previews the **image**, not the App Store app icon (LP link).
     let appStoreURL: URL?
 }
 
+/// Shares a PNG file URL + optional caption. Passing a raw `URL` to the
+/// App Store makes UIActivityViewController show Aperture’s icon; a
+/// temporary image file is what system Photos / Messages treat as a picture.
 private struct TransactionScreenshotShareSheet: UIViewControllerRepresentable {
     let item: TransactionScreenshotShareItem
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        var items: [Any] = [item.image]
-        if let appStoreURL = item.appStoreURL {
-            items.append(appStoreURL)
-        }
+        let items = Self.activityItems(for: item)
         return UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+
+    private static func activityItems(for item: TransactionScreenshotShareItem) -> [Any] {
+        var items: [Any] = []
+        // Prefer a file URL so the share header is a photo thumbnail.
+        if let data = item.image.pngData() {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Aperture-Transaction-\(item.id.uuidString).png")
+            do {
+                try data.write(to: url, options: .atomic)
+                items.append(url)
+            } catch {
+                items.append(item.image)
+            }
+        } else {
+            items.append(item.image)
+        }
+        // Text is fine; do **not** append `URL` — that becomes the LP preview.
+        if let appStoreURL = item.appStoreURL {
+            items.append(appStoreURL.absoluteString)
+        }
+        return items
+    }
 }

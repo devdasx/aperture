@@ -103,7 +103,7 @@ actor NearBalanceHistoryScanner {
 
         let events = (nativeEvents + tokenEvents)
             .sorted { $0.occurredAt > $1.occurredAt }
-            .prefix(50)
+            .prefix(HistoryScanLimits.perAddress)
         if !events.isEmpty {
             isUsed = true
         }
@@ -151,6 +151,16 @@ actor NearBalanceHistoryScanner {
                     do {
                         return try await self.rpc.ftBalance(accountId: accountId, token: token)
                     } catch {
+                        // Soft FT failures (missing mint code, unregistered
+                        // storage) are zero balances — not probe failures.
+                        if let near = error as? NearRPCError, near.isSoftFTFailure {
+                            return NearTokenBalance(
+                                tokenAccount: token.tokenAccount,
+                                symbol: token.symbol,
+                                decimals: token.decimals,
+                                rawBalance: "0"
+                            )
+                        }
                         await self.logTokenBalanceFailure(symbol: token.symbol, error: error)
                         NetworkProbeDiagnostics.recordFailure(
                             chain: .near,
@@ -179,7 +189,7 @@ actor NearBalanceHistoryScanner {
 
     private func safeNativeHistory(accountId: String) async -> [NearHistoryEvent] {
         do {
-            return try await history.nativeActivities(accountId: accountId, limit: 25)
+            return try await history.nativeActivities(accountId: accountId, limit: HistoryScanLimits.perAddress)
         } catch {
             log.debug("NEAR native history failed: \(String(describing: error), privacy: .public)")
             return []
@@ -194,7 +204,7 @@ actor NearBalanceHistoryScanner {
             for token in tokens {
                 group.addTask {
                     do {
-                        return try await self.history.ftEvents(accountId: accountId, token: token, limit: 12)
+                        return try await self.history.ftEvents(accountId: accountId, token: token, limit: min(50, HistoryScanLimits.perAddress))
                     } catch {
                         await self.logTokenHistoryFailure(symbol: token.symbol, error: error)
                         return []
@@ -298,7 +308,30 @@ private actor NearRPCBalanceClient {
             let data = try await post(body)
             let root = try NearJSON.object(data)
             let result = try NearJSON.requiredObject(root["result"], "result")
-            let bytes = try NearJSON.requiredArray(result["result"], "result.result")
+            // NEAR embeds contract failures inside `result.error` (HTTP 200)
+            // with no `result.result` byte array — e.g. CodeDoesNotExist for a
+            // dead mint id, or account not registered on the FT contract.
+            if let execError = result["error"] as? String, !execError.isEmpty {
+                if NearRPCError.isSoftFTFailure(execError) {
+                    return NearTokenBalance(
+                        tokenAccount: token.tokenAccount,
+                        symbol: token.symbol,
+                        decimals: token.decimals,
+                        rawBalance: "0"
+                    )
+                }
+                throw NearRPCError.rpc(code: -32000, message: execError)
+            }
+            guard let bytes = result["result"] as? [Any] else {
+                // No byte payload and no error string — treat as zero rather
+                // than crash the probe with "missing result.result".
+                return NearTokenBalance(
+                    tokenAccount: token.tokenAccount,
+                    symbol: token.symbol,
+                    decimals: token.decimals,
+                    rawBalance: "0"
+                )
+            }
             let resultData = Data(bytes.compactMap { NearJSON.int64($0).map(UInt8.init(truncatingIfNeeded:)) })
             let jsonString = String(data: resultData, encoding: .utf8) ?? "0"
             let decoded = (try? JSONDecoder().decode(String.self, from: Data(jsonString.utf8)))
@@ -309,7 +342,7 @@ private actor NearRPCBalanceClient {
                 decimals: token.decimals,
                 rawBalance: DecimalString.digitsOnly(decoded)
             )
-        } catch let error as NearRPCError where error.isUnknownAccount {
+        } catch let error as NearRPCError where error.isUnknownAccount || error.isSoftFTFailure {
             return NearTokenBalance(
                 tokenAccount: token.tokenAccount,
                 symbol: token.symbol,
@@ -551,13 +584,39 @@ private enum NearRPCError: Error, CustomStringConvertible {
     var isUnknownAccount: Bool {
         switch self {
         case .rpc(_, let message):
-            let lower = message.lowercased()
-            return lower.contains("does not exist")
-                || lower.contains("unknown account")
-                || lower.contains("account not found")
+            return Self.isSoftFTFailure(message)
+        case .missing:
+            // Missing `result.result` usually means the contract returned an
+            // empty/error payload we already handle — treat as soft.
+            return true
         default:
             return false
         }
+    }
+
+    /// Contract / account states that are normal for a zero balance, not
+    /// transport failures (wrong mint id, no storage registration, etc.).
+    var isSoftFTFailure: Bool {
+        switch self {
+        case .rpc(_, let message):
+            return Self.isSoftFTFailure(message)
+        case .missing:
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func isSoftFTFailure(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("does not exist")
+            || lower.contains("unknown account")
+            || lower.contains("account not found")
+            || lower.contains("codedoesnotexist")
+            || lower.contains("code does not exist")
+            || lower.contains("compilationerror")
+            || (lower.contains("the account") && lower.contains("is not registered"))
+            || lower.contains("total_prepaid_gas")
     }
 
     var description: String {

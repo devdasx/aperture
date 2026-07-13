@@ -13,6 +13,12 @@ final class SettingsStore {
         AppPreferenceStore.shared.configure(database: database)
     }
 
+    /// Re-bind after a wipe without re-seeding preferences (avoids nested GRDB writes).
+    func rebind(database: AppDatabase) {
+        self.database = database
+        AppPreferenceStore.shared.bindDatabase(database)
+    }
+
     func synchronizePreferences() {
         guard let database else {
             AppPreferenceStore.shared.configure(database: .shared)

@@ -62,9 +62,15 @@ enum ScreenRestoration {
     /// after a wallet is actually created/imported/restored so the user
     /// always lands on the Wallet home, no matter which tab or pushed
     /// Settings screen opened the flow.
+    ///
+    /// Also bumps `settingsStackResetToken` so a live `SettingsView` that
+    /// still has Security (or another auth-gated push) on its in-memory
+    /// path cannot reappear without a fresh passcode challenge after
+    /// the user leaves Settings / finishes create-wallet.
     static func routeToMainScreenNow() {
         resetToMainScreen()
         TabReselectSignal.shared.walletReselectToken &+= 1
+        TabReselectSignal.shared.settingsStackResetToken &+= 1
     }
 
     // MARK: - Path mirroring (called from `.onChange(of: navigationPath)`)

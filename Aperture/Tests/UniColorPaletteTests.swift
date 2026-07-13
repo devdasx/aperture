@@ -7,7 +7,7 @@ import UIKit
 struct UniColorPaletteTests {
     @Test("Handoff publishes every semantic color")
     func completeTokenCount() {
-        #expect(UniColorPalette.tokenCount == 355)
+        #expect(UniColorPalette.tokenCount == 381)
     }
 
     @Test("Core elevation ladder matches the handoff")
@@ -32,20 +32,27 @@ struct UniColorPaletteTests {
     @MainActor
     func dynamicAppearanceTrait() {
         let color = UniColorPalette.uiColor("UniColors.Page.background")
+        let previous = ApertureAppearanceResolution.current
+        defer { ApertureAppearanceResolution.current = previous }
 
-        let midnight = UITraitCollection(traitsFrom: [
-            UITraitCollection(userInterfaceStyle: .dark),
-            UITraitCollection(ApertureAppearanceTrait.self, value: .midnight)
-        ])
-        let dark = UITraitCollection(traitsFrom: [
-            UITraitCollection(userInterfaceStyle: .dark),
-            UITraitCollection(ApertureAppearanceTrait.self, value: .dark)
-        ])
         let systemDark = UITraitCollection(userInterfaceStyle: .dark)
+        let systemLight = UITraitCollection(userInterfaceStyle: .light)
 
-        #expect(rgba(color.resolvedColor(with: midnight)) == 0x191A1EFF)
-        #expect(rgba(color.resolvedColor(with: dark)) == 0x000000FF)
+        // System preference: light → Cloud, dark → Midnight.
+        ApertureAppearanceResolution.current = .system
         #expect(rgba(color.resolvedColor(with: systemDark)) == 0x191A1EFF)
+        #expect(rgba(color.resolvedColor(with: systemLight)) == 0xF5F5F7FF)
+
+        // Explicit Cloud / Midnight / Dark via the app-published preference
+        // (the path `.apertureEnvironment()` drives at runtime). This is the
+        // authoritative discriminator when both Midnight and Dark force
+        // system dark interface style.
+        ApertureAppearanceResolution.current = .cloud
+        #expect(rgba(color.resolvedColor(with: systemDark)) == 0xF5F5F7FF)
+        ApertureAppearanceResolution.current = .midnight
+        #expect(rgba(color.resolvedColor(with: systemDark)) == 0x191A1EFF)
+        ApertureAppearanceResolution.current = .dark
+        #expect(rgba(color.resolvedColor(with: systemDark)) == 0x000000FF)
     }
 
     @MainActor

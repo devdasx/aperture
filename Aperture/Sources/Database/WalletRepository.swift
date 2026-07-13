@@ -20,6 +20,9 @@ final class WalletRepository {
         }
     }
 
+    /// Every persisted address for the wallet (all chains). Preferred rows
+    /// sort first within each chain — multi-path BTC / dual Solana return
+    /// **all** path rows, not just preferred (P1 #10).
     func addresses(walletId: UUID) throws -> [AddressSnapshot] {
         try database.read { db in
             try Row.fetchAll(
@@ -41,7 +44,34 @@ final class WalletRepository {
         }
     }
 
+    /// Every address on a single chain (receive/change, Phantom/Trust, …).
+    func addresses(walletId: UUID, chain: SupportedChain) throws -> [AddressSnapshot] {
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, chain_raw, address
+                FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ?
+                ORDER BY is_receive_preferred DESC, address ASC
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            ).compactMap { row in
+                guard let id = UUID(uuidString: row["id"]) else { return nil }
+                return AddressSnapshot(id: id, chain: chain, address: row["address"])
+            }
+        }
+    }
+
+    /// Preferred send/receive address for the chain (`is_receive_preferred`).
+    /// Same as the stamp on `chain_states.address` after rebuild — not the
+    /// full multi-path set.
     func address(walletId: UUID, chain: SupportedChain) throws -> AddressSnapshot? {
+        try preferredAddress(walletId: walletId, chain: chain)
+    }
+
+    /// Preferred send/receive address for the chain.
+    func preferredAddress(walletId: UUID, chain: SupportedChain) throws -> AddressSnapshot? {
         try database.read { db in
             guard let row = try Row.fetchOne(
                 db,
@@ -213,14 +243,62 @@ final class WalletRepository {
         }
     }
 
-    func deleteWalletAndActivateNext(walletId: UUID) async throws -> UUID? {
+    /// Result of removing one wallet from Settings.
+    enum RemoveWalletResult: Sendable, Equatable {
+        /// Another wallet became active (priority: balance → used → random).
+        case activatedNext(UUID)
+        /// This was the last wallet — full factory wipe ran; app is empty.
+        case appWiped
+    }
+
+    /// Delete `walletId`, then choose the next active wallet:
+    /// 1. Highest portfolio fiat among remaining wallets
+    /// 2. Else any “used” wallet (address `is_used` or on-chain history)
+    /// 3. Else a random remaining wallet (prefer non-hidden)
+    /// 4. If none remain → `FactoryReset.performFullWipe` (empty app / onboarding)
+    @discardableResult
+    func removeWalletSelectingSuccessor(walletId: UUID) async throws -> RemoveWalletResult {
+        let remainingCount = try database.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM wallets WHERE id != ?",
+                arguments: [walletId.uuidString]
+            ) ?? 0
+        }
+
+        if remainingCount == 0 {
+            // Last wallet — wipe everything so RootGate returns to onboarding.
+            try await FactoryReset.performFullWipe(database: database)
+            return .appWiped
+        }
+
         let next = try database.write { db -> UUID? in
+            // Priority: non-hidden first, then balance → used → random.
             let nextRaw = try String.fetchOne(
                 db,
                 sql: """
-                SELECT id FROM wallets
-                WHERE id != ? AND is_hidden = 0
-                ORDER BY sort_order ASC, created_at_ms ASC
+                SELECT w.id
+                FROM wallets w
+                WHERE w.id != ?
+                ORDER BY
+                    CASE WHEN w.is_hidden = 0 THEN 0 ELSE 1 END ASC,
+                    COALESCE((
+                        SELECT MAX(p.total_fiat_numeric)
+                        FROM wallet_portfolio_summaries p
+                        WHERE p.wallet_id = w.id
+                    ), 0) DESC,
+                    COALESCE((
+                        SELECT MAX(a.is_used)
+                        FROM wallet_addresses a
+                        WHERE a.wallet_id = w.id
+                    ), 0) DESC,
+                    COALESCE((
+                        SELECT COUNT(*)
+                        FROM transactions t
+                        INNER JOIN wallet_addresses a2 ON a2.id = t.address_id
+                        WHERE a2.wallet_id = w.id
+                    ), 0) DESC,
+                    RANDOM()
                 LIMIT 1
                 """,
                 arguments: [walletId.uuidString]
@@ -230,8 +308,26 @@ final class WalletRepository {
             try db.execute(sql: "DELETE FROM wallets WHERE id = ?", arguments: [walletId.uuidString])
             return nextId
         }
-        ActiveWalletPointer.set(next)
-        return next
+
+        if let next {
+            ActiveWalletPointer.set(next)
+            return .activatedNext(next)
+        }
+
+        // Defensive: count said others exist but selection failed — wipe closed.
+        try await FactoryReset.performFullWipe(database: database)
+        return .appWiped
+    }
+
+    /// Compatibility wrapper — returns the activated next id, or `nil` if the app was wiped.
+    @discardableResult
+    func deleteWalletAndActivateNext(walletId: UUID) async throws -> UUID? {
+        switch try await removeWalletSelectingSuccessor(walletId: walletId) {
+        case .activatedNext(let id):
+            return id
+        case .appWiped:
+            return nil
+        }
     }
 
     func markBackupComplete(id: UUID) throws {
@@ -289,17 +385,30 @@ final class WalletRepository {
         var chainAddresses: [SupportedChain: String]
     }
 
+    /// Key-seal backfill uses **preferred** `wallet_addresses` rows — never
+    /// treat `chain_states.address` as the only path (P1 #10). Sealed keys
+    /// match the preferred path; multi-path spend re-derives via mnemonic.
     private func encryptedChainKeyBackfillCandidates() throws -> [ChainKeyBackfillCandidate] {
         try database.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT w.id, w.kind_raw, w.has_passphrase, cs.chain_raw, cs.address
+                SELECT w.id, w.kind_raw, w.has_passphrase, a.chain_raw, a.address
                 FROM wallets w
-                JOIN chain_states cs ON cs.wallet_id = w.id
+                JOIN chain_states cs
+                  ON cs.wallet_id = w.id
+                JOIN wallet_addresses a
+                  ON a.wallet_id = w.id
+                 AND a.chain_raw = cs.chain_raw
                 WHERE cs.encrypted_private_key IS NULL
                   AND w.kind_raw != ?
-                ORDER BY w.id, cs.chain_raw
+                  AND a.id = (
+                    SELECT a2.id FROM wallet_addresses a2
+                    WHERE a2.wallet_id = w.id AND a2.chain_raw = cs.chain_raw
+                    ORDER BY a2.is_receive_preferred DESC, a2.address ASC
+                    LIMIT 1
+                  )
+                ORDER BY w.id, a.chain_raw
                 """,
                 arguments: [WalletKind.watchOnly.rawValue]
             )
@@ -317,8 +426,9 @@ final class WalletRepository {
                     hasPassphrase: (row["has_passphrase"] as Int) != 0,
                     chainAddresses: [:]
                 )
+                // One preferred address per chain (first wins if query returns dups).
                 let address: String = row["address"]
-                if !address.isEmpty {
+                if !address.isEmpty, candidate.chainAddresses[chain] == nil {
                     candidate.chainAddresses[chain] = address
                 }
                 grouped[walletID] = candidate
@@ -424,6 +534,15 @@ enum ActiveWalletPointer {
             try mirrorSelection(UUID(uuidString: canonicalRaw), db: db)
         }
         AppPreferenceStore.shared.set(canonicalRaw, forKey: storageKey)
+    }
+
+    /// After a wipe that already called `mirrorSelection` inside a transaction:
+    /// refresh the static DB pointer and notify preference observers without
+    /// opening another write (nested writes reenter GRDB fatally).
+    static func publishMirroredSelection(database: AppDatabase) {
+        self.database = database
+        AppPreferenceStore.shared.bindDatabase(database)
+        AppPreferenceStore.shared.publishChange(forKey: storageKey)
     }
 
     static func mirrorSelection(_ walletID: UUID?, db: Database) throws {

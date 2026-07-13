@@ -75,7 +75,7 @@ actor SuiBalanceHistoryScanner {
         if !events.isEmpty {
             isUsed = true
         }
-        for event in events.prefix(50) {
+        for event in events.prefix(HistoryScanLimits.perAddress) {
             try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
@@ -180,8 +180,8 @@ actor SuiBalanceHistoryClient {
         address: String,
         supportedTokens: [SuiTokenRegistry.Entry]
     ) async throws -> [SuiHistoryEvent] {
-        async let fromTask = transactionBlocks(filterName: "FromAddress", address: address, limit: 50)
-        async let toTask = transactionBlocks(filterName: "ToAddress", address: address, limit: 50)
+        async let fromTask = transactionBlocks(filterName: "FromAddress", address: address, limit: HistoryScanLimits.perAddress)
+        async let toTask = transactionBlocks(filterName: "ToAddress", address: address, limit: HistoryScanLimits.perAddress)
         let pages = try await fromTask + toTask
 
         let supported = SuiSupportIndex(tokens: supportedTokens)

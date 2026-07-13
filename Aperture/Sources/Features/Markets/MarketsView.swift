@@ -190,7 +190,18 @@ struct MarketAsset: Identifiable, Hashable, Sendable {
     let source: String
     let lastUpdatedAt: Date
 
-    var isPositive: Bool { priceChange24hPercent >= 0 }
+    /// `true` when the 24h move is up (not flat, not down). Charts that only
+    /// support a binary up/down tone treat flat as up so they never paint red
+    /// for a 0.00% print.
+    var isPositive: Bool {
+        !MarketFormatting.isDisplayFlatPercent(priceChange24hPercent)
+            && priceChange24hPercent > 0
+    }
+
+    /// Ink for % labels / sparklines: green up, neutral flat, red down.
+    var changeDisplayColor: Color {
+        MarketFormatting.changeColor(for: priceChange24hPercent)
+    }
 
     func replacing(
         about: String? = nil,
@@ -275,6 +286,14 @@ enum MarketsSegment: String, CaseIterable, Identifiable {
     case watchlist = "Watchlist"
 
     var id: String { rawValue }
+
+    /// In-app locale title (catalog key = `rawValue`).
+    var localizedTitle: String {
+        String.apertureLocalizedKey(rawValue)
+    }
+
+    /// Prefer SwiftUI `LocalizedStringKey` + environment locale for Pickers.
+    var titleKey: LocalizedStringKey { LocalizedStringKey(rawValue) }
 }
 
 enum MarketChartRange: String, CaseIterable, Identifiable {
@@ -285,6 +304,13 @@ enum MarketChartRange: String, CaseIterable, Identifiable {
     case oneYear = "1Y"
 
     var id: String { rawValue }
+
+    /// Segment label via catalog (`1H`, `1D`, …).
+    var localizedTitle: String {
+        String.apertureLocalizedKey(rawValue)
+    }
+
+    var titleKey: LocalizedStringKey { LocalizedStringKey(rawValue) }
 
     /// P2-018: human label for the range delta subtitle (not always "today").
     var deltaLabel: String {
@@ -508,7 +534,7 @@ final class MarketsViewModel: ObservableObject {
         do {
             let fresh = try await service.fetchMarkets(currencyCode: target)
             guard activeCurrencyCode == target else { return }
-            try upsert(fresh)
+            try await upsert(fresh)
             assets = fresh.sorted { lhs, rhs in lhs.rank < rhs.rank }
             watchlist = fetchWatchlist()
             errorMessage = nil
@@ -517,9 +543,9 @@ final class MarketsViewModel: ObservableObject {
             loadCached()
             await repriceCurrentAssets(to: target)
             if assets.isEmpty {
-                errorMessage = "Market data is unavailable. Pull to refresh when the network is back."
+                errorMessage = String.apertureLocalized("Market data is unavailable. Pull to refresh when the network is back.")
             } else {
-                errorMessage = "Using saved market data. Pull to refresh for live prices."
+                errorMessage = String.apertureLocalized("Using saved market data. Pull to refresh for live prices.")
             }
         }
         if activeCurrencyCode == target {
@@ -533,22 +559,47 @@ final class MarketsViewModel: ObservableObject {
 
     func toggleWatchlist(symbol: String) {
         let normalized = symbol.uppercased()
-        if watchlist.contains(normalized) {
-            try? database.write { db in
-                try db.execute(sql: "DELETE FROM market_watchlist WHERE symbol = ?", arguments: [normalized])
-            }
+        let removing = watchlist.contains(normalized)
+        // Optimistic UI — GRDB write runs off the main actor so star taps
+        // never hitch scroll (stability audit P2 #6).
+        if removing {
             watchlist.remove(normalized)
         } else {
-            try? database.write { db in
-                try db.execute(
-                    sql: """
-                    INSERT OR IGNORE INTO market_watchlist (symbol, added_at_ms)
-                    VALUES (?, ?)
-                    """,
-                    arguments: [normalized, Date.databaseMilliseconds]
-                )
-            }
             watchlist.insert(normalized)
+        }
+        let db = database
+        let addedAt = Date.databaseMilliseconds
+        Task { @MainActor in
+            let ok = await Task.detached(priority: .utility) {
+                do {
+                    try db.write { conn in
+                        if removing {
+                            try conn.execute(
+                                sql: "DELETE FROM market_watchlist WHERE symbol = ?",
+                                arguments: [normalized]
+                            )
+                        } else {
+                            try conn.execute(
+                                sql: """
+                                INSERT OR IGNORE INTO market_watchlist (symbol, added_at_ms)
+                                VALUES (?, ?)
+                                """,
+                                arguments: [normalized, addedAt]
+                            )
+                        }
+                    }
+                    return true
+                } catch {
+                    return false
+                }
+            }.value
+            if !ok {
+                if removing {
+                    watchlist.insert(normalized)
+                } else {
+                    watchlist.remove(normalized)
+                }
+            }
         }
     }
 
@@ -597,13 +648,13 @@ final class MarketsViewModel: ObservableObject {
 
         let converted = points.converted(rate: conversion.rate)
         let source = "Saved chart data · \(conversion.source)"
-        upsertChart(symbol: normalizedSymbol, range: range, currencyCode: target, samples: converted, source: source)
+        await upsertChart(symbol: normalizedSymbol, range: range, currencyCode: target, samples: converted, source: source)
         return MarketChartResponse(points: converted, currencyCode: target, source: source)
     }
 
     func refreshChart(symbol: String, range: MarketChartRange, currencyCode: String) async throws -> MarketChartResponse {
         let response = try await service.fetchChart(symbol: symbol, range: range, currencyCode: normalizedCurrencyCode(currencyCode))
-        upsertChart(symbol: symbol, range: range, currencyCode: response.currencyCode, samples: response.points, source: response.source)
+        await upsertChart(symbol: symbol, range: range, currencyCode: response.currencyCode, samples: response.points, source: response.source)
         return response
     }
 
@@ -622,7 +673,7 @@ final class MarketsViewModel: ObservableObject {
             rate: conversion.rate,
             source: "Saved market data · \(conversion.source)"
         )
-        try? upsert([converted])
+        try? await upsert([converted])
         if let index = assets.firstIndex(where: { $0.symbol == converted.symbol }) {
             assets[index] = converted
             assets.sort { lhs, rhs in lhs.rank < rhs.rank }
@@ -645,7 +696,7 @@ final class MarketsViewModel: ObservableObject {
             high24h: detail.high24h > 0 ? detail.high24h : nil,
             low24h: detail.low24h > 0 ? detail.low24h : nil
         )
-        try? upsert([updated])
+        try? await upsert([updated])
         return updated
     }
 
@@ -655,40 +706,50 @@ final class MarketsViewModel: ObservableObject {
         currencyCode: String,
         samples: [MarketPoint],
         source: String
-    ) {
+    ) async {
         let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: currencyCode)
         let normalizedSymbol = symbol.uppercased()
         let normalizedCurrency = currencyCode.uppercased()
-        try? database.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO market_chart_cache
-                (cache_key, symbol, range_raw, currency_code, samples_json, source, updated_at_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(cache_key) DO UPDATE SET
-                    samples_json = excluded.samples_json,
-                    source = excluded.source,
-                    updated_at_ms = excluded.updated_at_ms
-                """,
-                arguments: [
-                    key,
-                    normalizedSymbol,
-                    range.rawValue,
-                    normalizedCurrency,
-                    MarketPoint.codec.encode(samples),
-                    source,
-                    Date.databaseMilliseconds
-                ]
-            )
-        }
+        let samplesJSON = MarketPoint.codec.encode(samples)
+        let rangeRaw = range.rawValue
+        let updatedAt = Date.databaseMilliseconds
+        let db = database
+        await Task.detached(priority: .utility) {
+            try? db.write { conn in
+                try conn.execute(
+                    sql: """
+                    INSERT INTO market_chart_cache
+                    (cache_key, symbol, range_raw, currency_code, samples_json, source, updated_at_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(cache_key) DO UPDATE SET
+                        samples_json = excluded.samples_json,
+                        source = excluded.source,
+                        updated_at_ms = excluded.updated_at_ms
+                    """,
+                    arguments: [
+                        key,
+                        normalizedSymbol,
+                        rangeRaw,
+                        normalizedCurrency,
+                        samplesJSON,
+                        source,
+                        updatedAt
+                    ]
+                )
+            }
+        }.value
     }
 
-    private func upsert(_ assets: [MarketAsset]) throws {
-        try database.write { db in
-        for asset in assets {
-                try upsertMarketAsset(asset, db: db)
+    private func upsert(_ assets: [MarketAsset]) async throws {
+        let snapshot = assets
+        let db = database
+        try await Task.detached(priority: .utility) {
+            try db.write { conn in
+                for asset in snapshot {
+                    try Self.upsertMarketAsset(asset, db: conn)
+                }
             }
-        }
+        }.value
     }
 
     private func repriceCurrentAssets(to target: String) async {
@@ -724,7 +785,7 @@ final class MarketsViewModel: ObservableObject {
         }
         guard didConvert else { return }
 
-        try? upsert(converted)
+        try? await upsert(converted)
         assets = converted.sorted { lhs, rhs in lhs.rank < rhs.rank }
         watchlist = fetchWatchlist()
     }
@@ -763,7 +824,7 @@ final class MarketsViewModel: ObservableObject {
         )
     }
 
-    private func upsertMarketAsset(_ asset: MarketAsset, db: Database) throws {
+    nonisolated private static func upsertMarketAsset(_ asset: MarketAsset, db: Database) throws {
         try db.execute(
             sql: """
             INSERT INTO market_assets
@@ -850,7 +911,7 @@ struct MarketsView: View {
             Section {
                 Picker("Market list", selection: $segment) {
                     ForEach(MarketsSegment.allCases) { item in
-                        Text(item.rawValue).tag(item)
+                        Text(item.titleKey).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -889,19 +950,17 @@ struct MarketsView: View {
                             .tint(.yellow)
                         }
                     }
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .uniListPageChrome()
         .listSectionSpacing(.compact)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
         .navigationTitle("Markets")
         .searchable(
             text: $searchText,
             placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search coins or tokens"
+            prompt: Text(verbatim: String.apertureLocalized("Search coins or tokens"))
         )
         .navigationDestination(for: MarketAsset.self) { asset in
             MarketDetailView(asset: asset, model: model)
@@ -1020,7 +1079,23 @@ struct MarketDetailView: View {
         return ((point.price - first) / first) * 100
     }
 
-    private var displayedIsPositive: Bool { displayedChangePercent >= 0 }
+    private var displayedIsPositive: Bool {
+        !MarketFormatting.isDisplayFlatPercent(displayedChangePercent)
+            && displayedChangePercent > 0
+    }
+
+    private var displayedChangeColor: Color {
+        MarketFormatting.changeColor(for: displayedChangePercent)
+    }
+
+    private var displayedChangeAmountLabel: String {
+        let code = priceCurrencyCode
+        if MarketFormatting.isDisplayFlatPercent(displayedChangePercent) {
+            return "\(MarketFormatting.currency(0, code: code)) \(range.deltaLabel)"
+        }
+        let prefix = displayedChangePercent > 0 ? "+" : ""
+        return "\(prefix)\(MarketFormatting.currency(displayedChangeAmount, code: code)) \(range.deltaLabel)"
+    }
 
     var body: some View {
         ScrollView {
@@ -1103,13 +1178,13 @@ struct MarketDetailView: View {
             HStack(spacing: 10) {
                 Text(MarketFormatting.percent(displayedChangePercent))
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(displayedIsPositive ? UniColors.Text.success : UniColors.Text.error)
+                    .foregroundStyle(displayedChangeColor)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background((displayedIsPositive ? UniColors.Text.success : UniColors.Text.error).opacity(0.12), in: Capsule())
+                    .background(displayedChangeColor.opacity(0.12), in: Capsule())
 
                 // P2-018: range-accurate delta label (not "today" for all ranges).
-                Text("\(displayedIsPositive ? "+" : "")\(MarketFormatting.currency(displayedChangeAmount, code: priceCurrencyCode)) \(range.deltaLabel)")
+                Text(displayedChangeAmountLabel)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(UniColors.Text.secondary)
             }
@@ -1119,7 +1194,7 @@ struct MarketDetailView: View {
 
     private var chartBlock: some View {
         VStack(alignment: .leading, spacing: 16) {
-            MarketAreaChart(points: chartPointsForDisplay, isPositive: displayedIsPositive, selectedPoint: $scrubbedPoint)
+            MarketAreaChart(points: chartPointsForDisplay, color: displayedChangeColor, selectedPoint: $scrubbedPoint)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1.55, contentMode: .fit)
                 .frame(minHeight: 220, maxHeight: 320)
@@ -1150,7 +1225,7 @@ struct MarketDetailView: View {
 
             Picker("Chart range", selection: $range) {
                 ForEach(MarketChartRange.allCases) { item in
-                    Text(item.rawValue).tag(item)
+                    Text(item.titleKey).tag(item)
                 }
             }
             .pickerStyle(.segmented)
@@ -1159,28 +1234,43 @@ struct MarketDetailView: View {
 
     private var statsBlock: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            MarketStatTile(title: "Market cap", value: MarketFormatting.compactCurrency(asset.marketCap, code: priceCurrencyCode))
-            MarketStatTile(title: "24h volume", value: MarketFormatting.compactCurrency(asset.volume24h, code: priceCurrencyCode))
-            MarketStatTile(title: "Circulating", value: MarketFormatting.compactNumber(asset.circulatingSupply, suffix: asset.symbol))
-            MarketStatTile(title: "ATH", value: MarketFormatting.currency(asset.ath, code: priceCurrencyCode))
-            MarketStatTile(title: "24h high", value: MarketFormatting.currency(asset.high24h, code: priceCurrencyCode))
-            MarketStatTile(title: "24h low", value: MarketFormatting.currency(asset.low24h, code: priceCurrencyCode))
+            MarketStatTile(title: String.apertureLocalized("Market cap"), value: MarketFormatting.compactCurrency(asset.marketCap, code: priceCurrencyCode))
+            MarketStatTile(title: String.apertureLocalized("24h volume"), value: MarketFormatting.compactCurrency(asset.volume24h, code: priceCurrencyCode))
+            MarketStatTile(title: String.apertureLocalized("Circulating"), value: MarketFormatting.compactNumber(asset.circulatingSupply, suffix: asset.symbol))
+            MarketStatTile(title: String.apertureLocalized("ATH"), value: MarketFormatting.currency(asset.ath, code: priceCurrencyCode))
+            MarketStatTile(title: String.apertureLocalized("24h high"), value: MarketFormatting.currency(asset.high24h, code: priceCurrencyCode))
+            MarketStatTile(title: String.apertureLocalized("24h low"), value: MarketFormatting.currency(asset.low24h, code: priceCurrencyCode))
         }
     }
 
     private var aboutBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("About \(asset.name)")
+            Text(verbatim: String(format: String.apertureLocalized("About %@"), asset.name))
                 .font(.headline)
-            Text(asset.about.isEmpty ? (MarketDescriptor.descriptor(for: asset.symbol)?.fallbackAbout ?? "") : asset.about)
+            Text(verbatim: aboutBodyText)
                 .font(.body)
                 .foregroundStyle(UniColors.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    /// Prefer live API `about`; fall back to a catalog-keyed descriptor so
+    /// offline / empty-about still localizes.
+    private var aboutBodyText: String {
+        let live = asset.about.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !live.isEmpty { return live }
+        guard let fallback = MarketDescriptor.descriptor(for: asset.symbol)?.fallbackAbout,
+              !fallback.isEmpty else {
+            return ""
+        }
+        return String.apertureLocalizedKey(fallback)
+    }
+
     private var detailFooter: some View {
-        UniButton(verbatim: "Send \(asset.symbol)", variant: .primary) {
+        UniButton(
+            verbatim: String(format: String.apertureLocalized("Send %@"), asset.symbol),
+            variant: .primary
+        ) {
             isShowingSend = true
         }
         .padding(.horizontal, 20)
@@ -1249,7 +1339,7 @@ private struct MarketAssetRow: View {
                 .frame(minWidth: 82, idealWidth: 136, maxWidth: 178, alignment: .leading)
                 .layoutPriority(2)
 
-            MarketSparkline(points: asset.sparkline, isPositive: asset.isPositive)
+            MarketSparkline(points: asset.sparkline, color: asset.changeDisplayColor)
                 .frame(minWidth: 56, idealWidth: 96, maxWidth: .infinity, minHeight: 30, idealHeight: 34, maxHeight: 40, alignment: .center)
                 .layoutPriority(1)
 
@@ -1290,7 +1380,7 @@ private struct MarketAssetRow: View {
             Text(MarketFormatting.percent(asset.priceChange24hPercent))
                 .font(.caption)
                 .monospacedDigit()
-                .foregroundStyle(asset.isPositive ? UniColors.Text.success : UniColors.Text.error)
+                .foregroundStyle(asset.changeDisplayColor)
                 .lineLimit(1)
         }
     }
@@ -1329,7 +1419,7 @@ private struct MarketCoinIcon: View {
 
 private struct MarketSparkline: View {
     let points: [MarketPoint]
-    let isPositive: Bool
+    let color: Color
 
     var body: some View {
         Chart {
@@ -1340,7 +1430,7 @@ private struct MarketSparkline: View {
                 )
                 .interpolationMethod(.linear)
                 .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                .foregroundStyle(isPositive ? UniColors.Text.success : UniColors.Text.error)
+                .foregroundStyle(color)
             }
         }
         .chartXScale(domain: 0...1)
@@ -1362,7 +1452,7 @@ private struct MarketSparkline: View {
 
 private struct MarketAreaChart: View {
     let points: [MarketPoint]
-    let isPositive: Bool
+    let color: Color
     @Binding var selectedPoint: MarketPoint?
     @State private var selectedIndex: Int = -1
 
@@ -1378,8 +1468,8 @@ private struct MarketAreaChart: View {
                 .foregroundStyle(
                     .linearGradient(
                         colors: [
-                            chartColor.opacity(0.20),
-                            chartColor.opacity(0.02)
+                            color.opacity(0.20),
+                            color.opacity(0.02)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -1392,7 +1482,7 @@ private struct MarketAreaChart: View {
                 )
                 .interpolationMethod(.linear)
                 .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                .foregroundStyle(chartColor)
+                .foregroundStyle(color)
             }
 
             if let selected = selectedMarketPoint {
@@ -1404,7 +1494,7 @@ private struct MarketAreaChart: View {
                     y: .value("Selected price", selected.y)
                 )
                 .symbolSize(72)
-                .foregroundStyle(chartColor)
+                .foregroundStyle(color)
             }
         }
         .chartXScale(domain: 0...1)
@@ -1441,10 +1531,6 @@ private struct MarketAreaChart: View {
             }
         }
         .uniHaptic(.selection, trigger: selectedIndex)
-    }
-
-    private var chartColor: Color {
-        isPositive ? UniColors.Text.success : UniColors.Text.error
     }
 
     private var chartSamples: [MarketChartSample] {
@@ -1567,10 +1653,12 @@ private struct MarketStatTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            // Pre-resolved via `String.apertureLocalized` — use verbatim so
+            // SwiftUI does not re-lookup the already-translated string as a key.
+            Text(verbatim: title)
                 .font(.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
-            Text(value)
+            Text(verbatim: value)
                 .font(.system(size: 16, weight: .semibold, design: .default))
                 .monospacedDigit()
                 .foregroundStyle(UniColors.Text.primary)
@@ -1587,13 +1675,20 @@ private struct MarketStatTile: View {
 
 private enum MarketFormatting {
     static func currency(_ value: Double, code: String) -> String {
-        if value == 0 { return Decimal(0).formatted(.currency(code: code).precision(.fractionLength(2))) }
+        // WalletFormatting applies narrow symbols (US$ → $) everywhere.
+        if value == 0 {
+            return WalletFormatting.fiat(Decimal(0), currencyCode: code, fractionLength: 2...2)
+        }
         let absolute = abs(value)
         let decimals: Int
         if absolute >= 100 { decimals = 2 }
         else if absolute >= 1 { decimals = 3 }
         else { decimals = 6 }
-        return Decimal(value).formatted(.currency(code: code).precision(.fractionLength(0...decimals)))
+        return WalletFormatting.fiat(
+            Decimal(value),
+            currencyCode: code,
+            fractionLength: 0...decimals
+        )
     }
 
     static func compactCurrency(_ value: Double, code: String) -> String {
@@ -1609,8 +1704,25 @@ private enum MarketFormatting {
         return "\(number)\(compact.suffix) \(suffix)"
     }
 
+    /// Values that print as **0.00%** at two decimal places (BUG-006).
+    static func isDisplayFlatPercent(_ value: Double) -> Bool {
+        (value * 100).rounded() == 0
+    }
+
+    /// Green / neutral / red matching `percent(_:)` display rounding.
+    static func changeColor(for percent: Double) -> Color {
+        if isDisplayFlatPercent(percent) {
+            return UniColors.Text.secondary
+        }
+        return percent > 0 ? UniColors.Text.success : UniColors.Text.error
+    }
+
     static func percent(_ value: Double) -> String {
-        let sign = value >= 0 ? "+" : ""
+        // Never show "−0.00%" for a flat move — print an unsigned zero.
+        if isDisplayFlatPercent(value) {
+            return "0.00%"
+        }
+        let sign = value > 0 ? "+" : ""
         return "\(sign)\(value.formatted(.number.precision(.fractionLength(2))))%"
     }
 

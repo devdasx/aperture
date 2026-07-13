@@ -175,20 +175,18 @@ struct ActivityRow: View {
             // surface so it reads as a cutout in the mark, not a
             // floating chip. Total footprint = 18 + 2*2 = 22pt.
             //
-            // Halo color is `Background.secondary` because the row
-            // now lives inside `List(.insetGrouped)`, whose row chrome
-            // is the secondary-grouped-background tone. The badge
-            // reads as cut out of the white inset card; if the halo
-            // were `Background.primary` (the page color), the user
-            // would see a thin gray ring around the badge.
+            // Halo matches the list card fill (`List.rowBackground` /
+            // `Card.background` — same Midnight token `#212229`) so the
+            // badge reads as cut out of the inset card, not ringed
+            // against the page color or a system-dark default.
             Circle()
-                .fill(UniColors.Background.secondary)
+                .fill(UniColors.List.rowBackground)
                 .frame(width: 22, height: 22)
             Circle()
-                .fill(UniColors.Card.background)
+                .fill(UniColors.List.rowBackground)
                 .frame(width: 18, height: 18)
             Image(systemName: badgeGlyph)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(badgeForeground)
         }
     }
@@ -339,28 +337,80 @@ enum ActivityFiat {
     /// Hide any transaction worth **less than $0.20 USD** on every activity
     /// surface (home recent, full activity, asset activity). **Always USD**,
     /// never the display currency: when the user picks JOD/EUR/etc., we still
-    /// price the leg in USD (`usdPriceMap` → `TokenPricingEngine` USD quotes,
-    /// which themselves use USD×FX under the hood) so the gate is identical
-    /// worldwide. Displayed fiat amounts keep using the active-currency map.
+    /// price the leg in USD so the gate is identical worldwide. Displayed
+    /// fiat amounts keep using the active-currency map (USD×FX from
+    /// `TokenPricingEngine`).
     static let usdDustThreshold = Decimal(string: "0.20")!
 
-    /// `true` when a leg is KNOWN to be worth less than $0.20 USD. The USD
-    /// value comes from `usdMap` (USD unit prices — see `usdPriceMap`). When
-    /// the USD price is unknown the leg is NOT dust: we never hide what we
-    /// cannot measure in dollars (honesty over a guessed hide).
+    /// `true` when the leg must not appear in activity.
+    ///
+    /// - **No USD price yet** → dust (hide). Prevents sub-$0.20 spam from
+    ///   flashing before prices load, then vanishing (P1 #11).
+    /// - **USD value known and < $0.20** → dust (hide). Never shown.
+    /// - **USD value ≥ $0.20** → keep.
+    ///
+    /// Seed `usdMap` with `usdPriceMapFromCache` on first frame, then refresh
+    /// via `usdPriceMap` so prices are almost always present immediately.
     static func isDust(amountRaw: String, symbol: String, usdMap: [String: Decimal]) -> Bool {
-        guard let usd = value(amountRaw: amountRaw, symbol: symbol, map: usdMap) else { return false }
+        guard let usd = value(amountRaw: amountRaw, symbol: symbol, map: usdMap) else {
+            return true
+        }
         return usd < usdDustThreshold
     }
 
-    /// USD unit prices for `symbols`, resolved through `TokenPricingEngine`
-    /// with `currencyCode: "USD"`. Used **only** for the $0.20-USD dust
-    /// check — on-screen amounts still use the active-currency `priceMap`.
-    /// The engine caches after the first call (persisted rungs work offline).
-    static func usdPriceMap(symbols: [String]) async -> [String: Decimal] {
-        let unique = Array(Set(symbols.map { $0.uppercased() }))
+    /// Synchronous USD unit prices from disk cache + stablecoin pegs.
+    /// Call before the first activity render so the dust gate never sees an
+    /// empty map when the wallet has already priced those symbols.
+    static func usdPriceMapFromCache(
+        symbols: [String],
+        database: AppDatabase = .shared
+    ) -> [String: Decimal] {
+        let unique = Array(Set(symbols.map { $0.uppercased() }.filter { !$0.isEmpty }))
         guard !unique.isEmpty else { return [:] }
-        let resolved = await TokenPricingEngine.shared.unitPrices(symbols: unique, currencyCode: "USD")
-        return resolved.mapValues { $0.amount }
+
+        var map: [String: Decimal] = [:]
+        // Known USD-pegged stables are $1 even with a cold price cache.
+        for symbol in unique where KnownStablecoins.all.contains(symbol) || symbol == "USDT" {
+            map[symbol] = 1
+        }
+
+        if let disk = try? PriceCacheRepository(database: database)
+            .prices(symbols: unique, fiat: "USD")
+        {
+            for (symbol, entry) in disk where entry.price > 0 {
+                map[symbol] = entry.price
+            }
+        }
+
+        // Wrapped aliases (WETH → ETH) when the wrapper lacks a direct row.
+        for symbol in unique where map[symbol] == nil {
+            let underlying = WrappedAssetAliases.resolveSymbol(symbol)
+            if underlying != symbol, let price = map[underlying], price > 0 {
+                map[symbol] = price
+            } else if let disk = try? PriceCacheRepository(database: database)
+                .price(symbol: underlying, fiat: "USD"),
+                      disk.price > 0
+            {
+                map[symbol] = disk.price
+            }
+        }
+        return map
+    }
+
+    /// USD unit prices for dust filtering: disk/stablecoin seed first, then
+    /// live `TokenPricingEngine` (USD storage currency). Display currency is
+    /// still `priceMap` / engine with the user's fiat (USD×FX).
+    static func usdPriceMap(symbols: [String]) async -> [String: Decimal] {
+        let unique = Array(Set(symbols.map { $0.uppercased() }.filter { !$0.isEmpty }))
+        guard !unique.isEmpty else { return [:] }
+        var map = usdPriceMapFromCache(symbols: unique)
+        let resolved = await TokenPricingEngine.shared.unitPrices(
+            symbols: unique,
+            currencyCode: "USD"
+        )
+        for (symbol, price) in resolved where price.amount > 0 {
+            map[symbol] = price.amount
+        }
+        return map
     }
 }

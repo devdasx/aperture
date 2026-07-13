@@ -14,6 +14,9 @@ struct SendAmountHero: View {
     @Bindable var model: SendComposeModel
     @Binding var selectionTapCount: Int
     let onReview: () -> Void
+    /// When set (Solana dual-path), Available is labeled with the path
+    /// that Max/send will actually use, e.g. "Phantom".
+    var spendPathTitle: String? = nil
 
     /// Largest the amount renders when the value is short (≈ one or two
     /// glyphs). Cash-App-class confidence; the design's calm is the size
@@ -276,15 +279,33 @@ struct SendAmountHero: View {
     }
 
     private var availableLine: some View {
-        return HStack(spacing: UniSpacing.xxs) {
-            Text("Available")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-            Text(verbatim: availableBalanceText)
-                .font(UniTypography.footnote.monospacedDigit())
-                .foregroundStyle(UniColors.Text.secondary)
-                .environment(\.layoutDirection, .leftToRight)
+        VStack(spacing: UniSpacing.xxs) {
+            HStack(spacing: UniSpacing.xxs) {
+                Text(verbatim: availableLabelText)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                Text(verbatim: availableBalanceText)
+                    .font(UniTypography.footnote.monospacedDigit())
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            if spendPathTitle != nil {
+                Text(String.apertureLocalized("Selected path only — home total may include other paths"))
+                    .font(UniTypography.caption2)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
         }
+    }
+
+    /// "Available" or "Available · Phantom" when send is path-scoped.
+    private var availableLabelText: String {
+        let base = String.apertureLocalized("Available")
+        if let spendPathTitle, !spendPathTitle.isEmpty {
+            return "\(base) · \(spendPathTitle)"
+        }
+        return base
     }
 
     private var availableBalanceText: String {
@@ -305,7 +326,7 @@ struct SendAmountHero: View {
         Button(action: action) {
             HStack(spacing: UniSpacing.xxs) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13, weight: .regular))
                 Text(title)
                     .font(UniTypography.footnote.weight(.semibold))
             }
@@ -324,10 +345,9 @@ struct SendAmountHero: View {
     }
 
     private var currencySymbol: String {
-        let formatted = Decimal(0).formatted(.currency(code: model.currencyCode))
-        // Pull just the symbol prefix/suffix; fall back to the code.
-        return formatted.filter { !$0.isNumber && $0 != "." && $0 != "," && !$0.isWhitespace && $0 != "0" }
-            .ifEmpty(model.currencyCode.uppercased())
+        // fiatParts already narrows US$ → $ (and CA$/AU$/…).
+        let symbol = WalletFormatting.fiatParts(0, currencyCode: model.currencyCode).currency
+        return symbol.isEmpty ? model.currencyCode.uppercased() : symbol
     }
 
     private func recipientLabel(_ entry: SendComposeModel.AmountEntry) -> String {
@@ -356,7 +376,7 @@ struct SendAmountMultiList: View {
             // Header: the row count on the left, the crypto⇄fiat unit toggle
             // on the right — offered only when the asset is priced (FIX 1).
             HStack(alignment: .firstTextBaseline) {
-                Text("Amounts (\(model.amounts.count))")
+                Text(verbatim: String(format: String.apertureLocalized("Amounts (%lld)"), Int64(model.amounts.count)))
                     .font(UniTypography.footnote.weight(.semibold))
                     .foregroundStyle(UniColors.Text.secondary)
                     .textCase(.uppercase)
@@ -406,7 +426,7 @@ struct SendAmountMultiList: View {
         } label: {
             HStack(spacing: UniSpacing.xxs) {
                 Image(systemName: "arrow.up.arrow.down")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .regular))
                 Text(unitToggleLabel)
                     .font(UniTypography.caption1.weight(.semibold))
             }
@@ -467,37 +487,9 @@ private struct SendAmountRow: View {
             // always read exactly where the funds go.
             recipientHeader
 
-            HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xs) {
-                // Fiat entry shows the currency symbol as a leading flank;
-                // crypto entry shows the asset ticker as a trailing flank
-                // (FIX 1). The amount field shrinks to fit rather than
-                // pushing the flank / conversion off the row (no-overflow).
-                if model.entryUnit == .fiat {
-                    Text(verbatim: currencySymbol)
-                        .font(UniTypography.callout)
-                        .foregroundStyle(amountColor)
-                        .lineLimit(1)
-                }
-                TextField("0", text: $entry.amountText)
-                    .font(UniTypography.title3.monospacedDigit())
-                    .foregroundStyle(amountColor)
-                    .keyboardType(.decimalPad)
-                    .focused($fieldFocused)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .layoutPriority(1)
-                    .disabled(isBlocked)
-                    .animation(.snappy(duration: 0.2), value: amountColor)
-                    .environment(\.layoutDirection, .leftToRight)
-                if model.entryUnit == .crypto {
-                    Text(verbatim: model.assetSymbol)
-                        .font(UniTypography.callout)
-                        .foregroundStyle(isBlocked ? UniColors.Text.disabled : UniColors.Text.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: UniSpacing.s)
-                conversionValue
-            }
+            // Full-width amount row: the field used to size only to "0", so
+            // taps outside that glyph never focused / never showed the keyboard.
+            amountEntryRow
 
             // FIX 4 — blocked rows carry an inline, honest explanation of
             // why they can't be paid; FIX 3 — over-balance rows carry a
@@ -505,14 +497,59 @@ private struct SendAmountRow: View {
             if case .blocked(let reason) = status {
                 rowNote(reason, color: UniColors.Text.tertiary, icon: "nosign")
             } else if isOver {
-                rowNote(String(localized: "More than your remaining balance."),
+                rowNote(String.apertureLocalized("More than your remaining balance."),
                         color: UniColors.Feedback.Error.foreground,
                         icon: "exclamationmark.triangle.fill")
             }
         }
         .padding(.horizontal, UniSpacing.m)
         .padding(.vertical, UniSpacing.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isBlocked else { return }
+            fieldFocused = true
+        }
         .opacity(isBlocked ? 0.55 : 1)
+    }
+
+    /// Real list text field — fills the row so the whole amount area is tappable.
+    private var amountEntryRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xs) {
+            // Fiat entry shows the currency symbol as a leading flank;
+            // crypto entry shows the asset ticker as a trailing flank
+            // (FIX 1). The amount field expands; conversion stays trailing.
+            if model.entryUnit == .fiat {
+                Text(verbatim: currencySymbol)
+                    .font(UniTypography.callout)
+                    .foregroundStyle(amountColor)
+                    .lineLimit(1)
+                    .accessibilityHidden(true)
+            }
+            TextField("0", text: $entry.amountText)
+                .font(UniTypography.title3.monospacedDigit())
+                .foregroundStyle(amountColor)
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.plain)
+                .focused($fieldFocused)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .disabled(isBlocked)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .animation(.snappy(duration: 0.2), value: amountColor)
+                .environment(\.layoutDirection, .leftToRight)
+                .accessibilityLabel(Text("Amount"))
+            if model.entryUnit == .crypto {
+                Text(verbatim: model.assetSymbol)
+                    .font(UniTypography.callout)
+                    .foregroundStyle(isBlocked ? UniColors.Text.disabled : UniColors.Text.secondary)
+                    .lineLimit(1)
+            }
+            conversionValue
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -574,7 +611,7 @@ private struct SendAmountRow: View {
     private func rowNote(_ text: String, color: Color, icon: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xxs) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 10, weight: .regular))
             Text(verbatim: text)
                 .font(UniTypography.caption2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -591,9 +628,7 @@ private struct SendAmountRow: View {
     }
 
     private var currencySymbol: String {
-        let formatted = Decimal(0).formatted(.currency(code: model.currencyCode))
-        return formatted.filter {
-            !$0.isNumber && $0 != "." && $0 != "," && !$0.isWhitespace && $0 != "0"
-        }.ifEmpty(model.currencyCode.uppercased())
+        let symbol = WalletFormatting.fiatParts(0, currencyCode: model.currencyCode).currency
+        return symbol.isEmpty ? model.currencyCode.uppercased() : symbol
     }
 }

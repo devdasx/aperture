@@ -72,8 +72,7 @@ actor WalletDataRefreshCoordinator {
         currencyCode: String,
         database: AppDatabase,
         userInitiated: Bool = false,
-        mode: RefreshMode = .full,
-        trigger: PortfolioRefreshTrigger = .automatic
+        mode: RefreshMode = .full
     ) async {
         if let existing = refreshSlots[walletId] {
             if userInitiated {
@@ -98,14 +97,13 @@ actor WalletDataRefreshCoordinator {
         }
 
         let token = UUID()
-        let task = Task { [walletId, currencyCode, database, userInitiated, mode, trigger] in
+        let task = Task { [walletId, currencyCode, database, userInitiated, mode] in
             await self.performRefresh(
                 walletId: walletId,
                 currencyCode: currencyCode,
                 database: database,
                 userInitiated: userInitiated,
-                mode: mode,
-                trigger: trigger
+                mode: mode
             )
         }
         refreshSlots[walletId] = RefreshSlot(token: token, task: task)
@@ -120,16 +118,9 @@ actor WalletDataRefreshCoordinator {
         currencyCode: String,
         database: AppDatabase,
         userInitiated: Bool = false,
-        mode: RefreshMode = .full,
-        trigger: PortfolioRefreshTrigger = .automatic
+        mode: RefreshMode = .full
     ) async {
         let refreshStart = Date()
-        let portfolioRunId = await PortfolioHistoryCoordinator.shared.beginRun(
-            walletId: walletId,
-            trigger: trigger,
-            refreshMode: mode.rawValue,
-            database: database
-        )
         let normalizedCurrency = currencyCode.uppercased()
         // BUG-015: never skip prices on balances-only — new deposits must
         // resolve fiat (disk USD×FX or live) without waiting for a full
@@ -151,28 +142,19 @@ actor WalletDataRefreshCoordinator {
             ]
         )
 
-        // Mnemonic wallets (no BIP-39 passphrase): ensure Phantom + Trust
-        // account-0 Solana rows exist before scanning so both paths balance.
-        let walletHasPassphrase = (try? database.read { db in
-            try Bool.fetchOne(
-                db,
-                sql: "SELECT has_passphrase FROM wallets WHERE id = ?",
-                arguments: [walletId.uuidString]
-            )
-        }) ?? true
-        if walletHasPassphrase == false,
-           let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database),
-           !words.isEmpty {
-            try? SolanaPathProvisioning.ensureBothAccountZeroPaths(
-                walletId: walletId,
-                words: words,
-                passphrase: "",
-                database: database
-            )
-        }
+        // Phantom + Trust account-0 Solana rows before scanning.
+        // Passphrase wallets use the session passphrase (entered on send /
+        // receive) — never empty-passphrase derive (P1 #7).
+        _ = await SolanaPathProvisioning.ensureBothAccountZeroPathsIfPossible(
+            walletId: walletId,
+            database: database
+        )
 
         let walletRepository = WalletRepository(database: database)
         let addressLoadStart = Date()
+        // All path rows (preferred first per chain). `addressByChain` is the
+        // **preferred** snapshot only — multi-path jobs (BTC Electrum, Solana
+        // dual path) load the full set themselves from wallet_addresses.
         let addressSnapshots = (try? walletRepository.addresses(walletId: walletId)) ?? []
         let addressByChain = Dictionary(addressSnapshots.map { ($0.chain, $0) }, uniquingKeysWith: { first, _ in first })
         let customTokens = (try? CustomTokenRepository(database: database).fetchAll()) ?? []
@@ -322,32 +304,24 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        // Scan every Solana path row (Phantom + Trust). Portfolio rebuild
-        // sums balances across address ids for the chain; send/receive still
-        // use only the preferred address.
+        // One multi-path Solana job (Phantom + Trust): scan every row, single
+        // rebuild at the end — avoids mid-refresh portfolio thrash (P1 #6).
+        // Display/portfolio use preferred path only (default Phantom).
         let solanaAddresses = addressSnapshots.filter { $0.chain == .solana }
         if !solanaAddresses.isEmpty {
             appendScan(
                 chain: .solana,
                 source: "SolanaBalanceHistoryScanner"
             ) {
-                var lastError: Error?
-                for address in solanaAddresses {
-                    do {
-                        try await solanaScanner.scanAndPersist(
-                            walletId: walletId,
-                            address: address,
-                            currencyCode: normalizedCurrency,
-                            database: database,
-                            customTokens: customTokensByChain[.solana] ?? [],
-                            includePrices: includePrices,
-                            includeHistory: includeHistory
-                        )
-                    } catch {
-                        lastError = error
-                    }
-                }
-                if let lastError { throw lastError }
+                try await solanaScanner.scanAndPersistAll(
+                    walletId: walletId,
+                    addresses: solanaAddresses,
+                    currencyCode: normalizedCurrency,
+                    database: database,
+                    customTokens: customTokensByChain[.solana] ?? [],
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
+                )
             }
         }
 
@@ -492,7 +466,6 @@ actor WalletDataRefreshCoordinator {
         )
 
         if Task.isCancelled {
-            await PortfolioHistoryCoordinator.shared.cancelRun(portfolioRunId, database: database)
             DiagnosticsLogStore.shared.record(
                 .info,
                 category: "scanner",
@@ -531,16 +504,6 @@ actor WalletDataRefreshCoordinator {
                 ]
             )
         }
-        await PortfolioHistoryCoordinator.shared.finishRun(
-            runId: portfolioRunId,
-            walletId: walletId,
-            refreshMode: mode.rawValue,
-            attemptedChains: attemptedChains,
-            successfulChains: refreshedChains,
-            failedChains: failedChains,
-            displayCurrencyCode: normalizedCurrency,
-            database: database
-        )
         await PendingTransactionMonitor.shared.kick(database: database)
         DiagnosticsLogStore.shared.record(
             .info,
@@ -701,7 +664,7 @@ private actor StellarBalanceHistoryScanner {
         let events = payments
             .compactMap { decode(payment: $0, owner: address.address, transactions: txByHash) }
             .sorted { $0.occurredAt > $1.occurredAt }
-            .prefix(50)
+            .prefix(HistoryScanLimits.perAddress)
 
         if !events.isEmpty {
             isUsed = true
@@ -773,7 +736,7 @@ private actor StellarBalanceHistoryScanner {
             let data = try await horizonGET(
                 path: "accounts/\(address)/payments",
                 query: [
-                    URLQueryItem(name: "limit", value: "50"),
+                    URLQueryItem(name: "limit", value: "\(HistoryScanLimits.perAddress)"),
                     URLQueryItem(name: "order", value: "desc")
                 ]
             )
@@ -792,7 +755,7 @@ private actor StellarBalanceHistoryScanner {
             let data = try await horizonGET(
                 path: "accounts/\(address)/transactions",
                 query: [
-                    URLQueryItem(name: "limit", value: "50"),
+                    URLQueryItem(name: "limit", value: "\(HistoryScanLimits.perAddress)"),
                     URLQueryItem(name: "order", value: "desc")
                 ]
             )
@@ -810,7 +773,16 @@ private actor StellarBalanceHistoryScanner {
         do {
             return try await client.callREST(chain: .stellar, path: path, query: query)
         } catch {
-            log.debug("Stellar registered endpoint failed, falling back to SDF Horizon: \(String(describing: error), privacy: .public)")
+            // HTTP 404 on Horizon account/history paths means the account has
+            // never been funded — that is a valid empty result, not a bad
+            // endpoint. Re-throw without fallback noise so callers treat it as
+            // zero balance / no payments.
+            if RPCError.isHTTPNotFound(error) {
+                throw error
+            }
+            log.debug(
+                "Stellar registered endpoint failed, falling back to SDF Horizon: \(String(describing: error), privacy: .public)"
+            )
             return try await directHorizonGET(path: path, query: query)
         }
     }
@@ -1224,7 +1196,7 @@ private actor PolkadotBalanceHistoryScanner {
             }
         }
 
-        for event in events.prefix(50) {
+        for event in events.prefix(HistoryScanLimits.perAddress) {
             try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
@@ -1259,7 +1231,7 @@ private actor PolkadotBalanceHistoryScanner {
 
     private func safeHistory(address: String) async -> [PolkadotHistoryEvent] {
         do {
-            return try await history.nativeTransfers(address: address, limit: 50)
+            return try await history.nativeTransfers(address: address, limit: HistoryScanLimits.perAddress)
         } catch {
             log.debug("Polkadot history failed: \(String(describing: error), privacy: .public)")
             return []
@@ -1879,6 +1851,63 @@ private actor SolanaBalanceHistoryScanner {
     private let rpc = RPCClient.shared
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "solana-balance-history")
 
+    /// Multi-path Solana scan (Phantom + Trust): every address is probed and
+    /// written, then **one** chain rebuild — avoids dual rebuild races (P1 #6).
+    func scanAndPersistAll(
+        walletId: UUID,
+        addresses: [WalletRepository.AddressSnapshot],
+        currencyCode: String,
+        database: AppDatabase,
+        customTokens: [CustomTokenSnapshot] = [],
+        includePrices: Bool = true,
+        includeHistory: Bool = true
+    ) async throws {
+        let solanaRows = addresses.filter { $0.chain == .solana }
+        guard !solanaRows.isEmpty else { return }
+
+        var lastError: Error?
+        var anyTokenProbeFailed = false
+        var anyNativeSucceeded = false
+        for address in solanaRows {
+            do {
+                let tokenFailed = try await scanOneAddress(
+                    walletId: walletId,
+                    address: address,
+                    currencyCode: currencyCode,
+                    database: database,
+                    customTokens: customTokens,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
+                )
+                anyNativeSucceeded = true
+                if tokenFailed { anyTokenProbeFailed = true }
+            } catch {
+                lastError = error
+                log.debug(
+                    "Solana path scan failed for \(address.address, privacy: .public): \(String(describing: error), privacy: .public)"
+                )
+            }
+        }
+
+        // Single rebuild after all paths — portfolio uses preferred path only.
+        _ = try ChainStateRepository(database: database).rebuild(
+            walletId: walletId,
+            fiatCurrencyCode: currencyCode,
+            onlyChains: [.solana],
+            failedChains: BalanceProbeKeepLastGood.failedChains(
+                chain: .solana,
+                nativeProbeSucceeded: anyNativeSucceeded,
+                tokenProbeSucceeded: anyNativeSucceeded && !anyTokenProbeFailed
+            ),
+            interim: false
+        )
+
+        if let lastError, !anyNativeSucceeded {
+            throw lastError
+        }
+    }
+
+    /// Single-address scan (tests / one-off). Rebuilds once at the end.
     func scanAndPersist(
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
@@ -1888,7 +1917,29 @@ private actor SolanaBalanceHistoryScanner {
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
-        guard address.chain == .solana else { return }
+        try await scanAndPersistAll(
+            walletId: walletId,
+            addresses: [address],
+            currencyCode: currencyCode,
+            database: database,
+            customTokens: customTokens,
+            includePrices: includePrices,
+            includeHistory: includeHistory
+        )
+    }
+
+    /// Persist balances + history for one path. Returns whether any token probe failed.
+    @discardableResult
+    private func scanOneAddress(
+        walletId _: UUID,
+        address: WalletRepository.AddressSnapshot,
+        currencyCode: String,
+        database: AppDatabase,
+        customTokens: [CustomTokenSnapshot],
+        includePrices: Bool,
+        includeHistory: Bool
+    ) async throws -> Bool {
+        guard address.chain == .solana else { return false }
 
         let tokens = await supportedTokens(customTokens: customTokens)
         let symbols = Array(Set(([SupportedChain.solana.ticker] + tokens.map(\.entry.symbol)).map { $0.uppercased() })).sorted()
@@ -1960,7 +2011,7 @@ private actor SolanaBalanceHistoryScanner {
         if !events.isEmpty {
             isUsed = true
         }
-        for event in events.prefix(50) {
+        for event in events.prefix(HistoryScanLimits.perAddress) {
             try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
@@ -1979,18 +2030,7 @@ private actor SolanaBalanceHistoryScanner {
 
         try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try txRepo.flush()
-
-        _ = try ChainStateRepository(database: database).rebuild(
-            walletId: walletId,
-            fiatCurrencyCode: currencyCode,
-            onlyChains: [.solana],
-            failedChains: BalanceProbeKeepLastGood.failedChains(
-                chain: .solana,
-                nativeProbeSucceeded: true,
-                tokenProbeSucceeded: !tokenProbe.anyFailed
-            ),
-            interim: false
-        )
+        return tokenProbe.anyFailed
     }
 
     private func nativeBalance(address: String) async throws -> SolanaNativeBalance {
@@ -2226,14 +2266,15 @@ private actor SolanaBalanceHistoryScanner {
         tokens: [SolanaSupportedToken]
     ) async throws -> [SolanaHistoryEvent] {
         let signatureRequests: [(address: String, limit: Int)] =
-            [(owner, 25)] + Array(Set(activeTokenAccounts)).sorted().map { ($0, 12) }
+            [(owner, HistoryScanLimits.perAddress)]
+            + Array(Set(activeTokenAccounts)).sorted().map { ($0, min(50, HistoryScanLimits.perAddress)) }
         let signatures = await signatures(for: signatureRequests)
         let latest = signatures
             .sorted {
                 if ($0.blockTime ?? 0) == ($1.blockTime ?? 0) { return $0.slot > $1.slot }
                 return ($0.blockTime ?? 0) > ($1.blockTime ?? 0)
             }
-            .prefix(60)
+            .prefix(HistoryScanLimits.perAddress)
 
         let knownTokenAccounts = Set(activeTokenAccounts)
         let tokenByMint = Dictionary(uniqueKeysWithValues: tokens.map { ($0.mint, $0.entry) })
@@ -3313,6 +3354,20 @@ actor WalletBackgroundWorkCoordinator {
 
     private var jobs: [String: JobSlot] = [:]
 
+    /// Cancel in-flight background jobs. When `exceptWalletId` is set, jobs
+    /// for that wallet keep running; everything else is cancelled immediately
+    /// (wallet-pager switch / kill previous wallet's balances + history).
+    func cancelAllJobs(exceptWalletId: UUID? = nil) {
+        let keepPrefix = exceptWalletId.map { $0.uuidString + "|" }
+        for (key, slot) in jobs {
+            if let keepPrefix, key.hasPrefix(keepPrefix) {
+                continue
+            }
+            slot.task.cancel()
+            jobs[key] = nil
+        }
+    }
+
     /// Refresh spendable balances (and prices). Awaits only the balances
     /// pipeline so pull-to-refresh can end when balances land.
     ///
@@ -3324,8 +3379,7 @@ actor WalletBackgroundWorkCoordinator {
         walletId: UUID,
         currencyCode: String,
         database: AppDatabase,
-        userInitiated: Bool,
-        trigger: PortfolioRefreshTrigger = .background
+        userInitiated: Bool
     ) async {
         await runReplacing(
             type: .balances,
@@ -3338,8 +3392,7 @@ actor WalletBackgroundWorkCoordinator {
                 currencyCode: currencyCode,
                 database: database,
                 userInitiated: userInitiated,
-                mode: .balancesOnly,
-                trigger: trigger
+                mode: .balancesOnly
             )
         }
 
@@ -3350,8 +3403,7 @@ actor WalletBackgroundWorkCoordinator {
             startFullRefresh(
                 walletId: walletId,
                 currencyCode: currencyCode,
-                database: database,
-                trigger: trigger
+                database: database
             )
         }
     }
@@ -3359,8 +3411,7 @@ actor WalletBackgroundWorkCoordinator {
     func startFullRefresh(
         walletId: UUID,
         currencyCode: String,
-        database: AppDatabase,
-        trigger: PortfolioRefreshTrigger = .automatic
+        database: AppDatabase
     ) {
         Task {
             await runReplacing(
@@ -3374,8 +3425,7 @@ actor WalletBackgroundWorkCoordinator {
                     currencyCode: currencyCode,
                     database: database,
                     userInitiated: false,
-                    mode: .full,
-                    trigger: trigger
+                    mode: .full
                 )
             }
         }
@@ -3384,8 +3434,7 @@ actor WalletBackgroundWorkCoordinator {
     func refreshFull(
         walletId: UUID,
         currencyCode: String,
-        database: AppDatabase,
-        trigger: PortfolioRefreshTrigger = .automatic
+        database: AppDatabase
     ) async {
         await runReplacing(
             type: .fullRefresh,
@@ -3398,8 +3447,7 @@ actor WalletBackgroundWorkCoordinator {
                 currencyCode: currencyCode,
                 database: database,
                 userInitiated: false,
-                mode: .full,
-                trigger: trigger
+                mode: .full
             )
         }
     }

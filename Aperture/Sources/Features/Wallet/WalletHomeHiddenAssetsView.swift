@@ -109,12 +109,10 @@ struct WalletHomeHiddenAssetsView: View {
                 tokensSection
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Hidden assets"))
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
         .uniHaptic(.selection, trigger: hiddenJSON)
         .uniHaptic(.success, trigger: pinnedJSON)
         .onChange(of: hiddenJSON) { _, newValue in
@@ -170,7 +168,7 @@ struct WalletHomeHiddenAssetsView: View {
                         subtitle: row.chain.ticker,
                         isHidden: bindingForCoinHidden(row)
                     )
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         let pinned = isPinned(coin: row)
                         Button {
@@ -206,7 +204,7 @@ struct WalletHomeHiddenAssetsView: View {
                         subtitle: "\(row.symbol) · \(row.chain.displayName)",
                         isHidden: bindingForTokenHidden(row)
                     )
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         let pinned = isPinned(token: row)
                         Button {

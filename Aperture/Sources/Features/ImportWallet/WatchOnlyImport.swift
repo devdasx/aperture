@@ -8,6 +8,8 @@ struct WatchOnlyEntryView: View {
     let onContinue: () -> Void
 
     @State private var isShowingGuide: Bool = false
+    /// `true` only when leaving forward (Continue). Back clears the field.
+    @State private var willContinue: Bool = false
 
     private var supportsExtendedKey: Bool { chain.supportsExtendedPublicKey }
 
@@ -90,7 +92,7 @@ struct WatchOnlyEntryView: View {
                     isShowingGuide = true
                 } label: {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text("What does watch-only mean?"))
             }
@@ -103,9 +105,19 @@ struct WatchOnlyEntryView: View {
         }
         .uniBottomActionBar {
             UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
+                willContinue = true
                 onContinue()
             }
             .padding(.horizontal, UniSpacing.l)
+        }
+        .onAppear {
+            willContinue = false
+        }
+        .onDisappear {
+            if !willContinue {
+                state.watchOnlyRaw = ""
+                state.watchOnlyAddresses = []
+            }
         }
         .onChange(of: state.watchOnlyExtendedKeyMode) { _, _ in
             // Switching modes clears the buffer — the formats are
@@ -169,8 +181,8 @@ struct WatchOnlyEntryView: View {
         let invalid = parsedLines.count - valid
         return HStack(spacing: UniSpacing.xs) {
             Image(systemName: invalid == 0 ? "checkmark" : "exclamationmark.triangle")
-                .font(.system(size: 12, weight: .semibold))
-            Text("\(valid) valid · \(invalid) invalid")
+                .font(.system(size: 12, weight: .regular))
+            Text(verbatim: String(format: String.apertureLocalized("%@ valid · %@ invalid"), String(valid), String(invalid)))
                 .font(UniTypography.caption1)
         }
         .foregroundStyle(invalid == 0 ? UniColors.Text.secondary : UniColors.Feedback.Warning.foreground)

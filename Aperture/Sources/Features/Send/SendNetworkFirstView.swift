@@ -130,7 +130,13 @@ struct SendNetworkFirstView: View {
         ) { _ in
             Button("OK", role: .cancel) {}
         } message: { chain in
-            Text("This wallet has no \(chain.displayName) address yet, so there is nothing to send from on this network. Aperture may still be deriving your accounts; try again in a moment.")
+            Text(verbatim: String(
+                format: String.apertureLocalized(
+                    "This wallet has no %@ address yet, so there is nothing to send from on this network. Aperture may still be deriving your accounts; try again in a moment."
+                ),
+                locale: ApertureLocalization.currentLocale,
+                chain.displayName
+            ))
         }
     }
 
@@ -157,11 +163,9 @@ struct SendNetworkFirstView: View {
                 networkSection
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
-        .searchable(text: $searchText, prompt: Text("Search"))
-        .navigationTitle(Text("Choose network for \(assetPrefill.symbol)"))
+        .uniListPageChrome()
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
+        .navigationTitle(Text(verbatim: String(format: String.apertureLocalized("Choose network for %@"), assetPrefill.symbol)))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -179,9 +183,9 @@ struct SendNetworkFirstView: View {
                     )
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
                 .accessibilityLabel(Text(verbatim: chain.displayName))
-                .accessibilityHint(Text("Send \(assetPrefill.symbol) on this network"))
+                .accessibilityHint(Text(verbatim: String(format: String.apertureLocalized("Send %@ on this network"), assetPrefill.symbol)))
             }
         } footer: {
             UniFootnote(

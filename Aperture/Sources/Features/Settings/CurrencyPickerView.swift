@@ -67,12 +67,10 @@ struct CurrencyPickerView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Choose currency"))
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
         .uniHaptic(.selection, trigger: currencyCode)
     }
 
@@ -88,7 +86,7 @@ struct CurrencyPickerView: View {
             ) {
                 currencyCode = currency.code
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         }
     }
 
@@ -126,12 +124,11 @@ private struct CurrencyRow: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15, weight: .regular))
                         .foregroundStyle(UniColors.Icon.accent)
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)

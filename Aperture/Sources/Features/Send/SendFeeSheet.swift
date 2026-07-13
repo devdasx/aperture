@@ -87,9 +87,7 @@ struct SendFeeSheet: View {
                     customSection(quote)
                 }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             // One `.selection` beat per tier change — fires once on the
             // List keyed to the selected tier (Custom included), replacing
             // the old per-row trigger that double-fired on tap and missed
@@ -133,7 +131,7 @@ struct SendFeeSheet: View {
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     private func singleFeeRow(_ choice: FeeChoice) -> some View {
@@ -147,7 +145,7 @@ struct SendFeeSheet: View {
             Spacer(minLength: UniSpacing.s)
             feeColumn(choice)
         }
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     @ViewBuilder
@@ -192,7 +190,7 @@ struct SendFeeSheet: View {
                 .uniListRowHitTarget()
             }
             .buttonStyle(.uniListRow)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             customFields(quote)
         } header: {
@@ -251,7 +249,7 @@ struct SendFeeSheet: View {
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)
         }
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     private var unavailable: some View {

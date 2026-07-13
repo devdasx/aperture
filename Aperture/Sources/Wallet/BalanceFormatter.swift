@@ -19,8 +19,8 @@ enum BalanceFormatter {
     /// Rule #16's honesty register — the conversion is an estimate
     /// based on a public price feed, not a quoted conversion guarantee.
     static func fiat(_ amount: Decimal, currencyCode: String) -> String {
-        let style = Decimal.FormatStyle.Currency(code: currencyCode)
-            .precision(.fractionLength(2))
-        return "≈ \(amount.formatted(style))"
+        // Route through WalletFormatting so currency symbols stay narrow
+        // (US$ → $) app-wide, same as the balance hero.
+        "≈ \(WalletFormatting.fiat(amount, currencyCode: currencyCode, fractionLength: 2...2))"
     }
 }

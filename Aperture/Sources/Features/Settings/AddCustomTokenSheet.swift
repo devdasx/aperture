@@ -115,7 +115,7 @@ struct AddCustomTokenSheet: View {
                 case .contractEntry(let chain):
                     contractEntryScreen
                         .background(UniColors.Background.primary)
-                        .navigationTitle("Add on \(chain.displayName)")
+                        .navigationTitle(String(format: String.apertureLocalized("Add on %@"), chain.displayName))
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
@@ -242,9 +242,9 @@ struct AddCustomTokenSheet: View {
                             )
                         }
                         .buttonStyle(.uniListRow)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                         .accessibilityLabel(Text(verbatim: chain.displayName))
-                        .accessibilityHint(Text("Add a custom token on \(chain.displayName)"))
+                        .accessibilityHint(Text(verbatim: String(format: String.apertureLocalized("Add a custom token on %@"), chain.displayName)))
                     }
                 } footer: {
                     UniFootnote(
@@ -256,9 +256,8 @@ struct AddCustomTokenSheet: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .searchable(text: $networkSearchText, prompt: Text("Search"))
+        .uniListPageChrome()
+        .searchable(text: $networkSearchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
     }
 
     private var csvOptionsMenu: some View {
@@ -292,7 +291,7 @@ struct AddCustomTokenSheet: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17, weight: .regular))
         }
         .accessibilityLabel(Text("Token list options"))
     }
@@ -339,7 +338,7 @@ struct AddCustomTokenSheet: View {
     private var contractSection: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
             UniCaption(
-                text: contractFieldLabel,
+                text: LocalizedStringKey(contractFieldLabel),
                 color: UniColors.Text.tertiary
             )
             ContractAddressInputField(
@@ -501,11 +500,11 @@ struct AddCustomTokenSheet: View {
             && !editedName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    private var contractFieldLabel: LocalizedStringKey {
+    private var contractFieldLabel: String {
         selectedChain == .solana ? "Token mint" : "Contract address"
     }
 
-    private var contractFieldPlaceholder: LocalizedStringKey {
+    private var contractFieldPlaceholder: String {
         switch selectedChain {
         case .solana:
             return "Paste the mint address"
@@ -654,50 +653,74 @@ struct AddCustomTokenSheet: View {
     }
 
     private func importCSV(from url: URL) {
-        Task { @MainActor in
+        let chains = availableChains
+        Task {
+            // Hold the security-scoped access for the entire read, then hand a
+            // pure String to a detached worker for parse + GRDB writes so the
+            // main actor stays free during large imports.
+            let didStartAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let fileText: String
             do {
-                let didStartAccess = url.startAccessingSecurityScopedResource()
-                defer {
-                    if didStartAccess {
-                        url.stopAccessingSecurityScopedResource()
-                    }
+                fileText = try String(contentsOf: url, encoding: .utf8)
+            } catch {
+                await MainActor.run {
+                    csvAlert = CSVAlert(
+                        title: "Couldn't import CSV",
+                        message: "Aperture couldn't read this file as UTF-8 CSV."
+                    )
                 }
-                let text = try String(contentsOf: url, encoding: .utf8)
-                let parse = CustomTokenCSV.parse(text, allowedChains: availableChains)
-                var summary = CustomTokenCSV.ImportSummary(
-                    failed: parse.errors.count,
-                    errors: parse.errors
-                )
-                let repo = CustomTokenRepository(database: AppDatabase.shared)
-                for row in parse.rows {
-                    do {
-                        try repo.add(
-                            chain: row.chain,
-                            contract: row.contract,
-                            symbol: row.symbol,
-                            name: row.name,
-                            decimals: row.decimals,
-                            metadataFromChain: row.metadataFromChain
-                        )
-                        summary.added += 1
-                    } catch CustomTokenError.duplicate {
-                        summary.duplicates += 1
-                    } catch {
-                        summary.failed += 1
-                        summary.errors.append("Line \(row.line): couldn't save token.")
-                    }
-                }
+                return
+            }
+
+            let summary = await Task.detached(priority: .userInitiated) {
+                Self.importCSVWork(text: fileText, allowedChains: chains)
+            }.value
+
+            await MainActor.run {
                 if summary.added > 0 {
                     UniHapticEngine.shared.fire(.success)
                 }
                 csvAlert = CSVAlert(title: summary.title, message: summary.message)
-            } catch {
-                csvAlert = CSVAlert(
-                    title: "Couldn't import CSV",
-                    message: "Aperture couldn't read this file as UTF-8 CSV."
-                )
             }
         }
+    }
+
+    /// Parse + persist off the main actor. Pure `String` in, summary out.
+    nonisolated private static func importCSVWork(
+        text: String,
+        allowedChains: [SupportedChain]
+    ) -> CustomTokenCSV.ImportSummary {
+        let parse = CustomTokenCSV.parse(text, allowedChains: allowedChains)
+        var summary = CustomTokenCSV.ImportSummary(
+            failed: parse.errors.count,
+            errors: parse.errors
+        )
+        let repo = CustomTokenRepository(database: AppDatabase.shared)
+        for row in parse.rows {
+            do {
+                try repo.add(
+                    chain: row.chain,
+                    contract: row.contract,
+                    symbol: row.symbol,
+                    name: row.name,
+                    decimals: row.decimals,
+                    metadataFromChain: row.metadataFromChain
+                )
+                summary.added += 1
+            } catch CustomTokenError.duplicate {
+                summary.duplicates += 1
+            } catch {
+                summary.failed += 1
+                summary.errors.append("Line \(row.line): couldn't save token.")
+            }
+        }
+        return summary
     }
 
     private func scheduleFetch() {
@@ -938,9 +961,10 @@ struct AddCustomTokenSheet: View {
 }
 
 private struct ContractAddressInputField: View {
-    let placeholder: LocalizedStringKey
+    /// English catalog keys for prompt / accessibility label.
+    let placeholder: String
     @Binding var text: String
-    let label: LocalizedStringKey
+    let label: String
     let onPaste: () -> Void
     let onScan: () -> Void
 
@@ -950,10 +974,10 @@ private struct ContractAddressInputField: View {
         ZStack(alignment: .bottomTrailing) {
             TextField(
                 text: $text,
-                prompt: Text(placeholder),
+                prompt: Text(verbatim: String.apertureLocalizedKey(placeholder)),
                 axis: .vertical
             ) {
-                Text(label)
+                Text(verbatim: String.apertureLocalizedKey(label))
             }
             .focused($isFocused)
             .textFieldStyle(.automatic)
@@ -994,29 +1018,33 @@ private struct ContractAddressInputField: View {
     private var fieldUtilities: some View {
         HStack(spacing: 8) {
             fieldUtilityButton(
-                title: "Paste",
+                titleKey: "Paste",
                 systemImage: "doc.on.clipboard",
-                accessibilityLabel: "Paste contract address",
+                accessibilityKey: "Paste contract address",
                 action: onPaste
             )
             fieldUtilityButton(
-                title: "Scan",
+                titleKey: "Scan",
                 systemImage: "qrcode.viewfinder",
-                accessibilityLabel: "Scan contract address",
+                accessibilityKey: "Scan contract address",
                 action: onScan
             )
         }
     }
 
     private func fieldUtilityButton(
-        title: LocalizedStringKey,
+        titleKey: String,
         systemImage: String,
-        accessibilityLabel: LocalizedStringKey,
+        accessibilityKey: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+            Label {
+                Text(verbatim: String.apertureLocalizedKey(titleKey))
+            } icon: {
+                Image(systemName: systemImage)
+            }
+                .font(.system(size: 14, weight: .regular))
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(UniColors.Text.primary)
                 .padding(.horizontal, 12)
@@ -1027,8 +1055,8 @@ private struct ContractAddressInputField: View {
                         .stroke(UniColors.Input.border.opacity(0.7), lineWidth: 1)
                 }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(accessibilityLabel))
+        .buttonStyle(.uniTactile)
+        .accessibilityLabel(Text(verbatim: String.apertureLocalizedKey(accessibilityKey)))
     }
 }
 
@@ -1113,7 +1141,7 @@ private struct CustomTokenCSVHelpSheet: View {
     private var intro: some View {
         HStack(alignment: .top, spacing: UniSpacing.m) {
             Image(systemName: "tablecells")
-                .font(.system(size: 22, weight: .medium))
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(UniColors.Icon.accent)
                 .frame(width: 44, height: 44)
                 .background(UniColors.Fill.tertiary, in: Circle())
@@ -1223,7 +1251,7 @@ private struct CustomTokenCSVHelpSheet: View {
     ) -> some View {
         HStack(alignment: .top, spacing: UniSpacing.m) {
             Image(systemName: "\(number).circle.fill")
-                .font(.system(size: 22, weight: .medium))
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(UniColors.Icon.accent)
                 .frame(width: 28)
                 .accessibilityHidden(true)

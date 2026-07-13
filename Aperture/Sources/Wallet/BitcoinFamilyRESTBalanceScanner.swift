@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import OSLog
 
 actor BitcoinFamilyRESTBalanceScanner {
@@ -49,7 +50,8 @@ actor BitcoinFamilyRESTBalanceScanner {
         // successful probes, and skip balance/UTXO writes when any probe fails.
         var totalRaw: Int64 = 0
         var allUTXOs: [SelectedUTXO] = []
-        var allHistory: [BitcoinFamilyRESTEvent] = []
+        /// History legs tagged with the address they were fetched for.
+        var allHistory: [(address: String, event: BitcoinFamilyRESTEvent)] = []
         var activeAddresses = Set<String>()
         var scanned = Set<String>()
         var queue = addressRows.map(\.address)
@@ -105,7 +107,10 @@ actor BitcoinFamilyRESTBalanceScanner {
                 if !addrHistory.isEmpty {
                     activeAddresses.insert(addr)
                 }
-                allHistory.append(contentsOf: addrHistory)
+                // Per-address cap — never dump every path onto primary only.
+                for event in addrHistory.prefix(HistoryScanLimits.perAddress) {
+                    allHistory.append((addr, event))
+                }
             }
 
             let extensions = (try? BitcoinFamilyAddressBook.markUsedAndExtendIfNeeded(
@@ -164,20 +169,30 @@ actor BitcoinFamilyRESTBalanceScanner {
             )
         }
 
-        var seenTx = Set<String>()
-        for event in allHistory.prefix(80) where seenTx.insert(event.txHash).inserted {
+        // Attribute each leg to the address it was fetched for (multi-path).
+        let addressIds = try Self.addressIdByAddress(
+            walletId: walletId,
+            chain: chain,
+            database: database
+        )
+        var seenLeg = Set<String>()
+        for item in allHistory {
+            let addressId = addressIds[item.address] ?? (item.address == address.address ? address.id : nil)
+            guard let addressId else { continue }
+            let legKey = "\(item.event.txHash)|\(addressId.uuidString)"
+            guard seenLeg.insert(legKey).inserted else { continue }
             try txRepo.upsertTransaction(
-                addressId: address.id,
-                txHash: event.txHash,
-                direction: event.direction,
-                amountRaw: event.amount,
+                addressId: addressId,
+                txHash: item.event.txHash,
+                direction: item.event.direction,
+                amountRaw: item.event.amount,
                 tokenSymbol: chain.ticker,
                 tokenContract: nil,
-                blockNumber: event.blockNumber,
-                occurredAt: event.occurredAt,
-                status: event.status,
-                counterparty: event.counterparty,
-                feeRaw: event.fee,
+                blockNumber: item.event.blockNumber,
+                occurredAt: item.event.occurredAt,
+                status: item.event.status,
+                counterparty: item.event.counterparty,
+                feeRaw: item.event.fee,
                 save: false
             )
         }
@@ -373,7 +388,27 @@ actor BitcoinFamilyRESTBalanceScanner {
     }
 
     private func dogecoinHistory(address: String) async throws -> [BitcoinFamilyRESTEvent] {
-        try await dogecoin.recentEvents(address: address, limit: 50)
+        try await dogecoin.recentEvents(address: address, limit: HistoryScanLimits.perAddress)
+    }
+
+    private static func addressIdByAddress(
+        walletId: UUID,
+        chain: SupportedChain,
+        database: AppDatabase
+    ) throws -> [String: UUID] {
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, address FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ?
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            ).reduce(into: [String: UUID]()) { partial, row in
+                guard let id = UUID(uuidString: row["id"]) else { return }
+                partial[row["address"]] = id
+            }
+        }
     }
 
     private func blockCypherSnapshot(
@@ -393,7 +428,7 @@ actor BitcoinFamilyRESTBalanceScanner {
         address: String,
         chain: SupportedChain
     ) async throws -> [BitcoinFamilyRESTEvent] {
-        let response = try await blockCypherAddress(address: address, chain: chain, limit: 50)
+        let response = try await blockCypherAddress(address: address, chain: chain, limit: HistoryScanLimits.perAddress)
         let confirmed = response.array("txrefs")
         let pending = response.array("unconfirmed_txrefs")
         let rows = confirmed.compactMap { blockCypherEvent($0, chain: chain, confirmed: true) }

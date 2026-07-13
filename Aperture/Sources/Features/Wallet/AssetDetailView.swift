@@ -131,13 +131,12 @@ struct AssetDetailView: View {
         let derived = derivedCache ?? computeDerived()
         List {
             heroCardSection(derived)
+            solanaPathsSection
             actionsSection(derived)
             networksSection(derived)
             activitySection(derived)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary.ignoresSafeArea())
+        .uniListPageChrome()
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -228,9 +227,12 @@ struct AssetDetailView: View {
         }
     }
 
-    /// Resolve USD unit prices for this asset's symbols so the $0.20-USD
-    /// dust gate can run. Engine-cached and cancellation-safe.
+    /// Seed disk USD prices immediately, then refresh live (no dust flash).
     private func loadDustPrices(symbols: [String]) async {
+        let seeded = ActivityFiat.usdPriceMapFromCache(symbols: symbols)
+        if !seeded.isEmpty {
+            usdPrices = seeded
+        }
         let map = await ActivityFiat.usdPriceMap(symbols: symbols)
         guard !Task.isCancelled else { return }
         usdPrices = map
@@ -411,7 +413,7 @@ struct AssetDetailView: View {
             .accessibilityLabel(
                 hideBalance
                     ? Text("Balance hidden")
-                    : Text("Total \(derived.displayName) balance")
+                    : Text(verbatim: String(format: String.apertureLocalized("Total %@ balance"), derived.displayName))
             )
     }
 
@@ -425,6 +427,39 @@ struct AssetDetailView: View {
             .font(UniTypography.subheadline)
             .foregroundStyle(UniColors.Text.secondary)
             .monospacedDigit()
+    }
+
+    // MARK: - Solana dual-path section
+    //
+    // Portfolio totals sum Phantom + Trust. Send/receive use only the
+    // selected path — surface both so the hero total is not mistaken
+    // for spendable balance.
+
+    @ViewBuilder
+    private var solanaPathsSection: some View {
+        let lines = solanaPathLines
+        if SolanaPathBalanceBreakdown.isDualPath(lines) {
+            Section {
+                ForEach(lines) { line in
+                    SolanaPathBalanceRow(line: line, symbol: identity.symbol, hideBalance: hideBalance)
+                }
+            } header: {
+                Text("Paths")
+            } footer: {
+                Text("Home balance and activity use the selected path only (default Phantom). Switch paths in Receive.")
+            }
+        }
+    }
+
+    private var solanaPathLines: [SolanaPathBalanceLine] {
+        // Native Solana only — dual-path honesty for the summed SOL total.
+        guard case .nativeCoin(.solana) = identity.kind,
+              let wallet = activeWallet else { return [] }
+        return SolanaPathBalanceBreakdown.nativeLines(
+            addresses: wallet.addresses,
+            balances: activeBalancesObservation.balances,
+            fallbackCurrencyCode: currencyCode
+        )
     }
 
     // MARK: - Networks section
@@ -458,6 +493,7 @@ struct AssetDetailView: View {
                             assetSymbol: identity.symbol
                         )
                     }
+                    .uniListRowSurface()
                 }
             } header: {
                 Text("Networks")
@@ -510,6 +546,7 @@ struct AssetDetailView: View {
                         NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
                             activityRow(tx, chain: chain)
                         }
+                        .uniListRowSurface()
                     } else {
                         // The parent address record is missing or
                         // carries an unrecognized chain — render the
@@ -518,6 +555,7 @@ struct AssetDetailView: View {
                         // data. The mark chain below is a display-only
                         // proxy taken from the asset's own identity.
                         activityRow(tx, chain: displayProxyChain(derived))
+                            .uniListRowSurface()
                     }
                 }
                 if hasMore {
@@ -535,7 +573,8 @@ struct AssetDetailView: View {
                         .padding(.vertical, UniSpacing.xs)
                         .uniListRowHitTarget()
                     }
-                    .accessibilityLabel(Text("View all \(rows.count) transactions"))
+                    .uniListRowSurface()
+                    .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("View all %lld transactions"), Int64(rows.count))))
                 }
             }
         } header: {
@@ -683,6 +722,7 @@ struct AssetDetailView: View {
     /// — the asset detail respects only its own filters.
     private var allHeldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
+        let allowedIds = SolanaPathBalanceBreakdown.displayAddressIds(walletAddresses: wallet.addresses)
         let chainByAddressId = Dictionary(
             uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
                 guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
@@ -692,6 +732,7 @@ struct AssetDetailView: View {
         var result: [(SupportedChain, TokenBalanceRecord)] = []
         for balance in activeBalancesObservation.balances where !balance.rawBalance.isEmpty {
             guard let addressId = balance.addressId ?? balance.address?.id,
+                  allowedIds.contains(addressId),
                   let chain = chainByAddressId[addressId] else { continue }
             result.append((chain, balance))
         }
@@ -703,9 +744,10 @@ struct AssetDetailView: View {
     /// relationship faulting). Asset-scoping happens in the filter
     /// applier, not here. Read only inside `computeDerived()`, which runs
     /// on a `derivedKey` change — not per body pass.
+    /// Solana dual-path: preferred path only (matches home).
     private var allTransactions: [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
-        let ids = Set(wallet.addresses.map { $0.id })
+        let ids = SolanaPathBalanceBreakdown.displayAddressIds(walletAddresses: wallet.addresses)
         guard !ids.isEmpty else { return [] }
         return allTransactionRecords.filter { tx in
             guard let aid = tx.addressId else { return false }

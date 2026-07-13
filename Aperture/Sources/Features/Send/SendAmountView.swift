@@ -104,7 +104,8 @@ struct SendAmountView: View {
                         SendAmountHero(
                             model: model,
                             selectionTapCount: $selectionTapCount,
-                            onReview: reviewDraft
+                            onReview: reviewDraft,
+                            spendPathTitle: solanaSpendPathTitle
                         )
                         .frame(minHeight: max(0, proxy.size.height - UniSpacing.m), alignment: .top)
                     }
@@ -180,12 +181,14 @@ struct SendAmountView: View {
             // selected coins + amount via `selectCoins` (off-main) (FIX 3).
             if model.capability.supportsUTXO { await model.recomputeUTXOFee() }
         }
-        // Keep MAX tracking the live fee: when the resolved worst-case fee
-        // changes (tier switch, rate refresh) while MAX is engaged, re-run
-        // `engageMax()` so the field always reflects the current tier's
-        // worst-case reservation (FIX 2). Keyed on the Decimal because
-        // `FeeChoice` isn't `Equatable`.
+        // Keep MAX tracking the live fee on every chain (not only UTXO):
+        // when worst-case fee changes (tier, custom, quote, UTXO recompute)
+        // while MAX is armed, re-subtract fee from residual so the amount
+        // never paints red. Keyed on Decimal because FeeChoice isn't Equatable.
         .onChange(of: model.resolvedFee?.worstCaseTotalNative) { _, _ in
+            if model.isMaxSend { model.engageMax() }
+        }
+        .onChange(of: model.resolvedFee?.estimatedTotalNative) { _, _ in
             if model.isMaxSend { model.engageMax() }
         }
         .sheets(
@@ -208,20 +211,20 @@ struct SendAmountView: View {
         if model.recipientNeedsActivation {
             switch chain {
             case .tron:
-                return String(localized: "This recipient isn't activated yet — sending will cost about 1.1 TRX extra to create the account.")
+                return String.apertureLocalized("This recipient isn't activated yet — sending will cost about 1.1 TRX extra to create the account.")
             case .stellar:
-                return String(localized: "This Stellar account is new — the first payment uses create_account and must meet the minimum starting balance.")
+                return String.apertureLocalized("This Stellar account is new — the first payment uses create_account and must meet the minimum starting balance.")
             case .ripple:
-                return String(localized: "This XRP account is new — the first payment must cover the base reserve to open it.")
+                return String.apertureLocalized("This XRP account is new — the first payment must cover the base reserve to open it.")
             default:
                 break
             }
         }
         if model.recipientRequiresDestinationTag, chain == .ripple {
-            return String(localized: "This recipient requires a destination tag. Add it from the options menu or go back to the recipient step — without it the deposit can be lost.")
+            return String.apertureLocalized("This recipient requires a destination tag. Add it from the options menu or go back to the recipient step — without it the deposit can be lost.")
         }
         if model.recipientRequiresMemo, chain == .stellar {
-            return String(localized: "This recipient requires a memo. Add it from the options menu or go back to the recipient step — without it the deposit can be lost.")
+            return String.apertureLocalized("This recipient requires a memo. Add it from the options menu or go back to the recipient step — without it the deposit can be lost.")
         }
         // Standing reserve education. When GRDB account-state is populated
         // (M-001), surface live OwnerCount / subentries so Max matches the banner.
@@ -238,21 +241,21 @@ struct SendAmountView: View {
                     Int64(state.ownerCount)
                 )
             }
-            return String(localized: "XRP keeps a 1 XRP base reserve (plus 0.2 XRP per object) locked to keep your account open. Available/Max update after a balance scan fills account state.")
+            return String.apertureLocalized("XRP keeps a 1 XRP base reserve (plus 0.2 XRP per object) locked to keep your account open. Available/Max update after a balance scan fills account state.")
         case .stellar:
             if state.subentryCount > 0 || state.numSponsoring > 0 {
-                return String(localized: "Stellar keeps a minimum balance reserved from your live subentries so the account stays active. Available/Max use that reserve.")
+                return String.apertureLocalized("Stellar keeps a minimum balance reserved from your live subentries so the account stays active. Available/Max use that reserve.")
             }
-            return String(localized: "Stellar keeps a minimum balance (from 1 XLM) reserved to keep your account active.")
+            return String.apertureLocalized("Stellar keeps a minimum balance (from 1 XLM) reserved to keep your account active.")
         case .polkadot:
-            return String(localized: "Polkadot needs 0.01 DOT to remain — dropping below it would close the account and lose the funds.")
+            return String.apertureLocalized("Polkadot needs 0.01 DOT to remain — dropping below it would close the account and lose the funds.")
         case .solana:
-            return String(localized: "Solana keeps ~0.00089 SOL as the rent-exempt minimum so the account stays on-chain.")
+            return String.apertureLocalized("Solana keeps ~0.00089 SOL as the rent-exempt minimum so the account stays on-chain.")
         case .near:
             if state.storageUsageBytes > 0 || state.locked > 0 {
-                return String(localized: "NEAR locks storage stake and any locked balance so they can’t be sent. Available/Max use your last scanned account state.")
+                return String.apertureLocalized("NEAR locks storage stake and any locked balance so they can’t be sent. Available/Max use your last scanned account state.")
             }
-            return String(localized: "NEAR keeps a small amount locked for account storage; it can't be sent.")
+            return String.apertureLocalized("NEAR keeps a small amount locked for account storage; it can't be sent.")
         default:
             return nil
         }
@@ -299,7 +302,7 @@ struct SendAmountView: View {
         case .insufficientNativeForFee(let feeNeeded, let nativeAvailable):
             let needed = nativeAmountText(feeNeeded)
             let available = nativeAmountText(nativeAvailable)
-            return String(localized: "Network fee needs \(needed). Available: \(available).")
+            return String.apertureLocalized("Network fee needs \(needed). Available: \(available).")
         default:
             return error.message
         }
@@ -340,6 +343,14 @@ struct SendAmountView: View {
                 }
             }
 
+            // BIP-125 RBF — BTC/LTC only. Toggle writes model.signalsRBF,
+            // which the draft + BitcoinTransactionSigner honor 1:1.
+            if model.supportsRBF {
+                Toggle(isOn: rbfBinding) {
+                    Label("Replace-By-Fee (RBF)", systemImage: "arrow.triangle.2.circlepath")
+                }
+            }
+
             advancedMemoButton
 
             if model.chain.family == .evm {
@@ -353,9 +364,17 @@ struct SendAmountView: View {
             // Three dots only — no ring (FIX 6). Weight/size balanced with
             // the nav back chevron.
             Image(systemName: "ellipsis")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17, weight: .regular))
         }
         .accessibilityLabel(Text("More options"))
+    }
+
+    /// Binding into the @Observable compose model (State-held).
+    private var rbfBinding: Binding<Bool> {
+        Binding(
+            get: { model.signalsRBF },
+            set: { model.signalsRBF = $0 }
+        )
     }
 
     @ViewBuilder
@@ -420,6 +439,24 @@ struct SendAmountView: View {
 
     private var activeWallet: WalletRecord? {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
+    }
+
+    /// When Solana dual-path is present, the send-from path title (Phantom /
+    /// Trust Wallet) so Available is not confused with the home total.
+    private var solanaSpendPathTitle: String? {
+        guard chain == .solana, let wallet = activeWallet else { return nil }
+        let lines = SolanaPathBalanceBreakdown.nativeLines(
+            addresses: wallet.addresses,
+            balances: activeBalancesObservation.balances,
+            fallbackCurrencyCode: currencyCode
+        )
+        guard SolanaPathBalanceBreakdown.isDualPath(lines) else { return nil }
+        return SolanaPathBalanceBreakdown.style(
+            forAddress: fromAddress,
+            walletAddresses: wallet.addresses
+        )?.title
+            ?? lines.first(where: \.isPreferred)?.style.title
+            ?? lines.first?.style.title
     }
 
     private var balancesKey: String {

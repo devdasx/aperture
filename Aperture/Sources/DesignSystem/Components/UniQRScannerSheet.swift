@@ -158,13 +158,13 @@ struct UniQRScannerSheet: View {
             Button { pasteFromClipboard() } label: {
                 ScannerBottomActionLabel(title: "Paste", systemImage: "doc.on.clipboard")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniTactile)
             .accessibilityLabel(Text("Paste"))
 
             PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
                 ScannerBottomActionLabel(title: "Gallery", systemImage: "photo.on.rectangle")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniTactile)
             .accessibilityLabel(Text("Gallery"))
         }
     }
@@ -172,14 +172,14 @@ struct UniQRScannerSheet: View {
     private func circleControl(systemImage: String, filled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(filled ? .black : .white)
                 .frame(width: 40, height: 40)
                 .glassEffect(.regular, in: .circle)
                 .background(filled ? Color.white : Color.clear, in: .circle)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
         .contentShape(Circle())
     }
 
@@ -220,7 +220,7 @@ struct UniQRScannerSheet: View {
                     .frame(height: 52)
                     .background(Color.white, in: Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniTactile)
             .padding(.horizontal, UniSpacing.l)
             Spacer()
             bottomControls
@@ -587,7 +587,7 @@ nonisolated private struct ScannerBottomActionLabel: View {
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15, weight: .regular))
             Text(title)
                 .font(.system(size: 14, weight: .semibold))
         }

@@ -129,9 +129,7 @@ struct WalletHomeFilterSheet: View {
                 viewSection
                 showSection
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -220,7 +218,7 @@ struct WalletHomeFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         }
     }
 
@@ -233,15 +231,15 @@ struct WalletHomeFilterSheet: View {
     private var viewSection: some View {
         Section {
             stylePicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             assetTypePicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             sortKeyPicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             sortDirectionPicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             groupByPicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("View")
         } footer: {
@@ -365,32 +363,32 @@ struct WalletHomeFilterSheet: View {
     private var showSection: some View {
         Section {
             onlyWithBalanceToggle
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
             NavigationLink(value: FilterDestination.minValue) {
                 minValueLink
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink(value: FilterDestination.networks) {
                 networksLink
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink(value: FilterDestination.hiddenAssets) {
                 hiddenAssetsLink
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink(value: FilterDestination.hiddenChains) {
                 hiddenChainsLink
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink(value: FilterDestination.pinnedAssets) {
                 pinnedAssetsLink
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Show")
         } footer: {
@@ -605,7 +603,7 @@ struct WalletHomeFilterSheet: View {
         let trimmedQuery = searchPreview.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedQuery.isEmpty {
             return String(
-                format: String(localized: "Found %lld for \"%@\""),
+                format: String.apertureLocalized("Found %lld for \"%@\""),
                 Int64(visible),
                 trimmedQuery
             )
@@ -616,19 +614,19 @@ struct WalletHomeFilterSheet: View {
 
         if nothingHidden && !zeroBalanceHidden {
             return String(
-                format: String(localized: "Showing all %lld assets"),
+                format: String.apertureLocalized("Showing all %lld assets"),
                 Int64(totalSupported)
             )
         }
         if zeroBalanceHidden {
             return String(
-                format: String(localized: "Showing %lld of %lld assets (zero balances hidden)"),
+                format: String.apertureLocalized("Showing %lld of %lld assets (zero balances hidden)"),
                 Int64(visible),
                 Int64(totalSupported)
             )
         }
         return String(
-            format: String(localized: "Showing %lld of %lld assets"),
+            format: String.apertureLocalized("Showing %lld of %lld assets"),
             Int64(visible),
             Int64(totalSupported)
         )
@@ -642,8 +640,8 @@ struct WalletHomeFilterSheet: View {
         if let preset = option {
             return preset.label(currencyCode: currencyCode)
         }
-        // Custom value — format and prefix.
-        let value = Decimal(minFiatThresholdRaw).formatted(.currency(code: currencyCode))
+        // Custom value — format and prefix (narrow symbols: US$ → $).
+        let value = WalletFormatting.fiat(Decimal(minFiatThresholdRaw), currencyCode: currencyCode)
         return String.apertureLocalized("Under \(value)")
     }
 
@@ -659,7 +657,7 @@ struct WalletHomeFilterSheet: View {
         // Subtract the "none" sentinel from the count if present.
         let realCount = selected.subtracting([WalletHomeNetworksView.noneSentinel]).count
         return String(
-            format: String(localized: "%lld of %lld"),
+            format: String.apertureLocalized("%lld of %lld"),
             Int64(realCount),
             Int64(SupportedChain.allCases.count)
         )

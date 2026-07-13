@@ -47,6 +47,8 @@ struct SendReviewView: View {
 
     @GRDBStorage("biometricEnabled") private var biometricEnabled: Bool = false
     @GRDBStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
+    /// Live biometry type for the Send CTA Face ID / Touch ID glyph.
+    @State private var biometricService = BiometricService()
 
     /// The send state machine. `.review` is the resting state.
     @State private var phase: Phase = .review
@@ -57,9 +59,16 @@ struct SendReviewView: View {
     /// The PIN-fallback presentation. Verify gates are native bottom sheets
     /// so the user can change their mind without leaving the send flow.
     @State private var isShowingPinVerify: Bool = false
+    @State private var pinVerifyAutoPromptBiometrics: Bool = true
     @State private var didCompletePinVerify: Bool = false
     /// The passphrase prompt presentation.
     @State private var isShowingPassphrase: Bool = false
+    /// Multi-recipient list sheet from the Review "To" row.
+    @State private var isShowingRecipientsSheet: Bool = false
+    /// Full “transactions cannot be reversed” education sheet.
+    @State private var isShowingIrreversibleInfo: Bool = false
+    /// Read-only selected-coins sheet (edit only on amount step).
+    @State private var isShowingSelectedCoinsSheet: Bool = false
     /// The collected passphrase, held only for the duration of the send.
     @State private var passphrase: String = ""
     /// The in-flight biometric authentication, cancellable on disappear.
@@ -95,8 +104,8 @@ struct SendReviewView: View {
                     assetSymbol: assetSymbol,
                     tokenContract: draft.tokenContract,
                     assetKind: draft.tokenSymbol == nil ? "Coin" : "Token",
-                    recipient: draft.recipients.first?.name
-                        ?? WalletFormatting.shortAddress(draft.recipients.first?.address ?? "", prefix: 8, suffix: 6),
+                    recipients: draft.recipients,
+                    amountDecimals: draft.effectiveDecimals,
                     senderAddress: draft.fromAddress,
                     onDone: onClose
                 )
@@ -138,17 +147,64 @@ struct SendReviewView: View {
         .navigationBarBackButtonHidden(isWorking)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                CoinTitleBar(chain: chain, tokenSymbol: draft.tokenSymbol, verb: "Review")
+                Text("Review Transaction Details")
+                    .font(UniTypography.headline)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
         }
         .sheet(isPresented: $isShowingPinVerify, onDismiss: handlePinVerifyDismiss) {
             pinVerifySheet
+        }
+        .sheet(isPresented: $isShowingRecipientsSheet) {
+            SendRecipientsSheet(
+                recipients: draft.recipients,
+                assetSymbol: assetSymbol,
+                amountDecimals: draft.effectiveDecimals
+            )
+            .apertureEnvironment()
+            .uniSheetDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingIrreversibleInfo) {
+            SendIrreversibleTransactionSheet()
+                .apertureEnvironment()
+                .uniSheetDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingSelectedCoinsSheet) {
+            if let utxos = draft.selectedUTXOs, !utxos.isEmpty {
+                SendReviewSelectedCoinsSheet(
+                    utxos: utxos,
+                    chain: chain,
+                    hideBalances: hideBalances
+                )
+                .apertureEnvironment()
+                .uniSheetDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+            }
         }
         .sheet(isPresented: $isShowingPassphrase) {
             SendPassphraseSheet(
                 onSubmit: { entered in
                     passphrase = entered
                     isShowingPassphrase = false
+                    // Session cache so refresh can dual-provision Solana paths
+                    // without re-prompting (passphrase never persisted to disk).
+                    Task {
+                        await BIP39PassphraseSession.shared.remember(
+                            walletId: walletId,
+                            passphrase: entered
+                        )
+                        _ = await SolanaPathProvisioning.ensureBothAccountZeroPathsIfPossible(
+                            walletId: walletId,
+                            passphrase: entered
+                        )
+                    }
                     startSend()
                 },
                 onCancel: {
@@ -193,7 +249,7 @@ struct SendReviewView: View {
     private var detailsCard: some View {
         UniCard(padding: 0) {
             VStack(spacing: 0) {
-                detailRow("Network", value: chain.displayName)
+                networkRow
                 divider
                 detailRow("From", value: WalletFormatting.shortAddress(draft.fromAddress, prefix: 8, suffix: 6), mono: true)
                 divider
@@ -204,42 +260,63 @@ struct SendReviewView: View {
         }
     }
 
+    /// Network name + chain mark (logo).
+    private var networkRow: some View {
+        HStack(spacing: UniSpacing.s) {
+            Text("Network")
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: UniSpacing.s)
+            HStack(spacing: UniSpacing.s) {
+                CoinMark(chain: chain, tokenSymbol: chain.ticker)
+                    .frame(width: 22, height: 22)
+                    .accessibilityHidden(true)
+                Text(verbatim: chain.displayName)
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, UniSpacing.m)
+        .padding(.vertical, UniSpacing.s)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            Text(verbatim: "\(String.apertureLocalized("Network")), \(chain.displayName)")
+        )
+    }
+
     @ViewBuilder
     private var recipientRows: some View {
         if draft.recipients.count == 1, let r = draft.recipients.first {
             detailRow("To", value: r.name ?? WalletFormatting.shortAddress(r.address, prefix: 8, suffix: 6), mono: r.name == nil)
         } else {
-            ForEach(Array(draft.recipients.enumerated()), id: \.offset) { offset, r in
-                multiRecipientRow(index: offset + 1, recipient: r)
-                if offset < draft.recipients.count - 1 { divider }
+            // Multi: count link → full address + amount sheet (same as sent).
+            HStack(spacing: UniSpacing.s) {
+                Text("To")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.secondary)
+                Spacer(minLength: UniSpacing.s)
+                Button {
+                    isShowingRecipientsSheet = true
+                } label: {
+                    Text(verbatim: recipientsCountLabel)
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Button.text)
+                        .multilineTextAlignment(.trailing)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Shows all recipient addresses and amounts"))
             }
-            divider
-            detailRow("Total", value: "\(WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals, hidden: hideBalances)) \(assetSymbol)", mono: true)
+            .padding(.horizontal, UniSpacing.m)
+            .padding(.vertical, UniSpacing.s)
         }
     }
 
-    private func multiRecipientRow(index: Int, recipient r: SendRecipientAmount) -> some View {
-        HStack(alignment: .top, spacing: UniSpacing.s) {
-            Text(verbatim: "\(index)")
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Text.secondary)
-                .frame(width: 20, alignment: .leading)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: r.name ?? WalletFormatting.shortAddress(r.address, prefix: 8, suffix: 6))
-                    .font(UniTypography.body.monospaced())
-                    .foregroundStyle(UniColors.Text.primary)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            Spacer(minLength: UniSpacing.s)
-            Text(verbatim: "\(WalletFormatting.native(r.amount, decimals: draft.effectiveDecimals, hidden: hideBalances)) \(assetSymbol)")
-                .font(UniTypography.callout.monospacedDigit())
-                .foregroundStyle(UniColors.Text.primary)
-                .environment(\.layoutDirection, .leftToRight)
-        }
-        .padding(.horizontal, UniSpacing.m)
-        .padding(.vertical, UniSpacing.s)
+    private var recipientsCountLabel: String {
+        String(
+            format: String.apertureLocalized("%lld recipients"),
+            Int64(draft.recipients.count)
+        )
     }
 
     private var feeRow: some View {
@@ -259,9 +336,6 @@ struct SendReviewView: View {
                         .foregroundStyle(UniColors.Text.tertiary)
                         .environment(\.layoutDirection, .leftToRight)
                 }
-                Text(verbatim: draft.fee.tier.label)
-                    .font(UniTypography.caption2)
-                    .foregroundStyle(UniColors.Text.tertiary)
             }
         }
         .padding(.horizontal, UniSpacing.m)
@@ -270,7 +344,9 @@ struct SendReviewView: View {
 
     // MARK: - Extras (memo / tag / comment / op_return / max)
 
-    private var hasExtras: Bool { !extras.isEmpty }
+    private var hasExtras: Bool {
+        !extras.isEmpty || reviewSelectedUTXOs != nil
+    }
 
     /// One extra row's content, resolved into a stable, order-preserving
     /// list so the card can interleave dividers without ViewBuilder
@@ -281,6 +357,7 @@ struct SendReviewView: View {
         let value: String
     }
 
+    /// Extras that are plain label → value rows (coins is interactive).
     private var extras: [Extra] {
         var rows: [Extra] = []
         if let memo = memoSummary {
@@ -289,24 +366,72 @@ struct SendReviewView: View {
         if let data = draft.opReturn, let text = String(data: data, encoding: .utf8), !text.isEmpty {
             rows.append(Extra(key: "OP_RETURN", value: text))
         }
-        if let utxos = draft.selectedUTXOs, !utxos.isEmpty, chain.family == .bitcoin {
-            rows.append(Extra(key: "Coins", value: String(localized: "\(utxos.count) selected")))
+        // RBF only meaningful on BTC/LTC (same gate as the amount menu +
+        // signer). Surface the user's choice so review is honest.
+        if chain == .bitcoin || chain == .litecoin {
+            rows.append(Extra(
+                key: "Replace-By-Fee (RBF)",
+                value: draft.signalsRBF
+                    ? String.apertureLocalized("On")
+                    : String.apertureLocalized("Off")
+            ))
         }
         if draft.isMaxSend {
-            rows.append(Extra(key: "Amount", value: String(localized: "Sending the maximum")))
+            rows.append(Extra(key: "Amount", value: String.apertureLocalized("Sending the maximum")))
         }
         return rows
+    }
+
+    private var reviewSelectedUTXOs: [SelectedUTXO]? {
+        guard chain.family == .bitcoin,
+              let utxos = draft.selectedUTXOs, !utxos.isEmpty else { return nil }
+        return utxos
     }
 
     private var extrasCard: some View {
         UniCard(padding: 0) {
             VStack(spacing: 0) {
+                if let utxos = reviewSelectedUTXOs {
+                    coinsDisclosureRow(count: utxos.count)
+                    if !extras.isEmpty { divider }
+                }
                 ForEach(Array(extras.enumerated()), id: \.element.id) { offset, extra in
                     extraRow(extra.key, value: extra.value)
                     if offset < extras.count - 1 { divider }
                 }
             }
         }
+    }
+
+    /// "Coins · N Selected ›" — text-button value opens a read-only sheet.
+    /// Selection is only editable on the amount step options menu.
+    private func coinsDisclosureRow(count: Int) -> some View {
+        let label = String(
+            format: String.apertureLocalized("%lld Selected"),
+            Int64(count)
+        )
+        return HStack(spacing: UniSpacing.s) {
+            Text("Coins")
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: UniSpacing.s)
+            Button {
+                isShowingSelectedCoinsSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Text(verbatim: label)
+                        .font(UniTypography.body)
+                    Image(systemName: UniDirectionalSymbol.disclosure)
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(UniColors.Button.text)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: label))
+            .accessibilityHint(Text("Shows the coins used in this send. Selection can’t be changed here."))
+        }
+        .padding(.horizontal, UniSpacing.m)
+        .padding(.vertical, UniSpacing.s)
     }
 
     private var memoLabel: LocalizedStringKey {
@@ -332,18 +457,29 @@ struct SendReviewView: View {
         }
     }
 
-    // MARK: - Self-custody note (Rule #16 — restate at the moment of commit)
+    // MARK: - Finality note (Rule #16 — restate at the moment of commit)
 
+    /// Compact warning: irreversible + tappable Learn more → full explanation.
     private var selfCustodyNote: some View {
-        HStack(alignment: .top, spacing: UniSpacing.s) {
-            Image(systemName: "lock.shield")
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xs) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(UniColors.Text.secondary)
                 .accessibilityHidden(true)
-            Text("Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, it can't be reversed.")
+            // Keep the warning short; details live behind Learn more.
+            Text("Transaction cannot be reversed.")
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Button {
+                isShowingIrreversibleInfo = true
+            } label: {
+                Text("Learn more")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Button.text)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Explains why sent transactions cannot be reversed"))
         }
         .padding(UniSpacing.m)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -360,6 +496,9 @@ struct SendReviewView: View {
             UniButton(
                 title: sendTitle,
                 variant: .primary,
+                // Face ID / Touch ID on the CTA when send requires biometrics
+                // — not only after tap; the icon sets the expectation.
+                systemImage: sendCTASystemImage,
                 isLoading: isWorking,
                 isEnabled: !isWorking,
                 action: beginSend
@@ -367,6 +506,7 @@ struct SendReviewView: View {
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
         }
+        .onAppear { biometricService.refresh() }
     }
 
     private var sendTitle: LocalizedStringKey {
@@ -377,37 +517,50 @@ struct SendReviewView: View {
         }
     }
 
+    /// Leading glyph on Send when Face ID (etc.) will gate the broadcast.
+    /// Hidden while loading (spinner replaces the icon) and when send-auth
+    /// is off or biometrics aren't available.
+    private var sendCTASystemImage: String? {
+        guard !isWorking else { return nil }
+        guard showsBiometricOnSendCTA else { return nil }
+        let name = biometricService.biometryType.systemImageName
+        // Only show a concrete biometry symbol — not the generic lock fallback.
+        switch biometricService.biometryType {
+        case .faceID, .touchID, .opticID:
+            return name
+        case .none:
+            return nil
+        }
+    }
+
+    /// Master biometrics on + "Use Face ID for sending" + PIN set.
+    private var showsBiometricOnSendCTA: Bool {
+        biometricEnabled && requireForSend && PinCodeStorage.hasPin
+    }
+
     // MARK: - PIN-fallback sheet
 
     private var pinVerifySheet: some View {
-        NavigationStack {
-            PinCodeView(
-                mode: .verify,
-                onComplete: { _ in
-                    didCompletePinVerify = true
-                    isShowingPinVerify = false
-                    afterAuthSuccess()
-                },
-                onCancel: {
-                    isShowingPinVerify = false
-                    phase = .review
-                },
-                // Face ID auto-prompts here only when the user kept "Require
-                // Face ID for sending" on; off → passcode-only (no biometric).
-                allowsBiometrics: requireForSend,
-                showsNavigationControls: false,
-                accessContext: .signTransaction(
-                    chain: chain,
-                    symbol: assetSymbol,
-                    contract: draft.tokenContract
-                )
-            )
-        }
-        .background(UniColors.Background.primary.ignoresSafeArea())
-        .apertureEnvironment()
-        .uniSheetDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(UniColors.Background.primary)
+        SensitiveAuthPasscodeSheet(
+            accessContext: .signTransaction(
+                chain: chain,
+                symbol: assetSymbol,
+                contract: draft.tokenContract
+            ),
+            autoPromptBiometrics: pinVerifyAutoPromptBiometrics,
+            // Always allow Face ID on the keypad when the user enabled it in
+            // Security — never force passcode-only while biometrics are on.
+            allowsBiometrics: biometricEnabled,
+            onComplete: {
+                didCompletePinVerify = true
+                isShowingPinVerify = false
+                afterAuthSuccess()
+            },
+            onCancel: {
+                isShowingPinVerify = false
+                phase = .review
+            }
+        )
     }
 
     // MARK: - Flow
@@ -423,22 +576,32 @@ struct SendReviewView: View {
         // `.uniHaptic(...)` triggers below.
         phase = .authenticating
 
-        // Unified auth: route through the ONE passcode screen. It auto-prompts
-        // Face ID only when the in-app biometric toggle AND "Require Face ID
-        // for sending" are both on — `pinVerifyCover` passes
-        // `allowsBiometrics: requireForSend`, and the screen itself gates on
-        // `biometricEnabled`. No raw OS Face ID prompt (2026-06-21 direction).
-        routeToPinOrProceed()
+        // "Use Face ID for sending" off → no per-send challenge (app unlock
+        // already authenticated this session). On → Face ID first, passcode
+        // fallback with Face ID still on the keypad.
+        routeToAuthOrProceed()
     }
 
-    /// After a biometric failure / when biometrics are off: require the
-    /// PIN if one exists, otherwise (Rule #17 optional-PIN) proceed.
-    private func routeToPinOrProceed() {
-        if PinCodeStorage.hasPin {
-            didCompletePinVerify = false
-            isShowingPinVerify = true
-        } else {
+    /// Shared gate: Face ID first when send-auth is required, then passcode.
+    private func routeToAuthOrProceed() {
+        // No PIN, or user turned off "Use Face ID for sending" → proceed.
+        // (When that toggle is off, do not force a passcode-only sheet.)
+        guard PinCodeStorage.hasPin, requireForSend else {
             afterAuthSuccess()
+            return
+        }
+        Task { @MainActor in
+            // requireForSend is only meaningful while master biometrics are
+            // on — always prefer Face ID; passcode sheet is the fallback.
+            let gate = await SensitiveActionAuth.gatePreferringBiometric()
+            switch gate {
+            case .authorized:
+                afterAuthSuccess()
+            case .presentPasscode(let autoPrompt):
+                didCompletePinVerify = false
+                pinVerifyAutoPromptBiometrics = autoPrompt
+                isShowingPinVerify = true
+            }
         }
     }
 
@@ -542,7 +705,10 @@ private struct SendSentView: View {
     let assetSymbol: String
     let tokenContract: String?
     let assetKind: String
-    let recipient: String
+    /// All recipients for this send. Multi-recipient chains show a count
+    /// link that opens the full address + amount sheet.
+    let recipients: [SendRecipientAmount]
+    let amountDecimals: Int
     /// The sender's address — needed so the confirmation poll can resolve
     /// status on the chains whose tx lookup is address-scoped (TON, NEAR,
     /// XRPL, Stellar). Harmless for the chains that resolve by hash alone.
@@ -555,6 +721,7 @@ private struct SendSentView: View {
     @State private var isRenderingShareImage: Bool = false
     @State private var screenshotShareItem: SendSentScreenshotShareItem?
     @State private var screenshotShareFailed: Bool = false
+    @State private var isShowingRecipientsSheet: Bool = false
 
     /// The live on-chain verdict, polled after the screen appears so the hero
     /// moves from "Confirming" to "Sent"/"Failed" the moment the chain reports
@@ -563,6 +730,25 @@ private struct SendSentView: View {
     @State private var status: TransactionConfirmation.Outcome = .pending
     /// Stamped when the poll resolves — drives the success / error haptic.
     @State private var resolvedAt: Date?
+
+    private var isMultiRecipient: Bool { recipients.count > 1 }
+
+    private var singleRecipientLabel: String {
+        guard let r = recipients.first else { return "—" }
+        return r.name ?? WalletFormatting.shortAddress(r.address, prefix: 8, suffix: 6)
+    }
+
+    private var recipientsCountLabel: String {
+        String(
+            format: String.apertureLocalized("%lld recipients"),
+            Int64(recipients.count)
+        )
+    }
+
+    /// Value shown on the Details "To" row and in the share screenshot.
+    private var toDisplayValue: String {
+        isMultiRecipient ? recipientsCountLabel : singleRecipientLabel
+    }
 
     private var explorerURL: URL? {
         TransactionExplorer.url(for: transaction.txHash, chain: transaction.chain)
@@ -589,9 +775,7 @@ private struct SendSentView: View {
             detailsSection
             transactionSection
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         // Native scroll clearance: inset the List (not an overlay). Overlay
         // Done bars never shrink list content size, so Share/Explorer sat
         // under the button and felt unscrollable.
@@ -609,6 +793,18 @@ private struct SendSentView: View {
         .onDisappear { copyResetTask?.cancel() }
         .sheet(item: $screenshotShareItem) { item in
             SendSentScreenshotShareSheet(item: item)
+        }
+        .sheet(isPresented: $isShowingRecipientsSheet) {
+            SendRecipientsSheet(
+                recipients: recipients,
+                assetSymbol: assetSymbol,
+                amountDecimals: amountDecimals,
+                transactionAlreadySent: true
+            )
+            .apertureEnvironment()
+            .uniSheetDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
         }
         .alert("Screenshot unavailable", isPresented: $screenshotShareFailed) {
             Button("OK", role: .cancel) {}
@@ -629,35 +825,22 @@ private struct SendSentView: View {
         }
     }
 
-    /// Probe the chain in a loop until confirmed/failed (or budget ends).
-    /// Updates `status` on every tick so the hero stays on **Confirming**
-    /// live, then flips to Sent/Failed (Rule #25 / #16).
+    /// Probe the chain until confirmed/failed (or budget ends).
+    /// Solana uses `getSignatureStatuses` first so indexing lag on
+    /// `getTransaction` doesn't leave Confirming stuck (P1 #12).
     private func pollForConfirmation() async {
         guard !transaction.txHash.isEmpty else { return }
-        // First probe quickly — Solana often finalizes in <2s; EVM shortly after.
-        let firstDelay: Duration = transaction.chain == .solana ? .seconds(1) : .seconds(2)
-        let interval: Duration = transaction.chain == .solana ? .seconds(2) : .seconds(5)
-        let maxAttempts = 60
-        var attempt = 0
-        while attempt < maxAttempts {
-            if Task.isCancelled { return }
-            try? await Task.sleep(for: attempt == 0 ? firstDelay : interval)
-            if Task.isCancelled { return }
-            let outcome = await TransactionConfirmation.probe(
-                txHash: transaction.txHash,
-                chain: transaction.chain,
-                address: senderAddress,
-                tokenContract: tokenContract
-            )
-            status = outcome
-            if outcome != .pending {
-                resolvedAt = Date()
-                return
-            }
-            attempt += 1
+        let outcome = await TransactionConfirmation.awaitResolution(
+            txHash: transaction.txHash,
+            chain: transaction.chain,
+            address: senderAddress,
+            tokenContract: tokenContract
+        )
+        guard !Task.isCancelled else { return }
+        status = outcome
+        if outcome != .pending {
+            resolvedAt = Date()
         }
-        // Budget exhausted — stay on Confirming (honest, not a fake success).
-        status = .pending
     }
 
     /// Hero stack. List rows hug content width unless expanded — without
@@ -683,9 +866,13 @@ private struct SendSentView: View {
 
             // Verbatim + full width so localization can't lag behind the
             // status machine and the title centers in the row.
+            // Confirming is quieter than Sent/Failed (title2, medium weight)
+            // so the spinner + amount still lead.
             Text(verbatim: heroTitleText)
-                .font(UniTypography.largeTitle)
-                .foregroundStyle(UniColors.Copy.largeTitle)
+                .font(isPending
+                      ? Font.system(.title2, design: .default, weight: .medium)
+                      : UniTypography.largeTitle)
+                .foregroundStyle(isPending ? UniColors.Text.primary : UniColors.Copy.largeTitle)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
@@ -740,7 +927,7 @@ private struct SendSentView: View {
         }
         if isPending {
             return String.apertureLocalized(
-                "Broadcast to the \(transaction.chain.displayName) network. Confirming may take a moment — you can safely leave this screen."
+                "Confirming can take a moment. You can safely leave this screen."
             )
         }
         return String.apertureLocalized(
@@ -752,17 +939,100 @@ private struct SendSentView: View {
 
     private var detailsSection: some View {
         Section {
-            if assetKind == "Coin" {
-                detailRow("Coin", value: assetSymbol)
-            } else {
-                detailRow("Token", value: assetSymbol)
+            // Amount + local amount live in the hero — no need to repeat them.
+            assetIdentityRow
+            toRow
+            if showsNetworkRow {
+                detailRow("Network", value: transaction.chain.displayName)
             }
-            detailRow("Amount", value: "\(amount) \(assetSymbol)", mono: true)
-            detailRow("Local amount", value: localAmount ?? "Unavailable", mono: localAmount != nil)
-            detailRow("To", value: recipient, mono: true)
-            detailRow("Network", value: transaction.chain.displayName)
         } header: {
             Text("Details")
+        }
+    }
+
+    /// Full coin/token name + mark. Native coins use the chain display
+    /// name ("Bitcoin"); tokens resolve the catalog name when known.
+    private var assetIdentityRow: some View {
+        LabeledContent {
+            HStack(spacing: UniSpacing.s) {
+                CoinMark(
+                    chain: transaction.chain,
+                    tokenSymbol: assetSymbol,
+                    contract: tokenContract
+                )
+                .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
+
+                Text(verbatim: assetDisplayName)
+                    .font(.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+            }
+        } label: {
+            Text(assetKind == "Coin" ? "Coin" : "Token")
+                .foregroundStyle(UniColors.Text.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(verbatim: "\(assetKind), \(assetDisplayName)"))
+    }
+
+    /// Prefer catalog full name for tokens; chain display name for natives.
+    private var assetDisplayName: String {
+        if let contract = tokenContract, !contract.isEmpty {
+            let chain = transaction.chain
+            if let hit = AssetCatalog.allAssets.first(where: {
+                $0.chain == chain
+                    && $0.contract.compare(contract, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            }) {
+                return hit.name
+            }
+            if let hit = AssetCatalog.allAssets.first(where: {
+                $0.chain == chain
+                    && $0.symbol.caseInsensitiveCompare(assetSymbol) == .orderedSame
+            }) {
+                return hit.name
+            }
+            return assetSymbol
+        }
+        return transaction.chain.displayName
+    }
+
+    /// Network only when the chain hosts more than its native coin
+    /// (EVM, Solana, TRON, TON jettons, etc.). Single-asset chains
+    /// (Bitcoin family) already identify the network via the coin itself.
+    private var showsNetworkRow: Bool {
+        switch transaction.chain {
+        case .bitcoin, .bitcoinCash, .litecoin, .dogecoin, .stellar:
+            return false
+        case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
+             .polygon, .bnbChain, .opBNB, .avalanche, .celo,
+             .solana, .tron, .ton, .sui, .aptos, .near, .polkadot, .ripple:
+            return true
+        }
+    }
+
+    /// Single recipient: short address (or name). Multi: tappable count in
+    /// text-button color that opens the full recipient list.
+    @ViewBuilder
+    private var toRow: some View {
+        if isMultiRecipient {
+            LabeledContent {
+                Button {
+                    isShowingRecipientsSheet = true
+                } label: {
+                    Text(verbatim: recipientsCountLabel)
+                        .font(.body)
+                        .foregroundStyle(UniColors.Button.text)
+                        .multilineTextAlignment(.trailing)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Shows all recipient addresses and amounts"))
+            } label: {
+                Text("To")
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+        } else {
+            detailRow("To", value: singleRecipientLabel, mono: recipients.first?.name == nil)
         }
     }
 
@@ -805,6 +1075,7 @@ private struct SendSentView: View {
             }
         } label: {
             Text("Hash")
+                .foregroundStyle(UniColors.Text.secondary)
         }
     }
 
@@ -812,13 +1083,13 @@ private struct SendSentView: View {
         Button {
             copyHash()
         } label: {
-            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 16, weight: .semibold))
+            UniCopySymbol(isCopied: didCopy)
                 .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
         .foregroundStyle(didCopy ? UniColors.Feedback.Success.foreground : UniColors.Text.link)
+        .uniCopySymbolAnimation(value: didCopy)
         .accessibilityLabel(Text("Copy transaction hash"))
     }
 
@@ -846,10 +1117,12 @@ private struct SendSentView: View {
             primaryAmount: "\(amount) \(assetSymbol)",
             localAmount: localAmount ?? "Local amount unavailable",
             assetKind: assetKind,
+            assetDisplayName: assetDisplayName,
             assetSymbol: assetSymbol,
-            recipient: recipient,
+            recipient: toDisplayValue,
             network: transaction.chain.displayName,
-            hashText: WalletFormatting.shortAddress(transaction.txHash, prefix: 12, suffix: 10),
+            // Shorter hash in the share image (tighter than on-screen).
+            hashText: WalletFormatting.shortAddress(transaction.txHash, prefix: 8, suffix: 6),
             appStoreText: ApertureWeb.appStoreDisplay
         )
         let renderer = ImageRenderer(
@@ -886,13 +1159,13 @@ private struct SendSentView: View {
             [[UTType.plainText.identifier: transaction.txHash]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )
-        withAnimation(.easeInOut(duration: 0.2)) { didCopy = true }
+        withAnimation(.snappy(duration: 0.28)) { didCopy = true }
         copiedAt = Date()
         copyResetTask?.cancel()
         copyResetTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.2)) { didCopy = false }
+            withAnimation(.snappy(duration: 0.28)) { didCopy = false }
         }
     }
 
@@ -906,6 +1179,7 @@ private struct SendSentView: View {
                 .truncationMode(.middle)
         } label: {
             Text(key)
+                .foregroundStyle(UniColors.Text.secondary)
         }
     }
 
@@ -913,6 +1187,269 @@ private struct SendSentView: View {
         if isFailed { return String.apertureLocalized("Failed") }
         if isPending { return String.apertureLocalized("Confirming") }
         return String.apertureLocalized("Sent")
+    }
+}
+
+// MARK: - Selected coins (read-only on Review)
+
+/// Lists the UTXOs that will fund this send. Not editable — change coins
+/// from the amount screen options menu before Review.
+private struct SendReviewSelectedCoinsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let utxos: [SelectedUTXO]
+    let chain: SupportedChain
+    let hideBalances: Bool
+
+    private var totalSats: Int64 {
+        utxos.reduce(Int64(0)) { $0 + $1.valueSats }
+    }
+
+    private var totalDisplay: String {
+        let total = ComposeDecimal.toDisplay(Decimal(totalSats), decimals: chain.nativeDecimals)
+        return "\(WalletFormatting.native(total, decimals: chain.nativeDecimals, hidden: hideBalances)) \(chain.ticker)"
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(utxos) { utxo in
+                        coinRow(utxo)
+                    }
+                } header: {
+                    Text("Selected coins")
+                } footer: {
+                    Text(verbatim: String(
+                        format: String.apertureLocalized("Total %@. Coin selection can only be changed before Review."),
+                        totalDisplay
+                    ))
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                }
+            }
+            .uniListPageChrome()
+            .navigationTitle(Text("Coins"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(UniColors.Button.text)
+                }
+            }
+        }
+    }
+
+    private func coinRow(_ utxo: SelectedUTXO) -> some View {
+        let amount = ComposeDecimal.toDisplay(Decimal(utxo.valueSats), decimals: chain.nativeDecimals)
+        return HStack(alignment: .top, spacing: UniSpacing.s) {
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                Text(verbatim: "\(WalletFormatting.native(amount, decimals: chain.nativeDecimals, hidden: hideBalances)) \(chain.ticker)")
+                    .font(UniTypography.body.monospacedDigit())
+                    .foregroundStyle(UniColors.Text.primary)
+                    .environment(\.layoutDirection, .leftToRight)
+                HStack(spacing: UniSpacing.xxs) {
+                    Image(systemName: utxo.confirmed ? "checkmark.seal" : "clock")
+                        .font(.system(size: 11))
+                        .foregroundStyle(
+                            utxo.confirmed
+                                ? UniColors.Feedback.Success.foreground
+                                : UniColors.Feedback.Warning.foreground
+                        )
+                    Text(utxo.confirmed ? "Confirmed" : "Unconfirmed")
+                        .font(UniTypography.caption2)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                    Text(verbatim: "· \(shortTxid(utxo.txid)):\(utxo.vout)")
+                        .font(UniTypography.caption2.monospaced())
+                        .foregroundStyle(UniColors.Text.quaternary)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, UniSpacing.xxs)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func shortTxid(_ txid: String) -> String {
+        guard txid.count > 10 else { return txid }
+        return "\(txid.prefix(6))…\(txid.suffix(4))"
+    }
+}
+
+// MARK: - Why transactions cannot be reversed
+
+/// Education sheet opened from Review’s “Learn more” finality note.
+private struct SendIrreversibleTransactionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: UniSpacing.l) {
+                    intro
+                    section(
+                        title: "Once it’s on the network, it’s final",
+                        body: "When you tap Send, Aperture signs the transaction on this iPhone and broadcasts it to the blockchain. Miners or validators include it in a block. After that, the ledger is shared by thousands of independent computers — not by Aperture, not by a bank, and not by a support desk that can “undo” a payment."
+                    )
+                    section(
+                        title: "There is no chargeback",
+                        body: "Unlike a card payment or bank transfer, crypto has no issuer that can reverse a transfer if you mistype an address, send the wrong asset, or are tricked by a scam. The only way funds move again is if the receiving address signs a new transaction sending them back — and only if that person chooses to."
+                    )
+                    section(
+                        title: "Why the protocol works this way",
+                        body: "Blockchains are designed so that history is extremely hard to rewrite. That permanence is what makes the network trustworthy: no one can silently change who owns what. The trade-off is that mistakes and fraud cannot be rolled back by the app or the network."
+                    )
+                    section(
+                        title: "What you should double-check",
+                        body: "Before you send, confirm the network, the full recipient address (or name you resolved), the amount, and any memo or destination tag exchanges require. Aperture shows you these details on this Review screen so you can catch errors while you still control the keys."
+                    )
+                    section(
+                        title: "Self-custody",
+                        body: "You hold the keys. Aperture never has a recovery path for a completed send. If something looks wrong, stop and go back — after Send, the transaction is out of this device’s control."
+                    )
+                }
+                .padding(.horizontal, UniSpacing.l)
+                .padding(.top, UniSpacing.m)
+                .padding(.bottom, UniSpacing.xxxl)
+            }
+            .background(UniColors.Background.primary)
+            .navigationTitle(Text("Why it’s final"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(UniColors.Button.text)
+                }
+            }
+        }
+    }
+
+    private var intro: some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
+                .accessibilityHidden(true)
+            Text("Transaction cannot be reversed.")
+                .font(UniTypography.title3)
+                .foregroundStyle(UniColors.Text.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func section(title: LocalizedStringKey, body: LocalizedStringKey) -> some View {
+        VStack(alignment: .leading, spacing: UniSpacing.xs) {
+            Text(title)
+                .font(UniTypography.headline)
+                .foregroundStyle(UniColors.Text.primary)
+            Text(body)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Multi-recipient list (review + sent)
+
+/// Sheet listing every destination address and its amount for a multi-
+/// recipient send. Opened from the tappable "To · N recipients" row on
+/// both Review and Sent.
+private struct SendRecipientsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
+    let recipients: [SendRecipientAmount]
+    let assetSymbol: String
+    let amountDecimals: Int
+    /// When `true` (post-broadcast success surface), each row notes that
+    /// the payment was already included in the sent transaction.
+    var transactionAlreadySent: Bool = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(Array(recipients.enumerated()), id: \.element.id) { offset, recipient in
+                        recipientRow(index: offset + 1, recipient: recipient)
+                    }
+                }
+            }
+            .uniListPageChrome()
+            .navigationTitle(Text("Recipients"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(UniColors.Button.text)
+                }
+            }
+        }
+    }
+
+    private func recipientRow(index: Int, recipient: SendRecipientAmount) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            Text(verbatim: "\(index)")
+                .font(UniTypography.callout)
+                .foregroundStyle(UniColors.Text.secondary)
+                .frame(minWidth: 20, alignment: .leading)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                if let name = recipient.name, !name.isEmpty {
+                    Text(verbatim: name)
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.primary)
+                        .lineLimit(1)
+                }
+                Text(verbatim: recipient.address)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                if transactionAlreadySent {
+                    Text("Transaction sent")
+                        .font(UniTypography.caption1)
+                        .foregroundStyle(UniColors.Feedback.Success.foreground)
+                }
+            }
+
+            Spacer(minLength: UniSpacing.s)
+
+            Text(verbatim: amountText(for: recipient))
+                .font(UniTypography.callout.monospacedDigit())
+                .foregroundStyle(UniColors.Text.primary)
+                .environment(\.layoutDirection, .leftToRight)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, UniSpacing.xxs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel(index: index, recipient: recipient))
+    }
+
+    private func amountText(for recipient: SendRecipientAmount) -> String {
+        let formatted = WalletFormatting.native(
+            recipient.amount,
+            decimals: amountDecimals,
+            hidden: hideBalances
+        )
+        return "\(formatted) \(assetSymbol)"
+    }
+
+    private func accessibilityLabel(index: Int, recipient: SendRecipientAmount) -> String {
+        let nameOrAddress = recipient.name ?? recipient.address
+        var label = "\(index). \(nameOrAddress), \(amountText(for: recipient))"
+        if transactionAlreadySent {
+            label += ", \(String.apertureLocalized("Transaction sent"))"
+        }
+        return label
     }
 }
 
@@ -963,6 +1500,8 @@ private struct SendSentScreenshotReceipt {
     let primaryAmount: String
     let localAmount: String
     let assetKind: String
+    /// Full coin/token name for the details list (e.g. "Bitcoin", "Solana").
+    let assetDisplayName: String
     let assetSymbol: String
     let recipient: String
     let network: String
@@ -973,25 +1512,25 @@ private struct SendSentScreenshotReceipt {
 private struct SendSentScreenshotView: View {
     let receipt: SendSentScreenshotReceipt
 
+    /// Inset-grouped list geometry (matches on-screen receipt Lists).
+    private let listCorner: CGFloat = 12
+    private let rowHorizontal: CGFloat = 16
+    private let rowVertical: CGFloat = 12
+    private let separatorInset: CGFloat = 16
+
     var body: some View {
         VStack(spacing: 20) {
             brandHeader
 
             VStack(spacing: 10) {
-                ZStack(alignment: .bottomTrailing) {
-                    CoinMark(
-                        chain: receipt.chain,
-                        tokenSymbol: receipt.tokenSymbol,
-                        contract: receipt.tokenContract
-                    )
-                    .frame(width: 72, height: 72)
-
-                    Image(systemName: statusSymbol)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(statusForeground)
-                        .frame(width: 30, height: 30)
-                        .background(Circle().fill(statusBackground))
-                }
+                // Token / chain mark only — status lives in the app-bar pill
+                // ("Sent") so a second green check is redundant.
+                CoinMark(
+                    chain: receipt.chain,
+                    tokenSymbol: receipt.tokenSymbol,
+                    contract: receipt.tokenContract
+                )
+                .frame(width: 72, height: 72)
 
                 Text(verbatim: receipt.statusText)
                     .font(.system(size: 28, weight: .bold))
@@ -1014,50 +1553,96 @@ private struct SendSentScreenshotView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
 
+            // Real inset-grouped list chrome (not a stroked card). Amount /
+            // local amount stay in the hero only.
             VStack(spacing: 0) {
-                screenshotRow(receipt.assetKind, value: receipt.assetSymbol)
-                Divider()
-                screenshotRow("Amount", value: receipt.primaryAmount, monospaced: true)
-                Divider()
-                screenshotRow("Local amount", value: receipt.localAmount, monospaced: true)
-                Divider()
-                screenshotRow("To", value: receipt.recipient, monospaced: true)
-                Divider()
-                screenshotRow("Network", value: receipt.network)
-                Divider()
-                screenshotRow("Transaction", value: receipt.hashText, monospaced: true)
+                assetScreenshotRow
+                listSeparator
+                screenshotRow(
+                    String.apertureLocalized("To"),
+                    value: receipt.recipient,
+                    monospaced: true
+                )
+                listSeparator
+                networkScreenshotRow
+                listSeparator
+                screenshotRow(
+                    String.apertureLocalized("Hash"),
+                    value: receipt.hashText,
+                    monospaced: true,
+                    valueFontSize: 14
+                )
             }
-            .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(UniColors.Card.background)
+                RoundedRectangle(cornerRadius: listCorner, style: .continuous)
+                    .fill(UniColors.List.rowBackground)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(UniColors.Separator.regular.opacity(0.5), lineWidth: 1)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: listCorner, style: .continuous))
 
             marketingFooter
         }
         .padding(24)
         .frame(width: 430)
-        .background(
-            LinearGradient(
-                colors: [
-                    UniColors.Background.primary,
-                    UniColors.Card.background.opacity(0.92)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background(UniColors.Background.primary)
+    }
+
+    /// Coin / Token label + mark + full name (matches live Details).
+    private var assetScreenshotRow: some View {
+        HStack(spacing: 10) {
+            Text(LocalizedStringKey(receipt.assetKind))
+                .font(.body)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: 12)
+            HStack(spacing: 8) {
+                CoinMark(
+                    chain: receipt.chain,
+                    tokenSymbol: receipt.tokenSymbol,
+                    contract: receipt.tokenContract
+                )
+                .frame(width: 26, height: 26)
+                Text(verbatim: receipt.assetDisplayName)
+                    .font(.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, rowHorizontal)
+        .padding(.vertical, rowVertical)
+        .frame(minHeight: 44)
+    }
+
+    private var networkScreenshotRow: some View {
+        HStack(spacing: 10) {
+            Text("Network")
+                .font(.body)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: 12)
+            HStack(spacing: 8) {
+                CoinMark(chain: receipt.chain, tokenSymbol: receipt.chain.ticker)
+                    .frame(width: 22, height: 22)
+                Text(verbatim: receipt.network)
+                    .font(.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, rowHorizontal)
+        .padding(.vertical, rowVertical)
+        .frame(minHeight: 44)
+    }
+
+    private var listSeparator: some View {
+        Rectangle()
+            .fill(UniColors.Separator.regular.opacity(0.55))
+            .frame(height: 1 / 3)
+            .padding(.leading, separatorInset)
     }
 
     private var brandHeader: some View {
         HStack(spacing: 10) {
             ApertureAppLogo(size: 38)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Aperture")
+                Text(verbatim: "Aperture")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(UniColors.Text.primary)
                 Text("Self-custody crypto wallet")
@@ -1111,31 +1696,29 @@ private struct SendSentScreenshotView: View {
     private func screenshotRow(
         _ label: String,
         value: String,
-        monospaced: Bool = false
+        monospaced: Bool = false,
+        valueFontSize: CGFloat = 17
     ) -> some View {
-        LabeledContent {
+        HStack(alignment: .center, spacing: 12) {
+            Text(verbatim: label)
+                .font(.body)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: 12)
             Text(verbatim: value)
-                .font(monospaced ? .body.monospacedDigit() : .body)
+                .font(
+                    monospaced
+                        ? .system(size: valueFontSize, weight: .regular, design: .monospaced)
+                        : .system(size: valueFontSize, weight: .regular)
+                )
                 .foregroundStyle(UniColors.Text.primary)
                 .multilineTextAlignment(.trailing)
-                .lineLimit(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .environment(\.layoutDirection, .leftToRight)
-        } label: {
-            Text(verbatim: label)
-                .foregroundStyle(UniColors.Text.secondary)
         }
-        .padding(.vertical, 10)
-    }
-
-    private var statusSymbol: String {
-        switch receipt.status {
-        case .confirmed:
-            return "checkmark"
-        case .pending:
-            return "clock"
-        case .failed:
-            return "xmark"
-        }
+        .padding(.horizontal, rowHorizontal)
+        .padding(.vertical, rowVertical)
+        .frame(minHeight: 44)
     }
 
     private var statusForeground: Color {
@@ -1165,6 +1748,8 @@ private struct SendSentScreenshotShareItem: Identifiable {
     let id = UUID()
     let image: UIImage
     let message: String
+    /// Marketing link as text only — never as `URL` activity item (that
+    /// steals the share-sheet preview and shows the App Store app icon).
     let appStoreURL: URL?
 }
 
@@ -1172,9 +1757,22 @@ private struct SendSentScreenshotShareSheet: UIViewControllerRepresentable {
     let item: SendSentScreenshotShareItem
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        var items: [Any] = [item.image, item.message]
+        var items: [Any] = []
+        if let data = item.image.pngData() {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Aperture-Sent-\(item.id.uuidString).png")
+            do {
+                try data.write(to: url, options: .atomic)
+                items.append(url)
+            } catch {
+                items.append(item.image)
+            }
+        } else {
+            items.append(item.image)
+        }
+        items.append(item.message)
         if let appStoreURL = item.appStoreURL {
-            items.append(appStoreURL)
+            items.append(appStoreURL.absoluteString)
         }
         return UIActivityViewController(activityItems: items, applicationActivities: nil)
     }

@@ -144,7 +144,7 @@ struct SendV2PrimaryButton: View {
             HStack(spacing: UniSpacing.xs) {
                 if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .regular))
                 }
                 Text(title)
                     .font(UniTypography.buttonLabel)
@@ -162,7 +162,7 @@ struct SendV2PrimaryButton: View {
             )
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
         .disabled(!isEnabled)
     }
 
@@ -202,7 +202,7 @@ struct SendV2GhostButton: View {
                 .frame(height: 44)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
     }
 
     private func runAction() {

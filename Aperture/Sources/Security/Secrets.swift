@@ -21,6 +21,20 @@ enum Secrets {
         return trimmed.hasPrefix("$(") ? "" : trimmed
     }
 
+    /// Xcconfig treats `//` as a comment, so URLs are stored as
+    /// `https:/$()/host` (empty `$( )` expands to nothing → `https://host`).
+    /// Also repairs a truncated `https:` if someone wrote a raw `https://…`
+    /// line and the comment ate the rest of the host.
+    private static func urlValue(_ key: String) -> String {
+        var s = value(key)
+        // Unexpanded escape form that sometimes survives into Info.plist.
+        s = s.replacingOccurrences(of: ":/$()/", with: "://")
+        s = s.replacingOccurrences(of: ":/$()", with: "://")
+        // Bare scheme left after xcconfig `//` comment truncation is useless.
+        if s == "https:" || s == "http:" { return "" }
+        return s
+    }
+
     /// 1rpc.io — authenticated multi-chain RPC. When set, the RPC registry
     /// uses the keyed path (`https://1rpc.io/<key>/<chain>`) for far higher
     /// rate limits than the unauthenticated public tier (which returns a
@@ -59,8 +73,4 @@ enum Secrets {
 
     /// `true` when the TRONSCAN Pro API key is configured.
     static var hasTronScanAPIKey: Bool { !tronScanAPIKey.isEmpty }
-
-    // Alchemy keys were removed (2026-06-21): EVM data fetching is disabled and
-    // `AlchemyConnector` / `AlchemyService` were deleted, so the key is dead.
-    // Legacy aggregator keys were removed on 2026-06-23 with the retired feature set.
 }

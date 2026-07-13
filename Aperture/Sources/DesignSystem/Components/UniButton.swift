@@ -82,13 +82,13 @@ struct UniButton: View {
         /// hit-shape.
         case actionCircle
 
-        /// Default haptic fired on tap. `nil` means silent (`.tertiary`).
-        fileprivate var defaultHaptic: UniHaptic? {
+        /// Default haptic fired on tap — every interactive variant has one.
+        fileprivate var defaultHaptic: UniHaptic {
             switch self {
             case .primary:       return .contextualImpact(.commit)
             case .secondary:     return .selection
             case .destructive:   return .warning
-            case .tertiary:      return nil
+            case .tertiary:      return .selection
             case .toolbarPill:   return .selection
             case .walletPill:    return .selection
             case .actionCircle:  return .contextualImpact(.commit)
@@ -305,14 +305,19 @@ struct UniButton: View {
                     .tint(spinnerTint)
             } else if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .regular))
+                    // Native morph when callers swap icons (e.g. copy → check).
+                    .contentTransition(.symbolEffect(.replace))
             }
             titleText
                 .font(UniTypography.buttonLabel)
+                .contentTransition(.opacity)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 47)
         .contentShape(Capsule())
+        .animation(.snappy(duration: 0.28), value: systemImage)
+        .animation(.snappy(duration: 0.28), value: isLoading)
     }
 
     /// The color the variant's spinner (and label) reads as. Resolves to
@@ -342,7 +347,7 @@ struct UniButton: View {
         HStack(spacing: UniSpacing.xs) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 15, weight: .regular))
             }
             titleText
                 .font(UniTypography.buttonLabel)
@@ -361,7 +366,7 @@ struct UniButton: View {
             titleText
                 .font(UniTypography.bodyEmphasized)
             Image(systemName: "chevron.down")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .regular))
         }
         .contentShape(Capsule())
     }
@@ -394,7 +399,7 @@ struct UniButton: View {
             titleText
                 .font(UniTypography.bodyEmphasized)
             Image(systemName: "chevron.down")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .regular))
         }
         .contentShape(Capsule())
     }
@@ -413,7 +418,7 @@ struct UniButton: View {
                     .tint(spinnerTint)
             } else {
                 Image(systemName: icon ?? "questionmark")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 22, weight: .regular))
             }
         }
         .frame(width: 56, height: 56)
@@ -511,19 +516,12 @@ struct UniButton: View {
         }
     }
 
-    /// Attaches the variant's default haptic to the button. `.tertiary`
-    /// is silent — we skip the modifier rather than wire a no-op.
     private struct HapticBinding: ViewModifier {
         let variant: Variant
         let trigger: Int
 
-        @ViewBuilder
         func body(content: Content) -> some View {
-            if let haptic = variant.defaultHaptic {
-                content.uniHaptic(haptic, trigger: trigger)
-            } else {
-                content
-            }
+            content.uniHaptic(variant.defaultHaptic, trigger: trigger)
         }
     }
 }
@@ -538,5 +536,121 @@ enum KeyboardDismissal {
             from: nil,
             for: nil
         )
+    }
+}
+
+// MARK: - Custom press (expand + bounce + shimmer) — no Liquid Glass
+
+/// Shape of the interactive highlight for hero / pill controls that paint
+/// their own fill (identity chips, wallet pill) instead of system glass.
+enum UniInteractivePressShape: Sendable {
+    case capsule
+    case circle
+}
+
+/// Hand-rolled press that mirrors iOS 26 glass interaction:
+/// **expand** (scale up), **bounce** (spring), **shimmer** (light sweep).
+/// Use on controls that already have a custom fill — not with `.glass*`.
+struct UniInteractivePressStyle: ButtonStyle {
+    var shape: UniInteractivePressShape = .capsule
+    /// Peak scale while pressed (glass expands ~1.04–1.08).
+    var pressedScale: CGFloat = 1.06
+    /// Semantic beat on finger-down (default: light selection).
+    var haptic: UniHaptic = .selection
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? pressedScale : 1.0)
+            .brightness(configuration.isPressed ? 0.06 : 0)
+            .overlay {
+                UniPressShimmer(isPressed: configuration.isPressed, shape: shape)
+            }
+            .background {
+                UniHapticPressProbe(isPressed: configuration.isPressed, haptic: haptic)
+            }
+            .animation(
+                .spring(response: 0.28, dampingFraction: 0.52),
+                value: configuration.isPressed
+            )
+    }
+}
+
+extension ButtonStyle where Self == UniInteractivePressStyle {
+    /// Capsule expand + bounce + shimmer (Send / Receive / wallet pill).
+    static var uniInteractivePress: UniInteractivePressStyle {
+        UniInteractivePressStyle(shape: .capsule, haptic: .selection)
+    }
+
+    /// Circular expand + bounce + shimmer (Scan / Hide icon buttons).
+    static var uniInteractivePressCircle: UniInteractivePressStyle {
+        UniInteractivePressStyle(shape: .circle, haptic: .selection)
+    }
+
+    /// Primary hero actions (Send / Receive) — stronger commit beat.
+    static var uniInteractivePressCommit: UniInteractivePressStyle {
+        UniInteractivePressStyle(shape: .capsule, haptic: .contextualImpact(.commit))
+    }
+}
+
+/// Plain chrome with a real selection beat — Paste / Scan chips, icon
+/// toolbar buttons, and other non-glass controls.
+struct UniTactilePlainButtonStyle: ButtonStyle {
+    var haptic: UniHaptic = .selection
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.14), value: configuration.isPressed)
+            .background {
+                UniHapticPressProbe(isPressed: configuration.isPressed, haptic: haptic)
+            }
+    }
+}
+
+extension ButtonStyle where Self == UniTactilePlainButtonStyle {
+    static var uniTactile: UniTactilePlainButtonStyle {
+        UniTactilePlainButtonStyle(haptic: .selection)
+    }
+
+    static var uniTactileTap: UniTactilePlainButtonStyle {
+        UniTactilePlainButtonStyle(haptic: .contextualImpact(.tap))
+    }
+}
+
+/// One-shot light sweep while pressed — reads as glass “shimmer”.
+private struct UniPressShimmer: View {
+    var isPressed: Bool
+    var shape: UniInteractivePressShape
+    @State private var sweep: CGFloat = -0.35
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0),
+                    Color.white.opacity(isPressed ? 0.28 : 0),
+                    Color.white.opacity(0)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: max(w * 0.45, 24))
+            .offset(x: sweep * w)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .clipShape(shape == .circle ? AnyShape(Circle()) : AnyShape(Capsule(style: .continuous)))
+        .allowsHitTesting(false)
+        .onChange(of: isPressed) { _, pressed in
+            if pressed {
+                sweep = -0.35
+                withAnimation(.easeOut(duration: 0.38)) {
+                    sweep = 1.15
+                }
+            } else {
+                sweep = -0.35
+            }
+        }
     }
 }

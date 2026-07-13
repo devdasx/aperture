@@ -55,9 +55,9 @@ struct SendNetworkPickerView: View {
                         )
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                     .accessibilityLabel(Text(verbatim: descriptor.chain.displayName))
-                    .accessibilityHint(Text("Send \(symbol) on this network"))
+                    .accessibilityHint(Text(verbatim: String(format: String.apertureLocalized("Send %@ on this network"), symbol)))
                 }
             } footer: {
                 UniFootnote(
@@ -68,11 +68,9 @@ struct SendNetworkPickerView: View {
                 .padding(.top, UniSpacing.xs)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
-        .searchable(text: $searchText, prompt: Text("Search"))
-        .navigationTitle(Text("Choose network for \(symbol)"))
+        .uniListPageChrome()
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
+        .navigationTitle(Text(verbatim: String(format: String.apertureLocalized("Choose network for %@"), symbol)))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

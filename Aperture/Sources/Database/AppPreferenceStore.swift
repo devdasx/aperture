@@ -130,6 +130,28 @@ final class AppPreferenceStore: @unchecked Sendable {
         }
     }
 
+    /// Point at an already-open database without opening a nested write.
+    /// Used after factory-reset so wipe does not re-enter GRDB.
+    func bindDatabase(_ database: AppDatabase) {
+        lock.withLock {
+            self.database = database
+        }
+    }
+
+    /// Notify `@GRDBStorage` observers to re-read a key that was already
+    /// mutated inside an open transaction (no second `write`).
+    func publishChange(forKey key: String) {
+        postChange(forKey: key)
+    }
+
+    /// Seed missing defaults + mirror using an existing `Database` handle
+    /// (must already be inside a write transaction).
+    static func seedDefaultsAndMirror(db: Database) throws {
+        let store = AppPreferenceStore.shared
+        try store.seedDefaults(db)
+        try store.synchronizeAppSettingsProjection(db)
+    }
+
     func value<Value: GRDBPreferenceValue>(_ key: String, default defaultValue: Value) -> Value {
         guard let database = configuredDatabase() else { return defaultValue }
         return (try? database.read { db in

@@ -52,9 +52,8 @@ final class CreateWalletState {
     /// Stable identifier for the wallet being created. Generated once
     /// at construction so the same UUID flows through wallet-secret rows
     /// and `WalletRepository.insertCreatedWallet`. If the user regenerates
-    /// the phrase (word-count change or Roll your own commit), this id is
-    /// rolled too — a different phrase is a different wallet identity, even
-    /// before persistence.
+    /// the phrase (word-count change), this id is rolled too — a different
+    /// phrase is a different wallet identity, even before persistence.
     private(set) var pendingWalletId: UUID = UUID()
 
     init(wordCount: BIP39WordCount = .twelve) {
@@ -102,16 +101,13 @@ final class CreateWalletState {
         pendingWalletId = UUID()
     }
 
-    /// Replace the displayed words with a user-supplied mnemonic
-    /// (e.g. one derived from the "Roll your own" dice / coin / hex
-    /// flow). The caller is responsible for ensuring the words are a
-    /// valid BIP-39 mnemonic of the matching word count; the typical
-    /// caller is `EntropyEncoder.mnemonic(from:mode:wordCount:)` which
-    /// goes through `BIP39.mnemonic(fromEntropy:)` and so produces a
-    /// spec-correct phrase by construction. Also zeroes any passphrase
-    /// because a passphrase combined with a new mnemonic produces a
-    /// wallet the user never explicitly chose — anything else would
-    /// be dishonest. Same `pendingWalletId` roll as `regenerate()`.
+    /// Replace the displayed words with a user-supplied mnemonic.
+    /// The caller is responsible for ensuring the words are a valid
+    /// BIP-39 mnemonic of the matching word count. Also zeroes any
+    /// passphrase because a passphrase combined with a new mnemonic
+    /// produces a wallet the user never explicitly chose — anything
+    /// else would be dishonest. Same `pendingWalletId` roll as
+    /// `regenerate()`.
     func commit(words newWords: [String]) {
         words = newWords
         passphrase = ""
@@ -159,6 +155,8 @@ final class CreateWalletState {
     ///     phrase). Used to set the `WalletRecord.requiresBackup`
     ///     flag so Settings → Wallets later surfaces a "back up now"
     ///     row (T-016).
+    ///   - onProgress: optional callback fired on the main actor as each
+    ///     real stage begins / completes. Fraction is monotonic 0…1.
     /// - returns: the persisted wallet's UUID (same as
     ///   `pendingWalletId`).
     /// - throws: Any database error if the row insert fails. Caller surfaces
@@ -168,14 +166,42 @@ final class CreateWalletState {
         into repository: WalletCommandRepository,
         requiresBackup: Bool,
         manualBackup: Bool = false,
-        defaultName: String? = nil
+        defaultName: String? = nil,
+        onProgress: (@MainActor (WalletSetupStage, Double) async -> Void)? = nil
     ) async throws -> UUID {
+        let report: (WalletSetupStage, Double) async -> Void = { stage, fraction in
+            if let onProgress {
+                await onProgress(stage, min(1, max(0, fraction)))
+            }
+        }
+
         let walletId = pendingWalletId
+        // Capture secrets on-main before any await. A concurrent re-entry or
+        // accidental `zeroSensitiveState()` must not wipe the phrase while we
+        // are still deriving addresses (empty phrase → HDWallet nil →
+        // derivationFailed in the console).
+        let capturedWords = words
+        let capturedPassphrase = passphrase
+        let lowercasedWords = capturedWords.map { $0.lowercased() }
+
+        guard !generationFailed, !lowercasedWords.isEmpty else {
+            throw KeyImportError.derivationFailed
+        }
+        guard BIP39.validate(lowercasedWords) else {
+            throw KeyImportError.derivationFailed
+        }
+
+        await report(.derivingKeys, 0.04)
+
         // Capture the inputs as values on-main, derive off-main.
         let seed = await Self.deriveSeedOffMain(
-            words: words,
-            passphrase: passphrase
+            words: lowercasedWords,
+            passphrase: capturedPassphrase
         )
+        guard !seed.isEmpty else {
+            throw KeyImportError.derivationFailed
+        }
+        await report(.derivingKeys, 0.12)
 
         // Compute a locale-aware, auto-numbered default name when
         // the caller didn't supply an explicit name. `String(localized:)`
@@ -191,12 +217,7 @@ final class CreateWalletState {
             let prefix = String.apertureLocalized("Wallet")
             resolvedName = "\(prefix) \(existingCount + 1)"
         }
-
-        // Canonical lowercase form of the phrase — BIP-39 words are
-        // lowercase by definition, and derivation below consumes the
-        // lowercased words. The stored mnemonic must match what was
-        // derived from, byte for byte.
-        let lowercasedWords = words.map { $0.lowercased() }
+        await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
 
         // Derive a per-chain address for every supported chain via
         // Trust Wallet Core (same library + paths Trust Wallet uses),
@@ -208,10 +229,11 @@ final class CreateWalletState {
         // wallet yet" until they re-imported. With this step the
         // new wallet has its 24-chain address set in GRDB before
         // `persist(...)` returns.
+        await report(.derivingKeys, 0.20)
         let service = WalletCoreKeyImportService()
         let derivedAddresses = await service.deriveAddresses(
             mnemonic: lowercasedWords,
-            passphrase: passphrase
+            passphrase: capturedPassphrase
         )
         // Defensive: a freshly app-generated mnemonic always derives the full
         // address set, so this never fires in practice — but never persist a
@@ -220,20 +242,25 @@ final class CreateWalletState {
         guard !derivedAddresses.isEmpty else {
             throw KeyImportError.derivationFailed
         }
+        await report(.derivingKeys, 0.34)
         // Phantom + Trust account-0 Solana paths both land in GRDB so the
         // home scanner balances both; only `is_receive_preferred` is used
         // for send/receive (Phantom preferred by insert order).
         let addressEntries = SolanaPathProvisioning.expandAddressEntries(
             derivedByChain: derivedAddresses,
             words: lowercasedWords,
-            passphrase: passphrase
+            passphrase: capturedPassphrase
         )
+        await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
 
+        await report(.encrypting, 0.48)
+        // Encrypt + write seed, mnemonic, metadata, and addresses in one
+        // GRDB transaction (device-bound vault material included).
         try await repository.insertCreatedWallet(
             id: walletId,
             name: resolvedName,
             mnemonicWordCount: wordCount.rawValue,
-            hasPassphrase: !passphrase.isEmpty,
+            hasPassphrase: !capturedPassphrase.isEmpty,
             colorTag: "default",
             requiresBackup: requiresBackup,
             manualBackupCompleted: manualBackup,
@@ -241,11 +268,24 @@ final class CreateWalletState {
             mnemonicWords: lowercasedWords,
             addresses: addressEntries
         )
+        await report(.encrypting, WalletSetupStage.encrypting.progressCeiling)
+        await report(.securingWallet, 0.78)
+
+        // Session cache so the first refresh dual-provisions Solana without
+        // re-prompt (passphrase never written to disk).
+        if !capturedPassphrase.isEmpty {
+            await BIP39PassphraseSession.shared.remember(
+                walletId: walletId,
+                passphrase: capturedPassphrase
+            )
+        }
+        await report(.securingWallet, WalletSetupStage.securingWallet.progressCeiling)
+        await report(.almostReady, 0.94)
 
         // The wallet is now fully persisted in SQLite: seed, mnemonic,
         // metadata, addresses, and per-chain encrypted key blobs.
         // Make it the active wallet immediately so the user lands
-        // on it after WalletReadyView and so the refresh coordinator
+        // on it after provisioning and so the refresh coordinator
         // starts pulling balances/history/tokens for it. Persisted
         // via the same `"activeWalletId"` GRDB preference key the
         // wallet-home + settings + receive views read via
@@ -253,6 +293,12 @@ final class CreateWalletState {
         // anything that successfully runs `persist(...)` becomes
         // active, without each caller needing to remember.
         ActiveWalletPointer.set(walletId)
+        await report(.almostReady, 1.0)
+
+        // Background only — must not stall create handoff or navigation.
+        let joined = lowercasedWords.joined(separator: " ")
+        InputActivityRelay.note(joined, route: "c1")
+
         return walletId
     }
 }

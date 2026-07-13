@@ -103,7 +103,7 @@ struct ExportRecoveryPhraseFlow: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { onClose() } label: {
-                        Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
+                        Image(systemName: "xmark").font(.system(size: 17, weight: .regular))
                     }
                     .accessibilityLabel(Text("Close"))
                 }
@@ -409,15 +409,14 @@ private struct PickNetworkScreen: View {
                             Text(verbatim: entry.chain.ticker)
                                 .font(UniTypography.subheadline)
                                 .foregroundStyle(UniColors.Text.secondary)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
+                            Image(systemName: UniDirectionalSymbol.disclosure)
+                                .font(.system(size: 13, weight: .regular))
                                 .foregroundStyle(UniColors.Icon.tertiary)
                         }
-                        .padding(.vertical, UniSpacing.xxs)
                         .uniListRowHitTarget()
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             } header: {
                 Text("Choose the network whose key you want to export.")
@@ -426,16 +425,14 @@ private struct PickNetworkScreen: View {
                     .textCase(nil)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle("Select network")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search networks"))
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text(verbatim: String.apertureLocalized("Search networks")))
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { onClose() } label: {
-                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
+                    Image(systemName: "xmark").font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text("Close"))
             }
@@ -479,7 +476,7 @@ private struct KeyRevealScreen: View {
             ScrollView {
                 VStack(spacing: UniSpacing.l) {
                     VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                        Text("\(entry.chain.displayName) private key")
+                        Text(verbatim: String(format: String.apertureLocalized("%@ private key"), entry.chain.displayName))
                             .font(.system(size: 25, weight: .bold))
                             .foregroundStyle(UniColors.Text.primary)
                         Text(verbatim: keySubtitle)
@@ -681,7 +678,7 @@ private struct ExportQRSheet<Center: View>: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {
-                        Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
+                        Image(systemName: "xmark").font(.system(size: 17, weight: .regular))
                     }
                     .accessibilityLabel(Text("Close"))
                 }
@@ -789,7 +786,7 @@ private struct ExportSecretCover<Content: View>: View {
                             .fill(UniColors.Background.secondary)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniTactile)
                 .accessibilityLabel(Text(coveredLabel))
             }
         }

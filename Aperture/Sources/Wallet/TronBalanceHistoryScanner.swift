@@ -81,7 +81,7 @@ actor TronBalanceHistoryScanner {
         if !events.isEmpty {
             isUsed = true
         }
-        for event in events.prefix(50) {
+        for event in events.prefix(HistoryScanLimits.perAddress) {
             try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
@@ -317,7 +317,7 @@ actor TronBalanceHistoryClient {
             baseURL: Self.tronGridBase,
             path: "v1/accounts/\(address)/transactions",
             query: [
-                URLQueryItem(name: "limit", value: "50"),
+                URLQueryItem(name: "limit", value: "\(HistoryScanLimits.perAddress)"),
                 URLQueryItem(name: "only_confirmed", value: "true"),
                 URLQueryItem(name: "order_by", value: "block_timestamp,desc"),
             ]
@@ -412,7 +412,7 @@ actor TronBalanceHistoryClient {
             baseURL: Self.tronGridBase,
             path: "v1/accounts/\(address)/transactions/trc20",
             query: [
-                URLQueryItem(name: "limit", value: "50"),
+                URLQueryItem(name: "limit", value: "\(HistoryScanLimits.perAddress)"),
                 URLQueryItem(name: "only_confirmed", value: "true"),
                 URLQueryItem(name: "order_by", value: "block_timestamp,desc"),
                 URLQueryItem(name: "contract_address", value: token.contract),

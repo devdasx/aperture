@@ -43,7 +43,7 @@ struct ReceiveChainMismatchFooter: View {
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniTactile)
             .accessibilityLabel(Text("What's a receive address?"))
         }
         .padding(UniSpacing.m)
@@ -57,19 +57,21 @@ struct ReceiveChainMismatchFooter: View {
         )
     }
 
-    /// Interpolated runtime string — kept as `Text(verbatim:)` so the
-    /// chain name (which is itself English-only in this app) isn't
-    /// re-translated mid-sentence. The boilerplate around it stays in
-    /// the catalog via `String(localized:)` so the i18n loop
-    /// (Rule #20) closes the 50 languages.
+    /// Localized via catalog key `"Only send %@ on the %@ network…"` and
+    /// the in-app language bundle. Runtime asset/chain names are injected
+    /// with `String(format:)` — never Swift string interpolation into
+    /// `String(localized:)`, which builds one-off untranslated keys and
+    /// also ignores Aperture's selected language.
     private var warningText: String {
-        if let tokenSymbol {
-            return String(
-                localized: "Only send \(tokenSymbol) on the \(chain.displayName) network to this address. Sending any other token, or using a different network, may result in permanent loss."
-            )
-        }
+        let format = String.apertureLocalized(
+            "Only send %@ on the %@ network to this address. Sending any other token, or using a different network, may result in permanent loss."
+        )
+        let asset = tokenSymbol ?? chain.displayName
         return String(
-            localized: "Only send \(chain.displayName) on the \(chain.displayName) network to this address. Sending any other token, or using a different network, may result in permanent loss."
+            format: format,
+            locale: ApertureLocalization.currentLocale,
+            asset,
+            chain.displayName
         )
     }
 }

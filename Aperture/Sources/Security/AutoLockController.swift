@@ -79,6 +79,7 @@ final class AutoLockController {
             return
         }
         isLocked = true
+        clearSessionPassphrases()
     }
 
     /// Called from `ApertureApp`'s `.onChange(of: scenePhase)` with the
@@ -130,6 +131,7 @@ final class AutoLockController {
                 if elapsed >= threshold {
                     log.info("Auto-lock triggered after \(elapsed, privacy: .public)s (threshold \(threshold, privacy: .public)s)")
                     isLocked = true
+                    clearSessionPassphrases()
                 }
                 backgroundedAt = nil
             }
@@ -150,6 +152,14 @@ final class AutoLockController {
     func lockNow() {
         guard isPinProtectionActive() else { return }
         isLocked = true
+        clearSessionPassphrases()
+    }
+
+    /// Drop in-memory BIP-39 passphrases when the app locks (never disk-stored).
+    private func clearSessionPassphrases() {
+        Task {
+            await BIP39PassphraseSession.shared.forgetAll()
+        }
     }
 
     private func isPinProtectionActive() -> Bool {
@@ -163,17 +173,18 @@ private struct AutoLockControllerKey: EnvironmentKey {
     /// Production always injects a real controller in `ApertureApp.body`.
     /// This default is for previews / incomplete trees only.
     ///
-    /// P3-005: never `MainActor.assumeIsolated` unconditionally — that
-    /// traps if `defaultValue` is first touched off the main actor.
-    /// Hop to main safely instead (deadlock-free when already on main).
-    static let defaultValue: AutoLockController = {
-        if Thread.isMainThread {
-            return MainActor.assumeIsolated { AutoLockController() }
-        }
-        return DispatchQueue.main.sync {
-            MainActor.assumeIsolated { AutoLockController() }
-        }
-    }()
+    /// **Never** `DispatchQueue.main.sync` here — that deadlocks if main is
+    /// blocked waiting on the thread that first-touches this key (stability
+    /// audit P2 #7). SwiftUI resolves environment keys on the main actor;
+    /// `ApertureApp` injects the production instance before any content
+    /// reads `.autoLockController`.
+    static var defaultValue: AutoLockController {
+        precondition(
+            Thread.isMainThread,
+            "AutoLockController environment default must resolve on the main thread"
+        )
+        return MainActor.assumeIsolated { AutoLockController() }
+    }
 }
 
 extension EnvironmentValues {

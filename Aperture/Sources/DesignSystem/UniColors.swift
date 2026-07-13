@@ -786,6 +786,86 @@ enum UniColors {
             return gradientStops(for: spec.gradient)
         }
 
+        /// Solid identity colour for wallet-branded surfaces (home hero,
+        /// connected app bar). Prefers a user-picked custom hex; otherwise
+        /// the gradient's deeper bottom stop — the colour the eye reads as
+        /// "the wallet's colour" on the logo disc. Create / import already
+        /// assign a random gradient via `WalletAvatarSpec.randomDefault()`,
+        /// so this colour is always real wallet identity, never a hardcoded
+        /// brand blue.
+        static func identityColor(for spec: WalletAvatarSpec) -> Color {
+            color(fromHex: identityHex(for: spec))
+        }
+
+        /// `#RRGGBB` source for `identityColor(for:)`.
+        static func identityHex(for spec: WalletAvatarSpec) -> String {
+            if let custom = spec.customColorHex, !custom.isEmpty {
+                return custom
+            }
+            return spec.gradient.bottomHex
+        }
+
+        /// Top stop of the home-hero gradient (lighter / upper disc colour).
+        static func identityTopColor(for spec: WalletAvatarSpec) -> Color {
+            if let custom = spec.customColorHex, !custom.isEmpty {
+                return color(fromHex: custom)
+            }
+            return color(fromHex: spec.gradient.topHex)
+        }
+
+        // MARK: Content on identity (contrast)
+
+        /// Fixed ink for **dark text/glyphs on light** wallet surfaces.
+        /// Not appearance-adaptive — a lime disc stays lime in dark mode,
+        /// so content must stay `#0B0D11`, never flip to cloud white.
+        static let contentInk = UniColorPalette.color("UniColors.WalletAvatar.contentInk")
+
+        /// Fixed cloud for **light text/glyphs on dark** wallet surfaces.
+        static let contentCloud = UniColorPalette.color("UniColors.WalletAvatar.contentCloud")
+
+        /// `true` when light (cloud) foreground on the identity disc is
+        /// readable. Uses the **lighter** end of the gradient (or the
+        /// custom hex) so lime/amber tops never get white-on-yellow.
+        static func prefersLightForeground(for spec: WalletAvatarSpec) -> Bool {
+            surfaceLuminance(for: spec) < 0.58
+        }
+
+        /// Primary content colour for glyphs / monograms / labels drawn
+        /// **on** the wallet identity surface (disc, solid hero, tinted bar).
+        static func contentPrimary(for spec: WalletAvatarSpec) -> Color {
+            prefersLightForeground(for: spec) ? contentCloud : contentInk
+        }
+
+        /// Secondary / muted content on the same surface.
+        static func contentSecondary(for spec: WalletAvatarSpec) -> Color {
+            contentPrimary(for: spec).opacity(0.78)
+        }
+
+        /// Tertiary / faint content on the same surface.
+        static func contentTertiary(for spec: WalletAvatarSpec) -> Color {
+            contentPrimary(for: spec).opacity(0.55)
+        }
+
+        /// Soft chip fill for buttons/icons on the identity colour.
+        static func contentChipFill(for spec: WalletAvatarSpec) -> Color {
+            prefersLightForeground(for: spec)
+                ? contentCloud.opacity(0.16)
+                : contentInk.opacity(0.10)
+        }
+
+        /// Relative luminance of the surface the eye reads (lighter stop
+        /// of the gradient, or the single custom hex).
+        private static func surfaceLuminance(for spec: WalletAvatarSpec) -> Double {
+            if let custom = spec.customColorHex, !custom.isEmpty {
+                return relativeLuminance(hex: custom)
+            }
+            let top = relativeLuminance(hex: spec.gradient.topHex)
+            let bottom = relativeLuminance(hex: spec.gradient.bottomHex)
+            // Conservative: if the bright end is light, treat the surface
+            // as light and demand dark content.
+            return max(top, bottom)
+        }
+
         /// A two-stop gradient derived from a single user-picked colour:
         /// the colour itself on top, a ~38%-darkened shade beneath, so a
         /// custom disc reads with the same lit-from-above depth as the
@@ -793,6 +873,19 @@ enum UniColors {
         static func gradientStops(forCustomHex hex: String) -> [Color] {
             guard let top = Color(hex: hex) else { return [Brand.mark, Brand.mark] }
             return [top, darkened(hex: hex, by: 0.38) ?? top]
+        }
+
+        /// Relative luminance 0…1 for a `#RRGGBB` string (sRGB).
+        private static func relativeLuminance(hex: String) -> Double {
+            guard let color = Color(hex: hex) else { return 0 }
+            let ui = UIColor(color)
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+            func lin(_ c: CGFloat) -> Double {
+                let v = Double(c)
+                return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
         }
 
         /// `#RRGGBB` for a SwiftUI `Color` (Rule #4 §B keeps colour ↔ hex

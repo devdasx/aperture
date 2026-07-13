@@ -98,7 +98,7 @@ struct ReceiveEVMAccountSearchSheet: View {
                 CoinMark(chain: chain, tokenSymbol: chain.ticker)
                     .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(chain.displayName) accounts")
+                    Text(verbatim: String(format: String.apertureLocalized("%@ accounts"), chain.displayName))
                         .font(UniTypography.title2)
                         .foregroundStyle(UniColors.Text.primary)
                     Text("Searches this chain only.")
@@ -107,7 +107,7 @@ struct ReceiveEVMAccountSearchSheet: View {
                 }
             }
 
-            Text("Aperture derives account addresses locally, checks \(chain.displayName) native balance plus supported tokens, then lets you save the address you want to receive with.")
+            Text(verbatim: String(format: String.apertureLocalized("Aperture derives account addresses locally, checks %@ native balance plus supported tokens, then lets you save the address you want to receive with."), chain.displayName))
                 .font(UniTypography.body)
                 .foregroundStyle(UniColors.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -648,7 +648,7 @@ enum AccountSearchStepState: Equatable {
         switch self {
         case .pending:
             Image(systemName: "circle")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(UniColors.Text.quaternary)
         case .active:
             ProgressView()
@@ -656,7 +656,7 @@ enum AccountSearchStepState: Equatable {
                 .tint(UniColors.Text.primary)
         case .complete:
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(UniColors.Feedback.Success.foreground)
         }
     }
@@ -691,10 +691,10 @@ private struct EVMReceiveAccountSearchProgressSheet: View {
                         .tint(UniColors.Text.primary)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Checking \(request.candidates.count) accounts")
+                        Text(verbatim: String(format: String.apertureLocalized("Checking %lld accounts"), Int64(request.candidates.count)))
                             .font(UniTypography.headline)
                             .foregroundStyle(UniColors.Text.primary)
-                        Text("\(request.chain.displayName) balances, history, and supported token balances are running in parallel.")
+                        Text(verbatim: String(format: String.apertureLocalized("%@ balances, history, and supported token balances are running in parallel."), request.chain.displayName))
                             .font(UniTypography.subheadline)
                             .foregroundStyle(UniColors.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -803,7 +803,7 @@ private struct EVMReceiveAddressScopeSheet: View {
     var body: some View {
         UniSheet(title: "Use this address") {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
-                Text("Choose where Aperture should make Account \(result.accountIndex) the preferred receive account.")
+                Text(verbatim: String(format: String.apertureLocalized("Choose where Aperture should make Account %lld the preferred receive account."), Int64(result.accountIndex)))
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -848,7 +848,7 @@ private struct EVMReceiveAddressScopeSheet: View {
     private func optionRow(title: String, detail: String, systemImage: String) -> some View {
         HStack(alignment: .top, spacing: UniSpacing.s) {
             Image(systemName: systemImage)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(UniColors.Icon.secondary)
                 .frame(width: 36, height: 36)
                 .background(UniColors.Fill.secondary)
@@ -892,7 +892,7 @@ private struct EVMReceiveAccountResultRow: View {
             HStack(alignment: .top, spacing: UniSpacing.m) {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: UniSpacing.xs) {
-                        Text("Account \(result.accountIndex)")
+                        Text(verbatim: String(format: String.apertureLocalized("Account %lld"), Int64(result.accountIndex)))
                             .font(UniTypography.headline)
                             .foregroundStyle(UniColors.Text.primary)
                         if isCurrent {
@@ -917,7 +917,7 @@ private struct EVMReceiveAccountResultRow: View {
                     Text(WalletFormatting.fiat(result.totalFiat, currencyCode: currencyCode, hidden: hideBalances))
                         .font(UniTypography.headline)
                         .foregroundStyle(result.hasFunds ? UniColors.Text.primary : UniColors.Text.tertiary)
-                    Text("\(hideBalances ? WalletFormatting.hiddenAmount : result.displayNativeBalance) native")
+                    Text(verbatim: String(format: String.apertureLocalized("%@ native"), hideBalances ? WalletFormatting.hiddenAmount : result.displayNativeBalance))
                         .font(UniTypography.caption1)
                         .foregroundStyle(UniColors.Text.tertiary)
                 }

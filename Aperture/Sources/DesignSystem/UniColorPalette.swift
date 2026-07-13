@@ -80,7 +80,24 @@ enum UniColorPalette {
         }
 
         return UIColor { traits in
-            let requested = traits[ApertureAppearanceTrait.self]
+            // Midnight and Dark both force `UIUserInterfaceStyle.dark`. The
+            // only discriminator is `ApertureAppearance`. SwiftUI's trait
+            // bridge does not always deliver the custom trait into every
+            // `Color(uiColor:)` / `UIColor` resolution site, so the
+            // app-published preference (set by `.apertureEnvironment()`)
+            // is authoritative. An explicit non-system trait still wins
+            // for previews and isolated UIKit hosts that set traitOverrides
+            // without publishing process state.
+            let published = ApertureAppearanceResolution.current
+            let traitValue = traits[ApertureAppearanceTrait.self]
+            let requested: ApertureAppearance
+            if published != .system {
+                requested = published
+            } else if traitValue != .system {
+                requested = traitValue
+            } else {
+                requested = .system
+            }
             let appearance = requested.resolved(for: traits.userInterfaceStyle)
             return uiColor(from: swatch.value(for: appearance))
         }
@@ -302,6 +319,9 @@ enum UniColorPalette {
         "UniColors.Brand.mark": Swatch(cloud: 0x0B0D11FF, midnight: 0xF5F5F7FF, dark: 0xF5F5F7FF),
         "UniColors.Brand.logoDisc": Swatch(cloud: 0x000000FF, midnight: 0xFFFFFFFF, dark: 0xFFFFFFFF),
         "UniColors.Brand.logoIris": Swatch(cloud: 0xFFFFFFFF, midnight: 0x191A1EFF, dark: 0x000000FF),
+        // Fixed content on wallet-identity colour (not appearance-adaptive).
+        "UniColors.WalletAvatar.contentInk": Swatch(cloud: 0x0B0D11FF, midnight: 0x0B0D11FF, dark: 0x0B0D11FF),
+        "UniColors.WalletAvatar.contentCloud": Swatch(cloud: 0xFFFFFFFF, midnight: 0xFFFFFFFF, dark: 0xFFFFFFFF),
         "UniColors.Seal.secured": Swatch(cloud: 0x179A5BFF, midnight: 0x2FD07FFF, dark: 0x2FD07FFF),
         "UniColors.Seal.watching": Swatch(cloud: 0x2F6BD6FF, midnight: 0x5A93F6FF, dark: 0x5A93F6FF),
         "UniColors.Validation.valid": Swatch(cloud: 0x34C759EB, midnight: 0x30D158EB, dark: 0x30D158EB),
@@ -353,22 +373,46 @@ enum UniColorPalette {
         "UniColors.WalletAvatar.gradientStops.indigo.bottom": Swatch(cloud: 0x3B43C4FF, midnight: 0x3B43C4FF, dark: 0x3B43C4FF),
         "UniColors.WalletAvatar.gradientStops.blue.top": Swatch(cloud: 0x4DA8FFFF, midnight: 0x4DA8FFFF, dark: 0x4DA8FFFF),
         "UniColors.WalletAvatar.gradientStops.blue.bottom": Swatch(cloud: 0x1668D6FF, midnight: 0x1668D6FF, dark: 0x1668D6FF),
+        "UniColors.WalletAvatar.gradientStops.sky.top": Swatch(cloud: 0x7DD3FCFF, midnight: 0x7DD3FCFF, dark: 0x7DD3FCFF),
+        "UniColors.WalletAvatar.gradientStops.sky.bottom": Swatch(cloud: 0x0284C7FF, midnight: 0x0284C7FF, dark: 0x0284C7FF),
+        "UniColors.WalletAvatar.gradientStops.cyan.top": Swatch(cloud: 0x67E8F9FF, midnight: 0x67E8F9FF, dark: 0x67E8F9FF),
+        "UniColors.WalletAvatar.gradientStops.cyan.bottom": Swatch(cloud: 0x0891B2FF, midnight: 0x0891B2FF, dark: 0x0891B2FF),
         "UniColors.WalletAvatar.gradientStops.teal.top": Swatch(cloud: 0x3FD6C8FF, midnight: 0x3FD6C8FF, dark: 0x3FD6C8FF),
         "UniColors.WalletAvatar.gradientStops.teal.bottom": Swatch(cloud: 0x0E9C8EFF, midnight: 0x0E9C8EFF, dark: 0x0E9C8EFF),
+        "UniColors.WalletAvatar.gradientStops.mint.top": Swatch(cloud: 0x6EE7B7FF, midnight: 0x6EE7B7FF, dark: 0x6EE7B7FF),
+        "UniColors.WalletAvatar.gradientStops.mint.bottom": Swatch(cloud: 0x0D9488FF, midnight: 0x0D9488FF, dark: 0x0D9488FF),
         "UniColors.WalletAvatar.gradientStops.green.top": Swatch(cloud: 0x5BD98AFF, midnight: 0x5BD98AFF, dark: 0x5BD98AFF),
         "UniColors.WalletAvatar.gradientStops.green.bottom": Swatch(cloud: 0x179A5BFF, midnight: 0x179A5BFF, dark: 0x179A5BFF),
+        "UniColors.WalletAvatar.gradientStops.emerald.top": Swatch(cloud: 0x34D399FF, midnight: 0x34D399FF, dark: 0x34D399FF),
+        "UniColors.WalletAvatar.gradientStops.emerald.bottom": Swatch(cloud: 0x059669FF, midnight: 0x059669FF, dark: 0x059669FF),
         "UniColors.WalletAvatar.gradientStops.lime.top": Swatch(cloud: 0xB6E06AFF, midnight: 0xB6E06AFF, dark: 0xB6E06AFF),
         "UniColors.WalletAvatar.gradientStops.lime.bottom": Swatch(cloud: 0x5FAE2EFF, midnight: 0x5FAE2EFF, dark: 0x5FAE2EFF),
         "UniColors.WalletAvatar.gradientStops.amber.top": Swatch(cloud: 0xFFCB5CFF, midnight: 0xFFCB5CFF, dark: 0xFFCB5CFF),
         "UniColors.WalletAvatar.gradientStops.amber.bottom": Swatch(cloud: 0xE0991CFF, midnight: 0xE0991CFF, dark: 0xE0991CFF),
+        "UniColors.WalletAvatar.gradientStops.sunflower.top": Swatch(cloud: 0xFDE047FF, midnight: 0xFDE047FF, dark: 0xFDE047FF),
+        "UniColors.WalletAvatar.gradientStops.sunflower.bottom": Swatch(cloud: 0xCA8A04FF, midnight: 0xCA8A04FF, dark: 0xCA8A04FF),
         "UniColors.WalletAvatar.gradientStops.orange.top": Swatch(cloud: 0xFF9F6BFF, midnight: 0xFF9F6BFF, dark: 0xFF9F6BFF),
         "UniColors.WalletAvatar.gradientStops.orange.bottom": Swatch(cloud: 0xEF5F2CFF, midnight: 0xEF5F2CFF, dark: 0xEF5F2CFF),
+        "UniColors.WalletAvatar.gradientStops.coral.top": Swatch(cloud: 0xFF8A80FF, midnight: 0xFF8A80FF, dark: 0xFF8A80FF),
+        "UniColors.WalletAvatar.gradientStops.coral.bottom": Swatch(cloud: 0xE11D48FF, midnight: 0xE11D48FF, dark: 0xE11D48FF),
         "UniColors.WalletAvatar.gradientStops.red.top": Swatch(cloud: 0xFF7C72FF, midnight: 0xFF7C72FF, dark: 0xFF7C72FF),
         "UniColors.WalletAvatar.gradientStops.red.bottom": Swatch(cloud: 0xE0433DFF, midnight: 0xE0433DFF, dark: 0xE0433DFF),
+        "UniColors.WalletAvatar.gradientStops.rose.top": Swatch(cloud: 0xFF8FABFF, midnight: 0xFF8FABFF, dark: 0xFF8FABFF),
+        "UniColors.WalletAvatar.gradientStops.rose.bottom": Swatch(cloud: 0xE11D48FF, midnight: 0xE11D48FF, dark: 0xE11D48FF),
         "UniColors.WalletAvatar.gradientStops.pink.top": Swatch(cloud: 0xFF8FC4FF, midnight: 0xFF8FC4FF, dark: 0xFF8FC4FF),
         "UniColors.WalletAvatar.gradientStops.pink.bottom": Swatch(cloud: 0xE0489CFF, midnight: 0xE0489CFF, dark: 0xE0489CFF),
+        "UniColors.WalletAvatar.gradientStops.peach.top": Swatch(cloud: 0xFDBA74FF, midnight: 0xFDBA74FF, dark: 0xFDBA74FF),
+        "UniColors.WalletAvatar.gradientStops.peach.bottom": Swatch(cloud: 0xEA580CFF, midnight: 0xEA580CFF, dark: 0xEA580CFF),
         "UniColors.WalletAvatar.gradientStops.violet.top": Swatch(cloud: 0xB488FFFF, midnight: 0xB488FFFF, dark: 0xB488FFFF),
         "UniColors.WalletAvatar.gradientStops.violet.bottom": Swatch(cloud: 0x6B2BD9FF, midnight: 0x6B2BD9FF, dark: 0x6B2BD9FF),
+        "UniColors.WalletAvatar.gradientStops.lavender.top": Swatch(cloud: 0xC4B5FDFF, midnight: 0xC4B5FDFF, dark: 0xC4B5FDFF),
+        "UniColors.WalletAvatar.gradientStops.lavender.bottom": Swatch(cloud: 0x7C3AEDFF, midnight: 0x7C3AEDFF, dark: 0x7C3AEDFF),
+        "UniColors.WalletAvatar.gradientStops.sapphire.top": Swatch(cloud: 0x60A5FAFF, midnight: 0x60A5FAFF, dark: 0x60A5FAFF),
+        "UniColors.WalletAvatar.gradientStops.sapphire.bottom": Swatch(cloud: 0x1D4ED8FF, midnight: 0x1D4ED8FF, dark: 0x1D4ED8FF),
+        "UniColors.WalletAvatar.gradientStops.ocean.top": Swatch(cloud: 0x22D3EEFF, midnight: 0x22D3EEFF, dark: 0x22D3EEFF),
+        "UniColors.WalletAvatar.gradientStops.ocean.bottom": Swatch(cloud: 0x0369A1FF, midnight: 0x0369A1FF, dark: 0x0369A1FF),
+        "UniColors.WalletAvatar.gradientStops.sunset.top": Swatch(cloud: 0xFB923CFF, midnight: 0xFB923CFF, dark: 0xFB923CFF),
+        "UniColors.WalletAvatar.gradientStops.sunset.bottom": Swatch(cloud: 0xDC2626FF, midnight: 0xDC2626FF, dark: 0xDC2626FF),
         "UniColors.WalletAvatar.badgeColor.watch": Swatch(cloud: 0x2F6BD6FF, midnight: 0x2F6BD6FF, dark: 0x2F6BD6FF),
         "UniColors.WalletAvatar.badgeColor.hardware": Swatch(cloud: 0x3A3D45FF, midnight: 0x3A3D45FF, dark: 0x3A3D45FF),
         "UniColors.WalletAvatar.badgeColor.shared": Swatch(cloud: 0x179A5BFF, midnight: 0x179A5BFF, dark: 0x179A5BFF),

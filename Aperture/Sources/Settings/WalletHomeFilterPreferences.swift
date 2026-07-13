@@ -361,13 +361,23 @@ enum WalletHomeFilterPreferences {
         /// Localized label for the picker row. Uses the user's
         /// display currency so a EUR-preference user reads
         /// "Under €1" instead of "Under $1".
+        ///
+        /// Format via `"Under %@"` — do not interpolate the amount
+        /// into `apertureLocalized` (that creates untranslated keys).
         func label(currencyCode: String) -> String {
             switch self {
             case .zero:
                 return String.apertureLocalized("Show all")
             default:
-                let value = Decimal(rawValue).formatted(.currency(code: currencyCode))
-                return String.apertureLocalized("Under \(value)")
+                let value = Decimal(rawValue).formatted(
+                    .currency(code: currencyCode)
+                        .locale(ApertureLocalization.currentLocale)
+                )
+                return String(
+                    format: String.apertureLocalized("Under %@"),
+                    locale: ApertureLocalization.currentLocale,
+                    value
+                )
             }
         }
     }

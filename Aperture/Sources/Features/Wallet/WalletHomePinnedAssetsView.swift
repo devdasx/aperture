@@ -83,9 +83,7 @@ struct WalletHomePinnedAssetsView: View {
                 )
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
     }
 
     // MARK: - Pinned list
@@ -102,7 +100,7 @@ struct WalletHomePinnedAssetsView: View {
                             subtitle: row.chain.ticker,
                             unpin: { unpin(coin: row) }
                         )
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                     }
                 } header: {
                     Text("Coins")
@@ -117,16 +115,14 @@ struct WalletHomePinnedAssetsView: View {
                             subtitle: "\(row.symbol) · \(row.chain.displayName)",
                             unpin: { unpin(token: row) }
                         )
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                     }
                 } header: {
                     Text("Tokens")
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
     }
 
     // MARK: - Row builders
@@ -261,7 +257,7 @@ private struct PinnedAssetRow: View {
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniTactile)
             .accessibilityLabel(Text("Unpin"))
         }
         .padding(.vertical, UniSpacing.xxs)

@@ -106,12 +106,10 @@ struct AllSupportedAssetsView: View {
                 if assetType.showsTokens { tokensSection(tokenRows) }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary.ignoresSafeArea())
+        .uniListPageChrome()
         .navigationTitle("Coins & tokens")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
         .toolbar {
             // Bare `line.3.horizontal.decrease` glyph — the same filter
             // affordance the wallet home and asset-detail screens use.
@@ -189,7 +187,7 @@ struct AllSupportedAssetsView: View {
                             fiatCurrencyCode: row.fiatCurrencyCode
                         )
                     }
-                    .accessibilityLabel(Text("\(row.chain.displayName) details"))
+                    .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ details"), row.chain.displayName)))
                 }
             } header: {
                 Text("Coins")
@@ -208,7 +206,7 @@ struct AllSupportedAssetsView: View {
                     NavigationLink(value: WalletHomeDestination.assetDetail(.token(symbol: row.symbol))) {
                         TokenSupportedRow(row: row)
                     }
-                    .accessibilityLabel(Text("\(row.symbol) details"))
+                    .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ details"), row.symbol)))
                 }
             } header: {
                 Text("Tokens")
@@ -406,7 +404,12 @@ private struct TokenSupportedRow: View {
         .padding(.vertical, UniSpacing.xs)
         .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(verbatim: "\(row.symbol), \(row.name), on \(row.chain.displayName)"))
+        .accessibilityLabel(Text(verbatim: String(
+            format: String.apertureLocalized("%@, %@, on %@"),
+            row.symbol,
+            row.name,
+            row.chain.displayName
+        )))
     }
 
     private var fiatLabel: some View {

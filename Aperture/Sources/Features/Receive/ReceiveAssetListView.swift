@@ -77,10 +77,8 @@ struct ReceiveAssetListView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .uniListPageChrome()
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
     }
 
     // MARK: - Filtering
@@ -141,7 +139,7 @@ struct ReceiveAssetListView: View {
                     )
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
         } header: {
             UniCaption(text: "Native assets", color: UniColors.Text.tertiary)
@@ -167,7 +165,7 @@ struct ReceiveAssetListView: View {
                         )
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             }
         } header: {

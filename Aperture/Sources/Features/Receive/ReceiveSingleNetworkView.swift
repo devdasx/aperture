@@ -49,9 +49,7 @@ struct ReceiveSingleNetworkView: View {
                 )
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text(assetPrefill.symbol))
         .navigationBarTitleDisplayMode(.inline)
     }

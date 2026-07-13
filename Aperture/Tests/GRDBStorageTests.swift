@@ -689,10 +689,7 @@ import Testing
         for table in [
             "wallets", "wallet_addresses", "wallet_secrets", "transactions",
             "token_balances", "chain_states", "chain_utxos",
-            "wallet_portfolio_summaries", "portfolio_snapshot_runs",
-            "portfolio_chain_results", "portfolio_asset_snapshots",
-            "portfolio_asset_rollups", "portfolio_flow_valuations",
-            "wallet_pnl_summaries",
+            "wallet_portfolio_summaries",
             "custom_tokens", "biometric_enrollment", "asset_logo_cache",
             "wallet_avatar_raster_cache", "generated_documents",
             "cloudkit_backup_cache", "diagnostic_log_entries"

@@ -97,7 +97,7 @@ actor RippleBalanceHistoryScanner {
         if !events.isEmpty {
             isUsed = true
         }
-        for event in events.prefix(50) {
+        for event in events.prefix(HistoryScanLimits.perAddress) {
             try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,

@@ -25,19 +25,19 @@ struct BiometricReenrollmentBanner: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                    Text(verbatim: "Re-enable \(biometricService.biometryType.displayName).")
+                    Text(verbatim: titleText)
                         .font(UniTypography.subheadlineEmphasized)
                         .foregroundStyle(UniColors.Text.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(verbatim: "Your \(biometricService.biometryType.displayName) enrollment changed. Authenticate once to trust this iPhone again.")
+                    Text(verbatim: bodyText)
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: UniDirectionalSymbol.disclosure)
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(UniColors.Icon.tertiary)
                     .accessibilityHidden(true)
             }
@@ -54,9 +54,30 @@ struct BiometricReenrollmentBanner: View {
             .onTapGesture { Task { await reenroll() } }
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(Text(verbatim: "Re-enable \(biometricService.biometryType.displayName)"))
+            .accessibilityLabel(Text(verbatim: accessibilityTitle))
             .accessibilityHint(Text("Opens the biometric prompt to confirm your enrollment."))
         }
+    }
+
+    private var biometryName: String {
+        biometricService.biometryType.displayName
+    }
+
+    private var titleText: String {
+        String(format: String.apertureLocalized("Re-enable %@."), biometryName)
+    }
+
+    private var bodyText: String {
+        String(
+            format: String.apertureLocalized(
+                "Your %@ enrollment changed. Authenticate once to trust this iPhone again."
+            ),
+            biometryName
+        )
+    }
+
+    private var accessibilityTitle: String {
+        String(format: String.apertureLocalized("Re-enable %@"), biometryName)
     }
 
     private func reenroll() async {

@@ -150,6 +150,13 @@ actor DiagnosticsLogStore {
         }
     }
 
+    /// After factory reset already deleted `diagnostic_log_entries` in its
+    /// main transaction — only clear in-memory state (no nested GRDB write).
+    func markClearedAfterWipe() {
+        dropEntriesCreatedBefore = Date()
+        pendingEntries.removeAll()
+    }
+
     private func append(_ entry: DiagnosticsLogEntry) {
         if let dropEntriesCreatedBefore, entry.timestamp <= dropEntriesCreatedBefore {
             return

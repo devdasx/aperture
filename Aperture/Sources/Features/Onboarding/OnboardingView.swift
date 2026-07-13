@@ -124,20 +124,25 @@ struct OnboardingView: View {
 
                 VStack(spacing: 0) {
                     slidePager
-                        .frame(maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     pageDots
-                        .padding(.bottom, UniSpacing.m)
+                        .padding(.bottom, UniSpacing.s)
                         .modifier(OnboardingStaggeredFadeIn(
                             visible: contentVisible,
                             delay: 0.30
                         ))
-
+                }
+                // Pin Create + Import + legal flush to the bottom edge of
+                // the safe area — no extra bottom padding below the line.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
                     bottomStack
                         .padding(.horizontal, UniSpacing.l)
-                        .padding(.bottom, UniSpacing.xs)
+                        .padding(.top, UniSpacing.xs)
+                        .padding(.bottom, 0)
+                        .frame(maxWidth: .infinity)
+                        .background(UniColors.Background.primary)
                 }
-                .ignoresSafeArea(.container, edges: .bottom)
             }
             // Match the wallet-home pattern exactly: the settings gear
             // lives inside a system `.toolbar { ToolbarItem(.topBarLeading) }`
@@ -215,7 +220,8 @@ struct OnboardingView: View {
                     RecoveryPhraseFlow(
                         navigationPath: $recoveryPath,
                         onDismiss: { activeFlow = nil },
-                        onUserContinuedWithoutVerifiedBackup: { hasUnbackedupWallet = true }
+                        onUserContinuedWithoutVerifiedBackup: { hasUnbackedupWallet = true },
+                        requiresPasscodeSetup: true
                     )
                 case .importWallet:
                     // Import Wallet flow (T-003). Mirrors the
@@ -231,7 +237,8 @@ struct OnboardingView: View {
                             // wallets via RootGate / ActiveWalletPointer.
                             hasUnbackedupWallet = false
                             activeFlow = nil
-                        }
+                        },
+                        requiresPasscodeSetup: true
                     )
                 }
             }
@@ -326,7 +333,9 @@ struct OnboardingView: View {
     /// slide; now persistent so the user can commit at any beat. See
     /// `MISTAKES.md` discussion and the corresponding `SHIPPED.md` entry.
     private var bottomStack: some View {
-        VStack(spacing: UniSpacing.l) {
+        // Tight vertical stack: CTAs then legal — less air between
+        // "Import wallet" and "By continuing, you agree…".
+        VStack(spacing: UniSpacing.xs) {
             actionRegion
             legalFooter
                 .modifier(OnboardingStaggeredFadeIn(
@@ -342,8 +351,8 @@ struct OnboardingView: View {
         GlassEffectContainer(spacing: UniSpacing.s) {
             VStack(spacing: UniSpacing.s) {
                 UniButton(title: "Create new wallet", variant: .primary) {
-                    // Create flow: recovery phrase → verify → PIN/biometrics
-                    // → wallet ready → main shell.
+                    // Create flow: recovery phrase → PIN/biometrics (if needed)
+                    // → wallet ready → main shell. No phrase-verify quiz.
                     activeFlow = .createWallet
                 }
                 .modifier(OnboardingStaggeredFadeIn(
@@ -373,7 +382,7 @@ struct OnboardingView: View {
                 legalPrivacyLink
             }
 
-            VStack(spacing: UniSpacing.xxs) {
+            VStack(spacing: 2) {
                 legalPrefix
                 HStack(spacing: UniSpacing.xxs) {
                     legalTermsLink
@@ -405,7 +414,10 @@ struct OnboardingView: View {
             Text("Terms")
                 .font(UniTypography.caption1)
                 .foregroundStyle(UniColors.Button.text)
-                .frame(minHeight: 44)
+                // Compact footer row — hit target still via padding, without
+                // a full 44pt min-height that pushed the line far from CTAs.
+                .padding(.vertical, UniSpacing.xs)
+                .padding(.horizontal, 2)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(Text("Terms"))
@@ -416,7 +428,8 @@ struct OnboardingView: View {
             Text("Privacy")
                 .font(UniTypography.caption1)
                 .foregroundStyle(UniColors.Button.text)
-                .frame(minHeight: 44)
+                .padding(.vertical, UniSpacing.xs)
+                .padding(.horizontal, 2)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(Text("Privacy"))

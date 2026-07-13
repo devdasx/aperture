@@ -4,12 +4,15 @@ import OSLog
 /// Fetches the UTXO set for a Bitcoin-family address and runs coin
 /// selection + vsize estimation + change/dust handling.
 ///
-/// **Single store of truth with balance scanners (P0 split-brain fix):**
-/// - BTC: Electrum `listunspent` — same as `BitcoinElectrumBalanceScanner`
-/// - BCH: Electrum `listunspent` — same as `BitcoinCashElectrumBalanceScanner`
-/// - LTC: Esplora REST — same as `BitcoinFamilyRESTBalanceScanner`
-/// - DOGE: `DogecoinDataClient` (Blockbook → Blockchair → BlockCypher) —
-///   same as `BitcoinFamilyRESTBalanceScanner`
+/// **BTC (P1 #8):**
+/// - Portfolio balance: Electrum
+/// - Send UTXOs + fees: **mempool.space only** (`BitcoinMempoolSpaceClient`)
+/// - No Blockstream / multi-Esplora rotation for BTC
+///
+/// **Other chains:**
+/// - BCH: Electrum `listunspent` — same as balance scanner
+/// - LTC: litecoinspace REST — same as balance scanner
+/// - DOGE: `DogecoinDataClient` — same as balance scanner
 ///
 /// Off-main (Rule #28): a `struct` with async methods; the heavy decode +
 /// selection runs on the calling background task.
@@ -27,16 +30,11 @@ struct UTXOService: Sendable {
     /// Fetch the address's UTXO set. Throws on transport failure — never
     /// returns an empty set on error (the caller must distinguish
     /// "no UTXOs" from "couldn't reach the chain").
-    ///
-    /// Source matches the balance scanner for `chain` (Electrum for BTC/BCH,
-    /// Esplora for LTC, DogecoinDataClient for DOGE).
     func fetchUTXOs(address: String, chain: SupportedChain) async throws -> [SelectedUTXO] {
         try await fetchUTXOs(addresses: [address], chain: chain)
     }
 
     /// Batch UTXO fetch for one or more addresses on `chain`.
-    /// BTC/BCH use a single Electrum connection (listunspent batch);
-    /// LTC/DOGE fan out per-address on the same REST path as balance.
     func fetchUTXOs(addresses: [String], chain: SupportedChain) async throws -> [SelectedUTXO] {
         var seen = Set<String>()
         let unique = addresses.compactMap { raw -> String? in
@@ -60,7 +58,8 @@ struct UTXOService: Sendable {
             let utxos: [SelectedUTXO]
             switch chain {
             case .bitcoin:
-                utxos = try await BitcoinElectrumUTXOSource.fetchUTXOs(addresses: unique)
+                // Send path: mempool.space only (not Electrum, not Blockstream).
+                utxos = try await BitcoinMempoolSpaceClient.shared.fetchUTXOs(addresses: unique)
             case .bitcoinCash:
                 utxos = try await BitcoinCashElectrumUTXOSource.fetchUTXOs(addresses: unique)
             case .litecoin:
@@ -83,9 +82,9 @@ struct UTXOService: Sendable {
 
     private static func sourceLabel(for chain: SupportedChain) -> String {
         switch chain {
-        case .bitcoin: return "electrum-btc"
+        case .bitcoin: return "mempool-space"
         case .bitcoinCash: return "electrum-bch"
-        case .litecoin: return "esplora-ltc"
+        case .litecoin: return "litecoinspace"
         case .dogecoin: return "dogecoin-data-client"
         default: return "UTXOService"
         }
@@ -166,8 +165,7 @@ struct UTXOService: Sendable {
         }
         guard !addresses.isEmpty else { return [] }
 
-        // One source path for the whole wallet address set (Electrum batch
-        // for BTC/BCH; parallel REST for LTC/DOGE).
+        // One source path for the whole wallet address set.
         return try await fetchUTXOs(addresses: addresses, chain: chain)
     }
 

@@ -709,11 +709,23 @@ private extension AppDatabase {
             try db.execute(sql: walletAssetRouteTemplatesSQL)
         }
         migrator.registerMigration("v6_portfolio_pnl_history") { db in
+            // Kept for migration-id continuity on existing installs. PnL was
+            // removed; v8 drops these tables if they still exist.
             try db.execute(sql: portfolioPnLHistorySQL)
         }
         // P0-004 / P0-005: per-address reserve fields for Send MAX / spendable.
         migrator.registerMigration("v7_chain_account_states") { db in
             try db.execute(sql: chainAccountStatesSQL)
+        }
+        migrator.registerMigration("v8_drop_portfolio_pnl") { db in
+            try db.execute(sql: """
+            DROP TABLE IF EXISTS wallet_pnl_summaries;
+            DROP TABLE IF EXISTS portfolio_flow_valuations;
+            DROP TABLE IF EXISTS portfolio_asset_rollups;
+            DROP TABLE IF EXISTS portfolio_asset_snapshots;
+            DROP TABLE IF EXISTS portfolio_chain_results;
+            DROP TABLE IF EXISTS portfolio_snapshot_runs;
+            """)
         }
         return migrator
     }

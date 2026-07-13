@@ -81,7 +81,7 @@ actor AptosBalanceHistoryScanner {
         if !events.isEmpty {
             isUsed = true
         }
-        for event in events.prefix(50) {
+        for event in events.prefix(HistoryScanLimits.perAddress) {
             try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
@@ -231,7 +231,7 @@ actor AptosBalanceHistoryScanner {
     }
 
     private func transactionMetadata(versions: [Int64]) async -> [Int64: AptosTransactionMetadata] {
-        let unique = Array(Set(versions)).sorted(by: >).prefix(50)
+        let unique = Array(Set(versions)).sorted(by: >).prefix(HistoryScanLimits.perAddress)
         let fullnode = self.fullnode
         return await withTaskGroup(of: (Int64, AptosTransactionMetadata?).self) { group in
             for version in unique {

@@ -84,7 +84,7 @@ struct MnemonicWordAdviceSheet: View {
                 .foregroundStyle(UniColors.Text.tertiary)
 
             Image(systemName: "arrow.up.left")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
                 .accessibilityHidden(true)
         }

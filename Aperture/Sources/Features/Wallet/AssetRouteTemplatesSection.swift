@@ -27,7 +27,7 @@ struct AssetRouteTemplatesSection: View {
                             AssetRouteTemplateRow(template: template)
                         }
                         .buttonStyle(.uniListRow)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                     }
                 } header: {
                     UniCaption(text: "Templates", color: UniColors.Text.tertiary)
@@ -66,8 +66,8 @@ private struct AssetRouteTemplateRow: View {
 
             Spacer(minLength: UniSpacing.s)
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: UniDirectionalSymbol.disclosure)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, 4)

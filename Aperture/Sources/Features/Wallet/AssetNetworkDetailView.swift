@@ -69,12 +69,11 @@ struct AssetNetworkDetailView: View {
     var body: some View {
         List {
             heroCardSection
+            solanaPathsSection
             actionsSection
             activitySection
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary.ignoresSafeArea())
+        .uniListPageChrome()
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -286,7 +285,7 @@ struct AssetNetworkDetailView: View {
                 .monospacedDigit()
                 .environment(\.layoutDirection, .leftToRight)
         } else {
-            Text("Not held on \(chain.displayName)")
+            Text(verbatim: String(format: String.apertureLocalized("Not held on %@"), chain.displayName))
                 .font(UniTypography.title3)
                 .foregroundStyle(UniColors.Text.tertiary)
         }
@@ -306,6 +305,37 @@ struct AssetNetworkDetailView: View {
         let amount = networkRow?.amount ?? .zero
         let amountText = WalletFormatting.native(amount, decimals: 6, hidden: hideBalances)
         return "\(amountText) \(identity.symbol)"
+    }
+
+    // MARK: - Solana dual-path section
+
+    @ViewBuilder
+    private var solanaPathsSection: some View {
+        let lines = solanaPathLines
+        if chain == .solana, SolanaPathBalanceBreakdown.isDualPath(lines) {
+            Section {
+                ForEach(lines) { line in
+                    SolanaPathBalanceRow(
+                        line: line,
+                        symbol: identity.symbol,
+                        hideBalance: hideBalances
+                    )
+                }
+            } header: {
+                Text("Paths")
+            } footer: {
+                Text("Home balance and activity use the selected path only (default Phantom). Switch paths in Receive.")
+            }
+        }
+    }
+
+    private var solanaPathLines: [SolanaPathBalanceLine] {
+        guard chain == .solana, identity.isNativeCoin, let wallet = activeWallet else { return [] }
+        return SolanaPathBalanceBreakdown.nativeLines(
+            addresses: wallet.addresses,
+            balances: activeBalancesObservation.balances,
+            fallbackCurrencyCode: currencyCode
+        )
     }
 
     // MARK: - Activity section
@@ -404,10 +434,14 @@ struct AssetNetworkDetailView: View {
         }
     }
 
-    /// Resolve USD unit prices for this asset's symbol so the $0.20-USD
-    /// dust gate can run. Engine-cached and cancellation-safe.
+    /// Seed disk USD prices immediately, then refresh live (no dust flash).
     private func loadDustPrices() async {
-        let map = await ActivityFiat.usdPriceMap(symbols: assetScopedTransactions.map(\.tokenSymbol))
+        let symbols = assetScopedTransactions.map(\.tokenSymbol)
+        let seeded = ActivityFiat.usdPriceMapFromCache(symbols: symbols)
+        if !seeded.isEmpty {
+            usdPrices = seeded
+        }
+        let map = await ActivityFiat.usdPriceMap(symbols: symbols)
         guard !Task.isCancelled else { return }
         usdPrices = map
     }
@@ -437,15 +471,16 @@ struct AssetNetworkDetailView: View {
         cachedPricesObservation.setCurrencyCode(currencyCode)
     }
 
-    /// First address on the active wallet whose `chainRaw` matches
-    /// this view's chain. The "receiving address" the user would
-    /// share — same address `ReceiveView` would show on this chain.
+    /// Preferred send/receive address for this chain (Solana dual-path:
+    /// preferred Phantom/Trust row, not an arbitrary path).
     private var walletAddress: WalletAddressRecord? {
-        activeWallet?.addresses.first { $0.chainRaw == chain.rawValue }
+        let matches = activeWallet?.addresses.filter { $0.chainRaw == chain.rawValue } ?? []
+        return matches.first(where: \.isReceivePreferred) ?? matches.first
     }
 
     private var allHeldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
+        let allowedIds = SolanaPathBalanceBreakdown.displayAddressIds(walletAddresses: wallet.addresses)
         let chainByAddressId = Dictionary(
             uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
                 guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
@@ -455,6 +490,7 @@ struct AssetNetworkDetailView: View {
         var result: [(SupportedChain, TokenBalanceRecord)] = []
         for balance in activeBalancesObservation.balances where !balance.rawBalance.isEmpty {
             guard let addressId = balance.addressId ?? balance.address?.id,
+                  allowedIds.contains(addressId),
                   let chain = chainByAddressId[addressId] else { continue }
             result.append((chain, balance))
         }
@@ -463,7 +499,7 @@ struct AssetNetworkDetailView: View {
 
     private var allTransactions: [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
-        let addressIds = Set(wallet.addresses.map(\.id))
+        let addressIds = SolanaPathBalanceBreakdown.displayAddressIds(walletAddresses: wallet.addresses)
         return activeTransactionsObservation.transactions.filter { tx in
             guard let addressId = tx.addressId else { return false }
             return addressIds.contains(addressId)

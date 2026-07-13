@@ -218,12 +218,18 @@ struct WalletAvatar: View {
 
     // MARK: - Inner symbol switch
 
+    /// Ink-or-cloud for content drawn on this disc — white on dark
+    /// gradients, dark ink on light (lime / amber / custom pastels).
+    private var contentColor: Color {
+        UniColors.WalletAvatar.contentPrimary(for: spec)
+    }
+
     @ViewBuilder
     private func innerSymbol(diameter: CGFloat) -> some View {
         switch spec.symbolType {
         case .glyph:
             if let glyph = spec.glyph {
-                WalletAvatarGlyphView(glyph: glyph, size: diameter)
+                WalletAvatarGlyphView(glyph: glyph, size: diameter, color: contentColor)
             } else {
                 // Defensive — if a spec has symbolType .glyph but a nil
                 // glyph (corrupted persistence), render a calm fallback
@@ -260,7 +266,8 @@ struct WalletAvatar: View {
                 walletId: id,
                 svg: svg,
                 tint: spec.customTint ?? .white,
-                diameter: diameter
+                diameter: diameter,
+                contentColor: contentColor
             )
         } else {
             // Spec is .custom but caller didn't thread walletId —
@@ -270,8 +277,8 @@ struct WalletAvatar: View {
         }
     }
 
-    /// Monogram renderer — 1–2 characters, white, SF Pro Display 600
-    /// with −1 tracking. Font size is calibrated against the JS engine:
+    /// Monogram renderer — SF Pro Display 600 with −1 tracking. Colour
+    /// follows disc luminance (ink on light, cloud on dark).
     /// 46pt at 100pt diameter for 1 char, 34pt for 2 chars. We scale
     /// those linearly with the actual diameter so the monogram looks
     /// right at every size.
@@ -289,7 +296,7 @@ struct WalletAvatar: View {
             // sizes (tab icon 28pt → 14pt font, toolbar pill 22pt →
             // 10pt font) the system picks Text, which is what we want.
             .tracking(-1)
-            .foregroundStyle(Color.white)
+            .foregroundStyle(contentColor)
     }
 }
 
@@ -362,6 +369,8 @@ private struct CustomSvgCachedView: View {
     let svg: String
     let tint: WalletAvatarSpec.CustomTint
     let diameter: CGFloat
+    /// Luminance-aware content colour for silhouette (`.white`) tints.
+    var contentColor: Color = .white
 
     @State private var cached: UIImage?
     /// Identifies the (svg, tint) the view is currently rendering. If
@@ -383,6 +392,8 @@ private struct CustomSvgCachedView: View {
                 Image(uiImage: cached)
                     .resizable()
                     .interpolation(.high)
+                    .renderingMode(tint == .white ? .template : .original)
+                    .foregroundStyle(tint == .white ? contentColor : Color.primary)
                     .aspectRatio(contentMode: .fit)
                     .frame(width: boxSide, height: boxSide)
             } else {
@@ -390,7 +401,7 @@ private struct CustomSvgCachedView: View {
                 // a thin Aperture-iris instead of a monogram so the
                 // placeholder feels deliberate — it's "we're working
                 // on your mark," not "we lost your mark."
-                WalletAvatarGlyphView(glyph: .iris, size: diameter)
+                WalletAvatarGlyphView(glyph: .iris, size: diameter, color: contentColor)
                     .opacity(0.32)
             }
         }

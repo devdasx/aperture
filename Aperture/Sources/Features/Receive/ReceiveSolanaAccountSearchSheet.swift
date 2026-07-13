@@ -18,6 +18,8 @@ struct ReceiveSolanaAccountSearchSheet: View {
     @State private var errorMessage: String?
     @State private var searchCandidateCount: Int = 0
     @State private var searchRequest: SolanaReceiveAccountSearchRequest?
+    /// In-flight BIP-39 + path derivation (must not block the main actor).
+    @State private var searchDeriveTask: Task<Void, Never>?
 
     private var supportedTokens: [SolanaReceiveSupportedToken] {
         SolanaReceiveSupportedToken.supported
@@ -325,38 +327,6 @@ struct ReceiveSolanaAccountSearchSheet: View {
     }
 
     @MainActor
-    private func searchAccounts() {
-        guard !isSearching else { return }
-        guard let wallet else {
-            errorMessage = "No active wallet was found for this receive screen."
-            return
-        }
-        guard let range = parsedRange else {
-            errorMessage = SolanaReceiveAccountSearchLimits.rangeErrorMessage
-            return
-        }
-
-        isSearching = false
-        hasSearched = false
-        errorMessage = nil
-        results = []
-        searchCandidateCount = 0
-
-        do {
-            let candidates = try deriveCandidates(wallet: wallet, range: range)
-            searchCandidateCount = candidates.count
-            isSearching = true
-            searchRequest = SolanaReceiveAccountSearchRequest(
-                candidates: candidates,
-                currencyCode: currencyCode
-            )
-        } catch {
-            errorMessage = SolanaReceiveAccountSearchError.message(for: error)
-            isSearching = false
-        }
-    }
-
-    @MainActor
     private func finishSearch(_ outcome: Result<[SolanaReceiveAccountSearchResult], Error>) {
         searchRequest = nil
         isSearching = false
@@ -374,28 +344,97 @@ struct ReceiveSolanaAccountSearchSheet: View {
 
     @MainActor
     private func cancelSearch() {
+        searchDeriveTask?.cancel()
+        searchDeriveTask = nil
         searchRequest = nil
         isSearching = false
     }
 
-    private func deriveCandidates(
-        wallet: WalletRecord,
+    @MainActor
+    private func searchAccounts() {
+        guard !isSearching else { return }
+        guard let wallet else {
+            errorMessage = "No active wallet was found for this receive screen."
+            return
+        }
+        guard let range = parsedRange else {
+            errorMessage = SolanaReceiveAccountSearchLimits.rangeErrorMessage
+            return
+        }
+
+        searchDeriveTask?.cancel()
+        hasSearched = false
+        errorMessage = nil
+        results = []
+        searchCandidateCount = 0
+        // Show progress immediately — BIP-39 + multi-path derivation is CPU-heavy
+        // and must not run synchronously on the main actor.
+        isSearching = true
+
+        let walletId = wallet.id
+        let walletKind = wallet.kind
+        let hasPassphrase = wallet.hasPassphrase
+        let currentAddress = activeAddress
+
+        searchDeriveTask = Task { @MainActor in
+            do {
+                let candidates = try await Self.deriveCandidatesAsync(
+                    walletId: walletId,
+                    walletKind: walletKind,
+                    hasPassphrase: hasPassphrase,
+                    activeAddress: currentAddress,
+                    range: range
+                )
+                guard !Task.isCancelled else {
+                    isSearching = false
+                    return
+                }
+                searchCandidateCount = candidates.count
+                searchRequest = SolanaReceiveAccountSearchRequest(
+                    candidates: candidates,
+                    currencyCode: currencyCode
+                )
+            } catch {
+                guard !Task.isCancelled else {
+                    isSearching = false
+                    return
+                }
+                errorMessage = SolanaReceiveAccountSearchError.message(for: error)
+                isSearching = false
+            }
+        }
+    }
+
+    /// Loads mnemonic on-call, then runs seed + path derivation off the main actor.
+    private static func deriveCandidatesAsync(
+        walletId: UUID,
+        walletKind: WalletKind,
+        hasPassphrase: Bool,
+        activeAddress: String,
         range: ClosedRange<Int>
-    ) throws -> [SolanaReceiveAccountCandidate] {
-        switch wallet.kind {
+    ) async throws -> [SolanaReceiveAccountCandidate] {
+        switch walletKind {
         case .created, .importedMnemonic:
-            guard !wallet.hasPassphrase else { throw SolanaReceiveAccountSearchError.passphraseWallet }
-            guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, database: AppDatabase.shared),
-                  !words.isEmpty else {
+            guard !hasPassphrase else { throw SolanaReceiveAccountSearchError.passphraseWallet }
+            guard let words = try WalletSecretPersistence.loadMnemonic(
+                for: walletId,
+                database: AppDatabase.shared
+            ), !words.isEmpty else {
                 throw SolanaReceiveAccountSearchError.missingMnemonic
             }
-            return try SolanaReceiveAccountDeriver.deriveMnemonicAccounts(words: words, range: range)
+            let normalized = words
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .filter { !$0.isEmpty }
+            guard !normalized.isEmpty else { throw SolanaReceiveAccountSearchError.missingMnemonic }
+            return try await Task.detached(priority: .userInitiated) {
+                try SolanaReceiveAccountDeriver.deriveMnemonicAccounts(words: normalized, range: range)
+            }.value
         case .importedKey, .watchOnly:
             return [
                 SolanaReceiveAccountCandidate(
                     type: .current,
                     accountIndex: 0,
-                    derivationPath: wallet.kind == .watchOnly ? "watch-only" : "imported-private-key",
+                    derivationPath: walletKind == .watchOnly ? "watch-only" : "imported-private-key",
                     address: activeAddress
                 )
             ]
@@ -583,7 +622,7 @@ private struct SolanaReceiveAccountResultRow: View {
                     Text(WalletFormatting.fiat(result.totalFiat, currencyCode: currencyCode, hidden: hideBalances))
                         .font(UniTypography.headline)
                         .foregroundStyle(result.hasFunds ? UniColors.Text.primary : UniColors.Text.tertiary)
-                    Text("\(hideBalances ? WalletFormatting.hiddenAmount : result.displayNativeBalance) SOL")
+                    Text(verbatim: "\(hideBalances ? WalletFormatting.hiddenAmount : result.displayNativeBalance) SOL")
                         .font(UniTypography.caption1)
                         .foregroundStyle(UniColors.Text.tertiary)
                 }
@@ -733,7 +772,7 @@ private struct SolanaReceiveAccountSearchProgressSheet: View {
                         .tint(UniColors.Text.primary)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Checking \(request.candidates.count) Solana addresses")
+                        Text(verbatim: String(format: String.apertureLocalized("Checking %lld Solana addresses"), Int64(request.candidates.count)))
                             .font(UniTypography.headline)
                             .foregroundStyle(UniColors.Text.primary)
                         Text("Trust Wallet and Phantom balances, history, and supported SPL token balances are running in parallel.")

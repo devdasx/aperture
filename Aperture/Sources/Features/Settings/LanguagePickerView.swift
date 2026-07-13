@@ -70,18 +70,15 @@ struct LanguagePickerView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Choose language"))
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
         .uniHaptic(.selection, trigger: languageCode)
     }
 
     private var systemRow: some View {
         LanguageRow(
-            code: LanguagePreference.systemCode,
             flag: nil,
             nativeName: "System",
             // Pass `locale:` explicitly. `String(localized:)`
@@ -96,14 +93,13 @@ struct LanguagePickerView: View {
             // language. Same fix pattern needed at every
             // `String(localized:)` site whose output reaches
             // a `Text` view in the UI.
-            localizedName: String(localized: "Use iOS system language", locale: currentLocale),
-            isRTL: false,
+            localizedName: String.apertureLocalized("Use iOS system language"),
             isSelected: languageCode == LanguagePreference.systemCode,
             isSystemRow: true
         ) {
             languageCode = LanguagePreference.systemCode
         }
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     @ViewBuilder
@@ -111,17 +107,15 @@ struct LanguagePickerView: View {
         ForEach(languages) { language in
             let localized = currentLocale.localizedString(forLanguageCode: language.code) ?? language.englishName
             LanguageRow(
-                code: language.code,
                 flag: language.flag,
                 nativeName: language.nativeName,
                 localizedName: localized,
-                isRTL: language.isRTL,
                 isSelected: languageCode == language.code,
                 isSystemRow: false
             ) {
                 languageCode = language.code
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         }
     }
 
@@ -135,11 +129,9 @@ struct LanguagePickerView: View {
 }
 
 private struct LanguageRow: View {
-    let code: String
     let flag: String?
     let nativeName: String
     let localizedName: String
-    let isRTL: Bool
     let isSelected: Bool
     let isSystemRow: Bool
     let onTap: () -> Void
@@ -159,12 +151,14 @@ private struct LanguageRow: View {
                             .foregroundStyle(UniColors.Text.secondary)
                             .multilineTextAlignment(.leading)
                     } else {
+                        // Native script (including Arabic/Hebrew) stays
+                        // left-aligned in the same slot as every other
+                        // language — do not flip the row for RTL scripts.
                         Text(verbatim: nativeName)
                             .font(UniTypography.body)
                             .foregroundStyle(UniColors.Text.primary)
-                            .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
-                            .multilineTextAlignment(isRTL ? .trailing : .leading)
-                            .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Text(verbatim: localizedName)
                             .font(UniTypography.subheadline)
                             .foregroundStyle(UniColors.Text.secondary)
@@ -172,18 +166,21 @@ private struct LanguageRow: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if !isSystemRow { codeChip }
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15, weight: .regular))
                         .foregroundStyle(UniColors.Icon.accent)
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.vertical, UniSpacing.xxs)
+            // Force LTR chrome for every row so the app's RTL locale
+            // (when Arabic/Hebrew is selected) does not reverse flag /
+            // name / checkmark order across languages.
+            .environment(\.layoutDirection, .leftToRight)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
+        .environment(\.layoutDirection, .leftToRight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: isSystemRow ? "System" : "\(nativeName) — \(localizedName)"))
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
@@ -203,19 +200,6 @@ private struct LanguageRow: View {
                 .frame(width: 32, alignment: .center)
                 .accessibilityHidden(true)
         }
-    }
-
-    private var codeChip: some View {
-        Text(verbatim: code.uppercased())
-            .font(UniTypography.caption2.weight(.semibold))
-            .foregroundStyle(UniColors.Text.tertiary)
-            .padding(.horizontal, UniSpacing.xs)
-            .padding(.vertical, UniSpacing.xxs)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(UniColors.Fill.tertiary)
-            )
-            .accessibilityHidden(true)
     }
 }
 

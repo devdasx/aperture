@@ -314,6 +314,42 @@ extension View {
             }
         }
     }
+
+    /// Fire `haptic` when a discrete control value changes (pickers,
+    /// segmented control, tabs). Respects Preferences → Haptic feedback.
+    func uniHapticOnChange<T: Equatable>(
+        of value: T,
+        _ haptic: UniHaptic = .selection
+    ) -> some View {
+        uniHaptic(haptic, trigger: value)
+    }
+}
+
+// MARK: - Imperative fire (ButtonStyle / non-View call sites)
+
+extension UniHaptic {
+    /// Play immediately. No-ops when Preferences → Haptic feedback is off,
+    /// the scene is not active, or Reduce Motion silences signatures.
+    @MainActor
+    static func play(_ haptic: UniHaptic) {
+        UniHapticEngine.shared.play(haptic)
+    }
+}
+
+/// Observes press state inside a `ButtonStyle` and fires once on finger-down.
+struct UniHapticPressProbe: View {
+    let isPressed: Bool
+    let haptic: UniHaptic
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onChange(of: isPressed) { _, pressed in
+                guard pressed else { return }
+                UniHaptic.play(haptic)
+            }
+    }
 }
 
 // MARK: - Internal modifiers

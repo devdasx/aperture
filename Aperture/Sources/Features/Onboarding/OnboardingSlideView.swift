@@ -107,7 +107,7 @@ struct OnboardingSlideView: View {
     // MARK: - Open-source badge
 
     /// Restrained tappable badge — small `lock.shield` glyph, the words
-    /// "Open source", and a trailing `chevron.right`. All in
+    /// "Open source", and a trailing `chevron.forward`. All in
     /// `UniColors.Text.tertiary` so the affordance reads as an honest
     /// footnote, not a marketing banner (Rule #16 §B "Restraint, not
     /// alarm"). Tap presents the `OpenSourceSheet` via the parent.
@@ -118,15 +118,15 @@ struct OnboardingSlideView: View {
                     .font(.system(size: 13, weight: .regular))
                 Text("Open source")
                     .font(UniTypography.footnote)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                Image(systemName: UniDirectionalSymbol.disclosure)
+                    .font(.system(size: 11, weight: .regular))
             }
             .foregroundStyle(UniColors.Text.secondary)
             .frame(minHeight: 44)
             .padding(.horizontal, UniSpacing.xs)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
         .accessibilityLabel(Text("Open source"))
         .accessibilityHint(Text("Opens a sheet describing what you can verify in the source code"))
     }

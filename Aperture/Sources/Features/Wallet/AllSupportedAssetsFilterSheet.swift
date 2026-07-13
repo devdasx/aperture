@@ -63,9 +63,7 @@ struct AllSupportedAssetsFilterSheet: View {
                 viewSection
                 showSection
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -125,19 +123,19 @@ struct AllSupportedAssetsFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         }
     }
 
     private var previewMessage: String {
         if visibleAssets == totalAssets {
             return String(
-                format: String(localized: "Showing all %lld assets"),
+                format: String.apertureLocalized("Showing all %lld assets"),
                 Int64(totalAssets)
             )
         }
         return String(
-            format: String(localized: "Showing %lld of %lld assets"),
+            format: String.apertureLocalized("Showing %lld of %lld assets"),
             Int64(visibleAssets),
             Int64(totalAssets)
         )
@@ -149,9 +147,9 @@ struct AllSupportedAssetsFilterSheet: View {
     private var viewSection: some View {
         Section {
             sortKeyPicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             assetTypePicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("View")
         }
@@ -201,10 +199,10 @@ struct AllSupportedAssetsFilterSheet: View {
             NavigationLink(value: AllSupportedFilterDestination.networks) {
                 networksLink
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             onlyWithBalanceToggle
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("Show")
         } footer: {
@@ -241,7 +239,7 @@ struct AllSupportedAssetsFilterSheet: View {
             return String.apertureLocalized("All")
         }
         return String(
-            format: String(localized: "%lld of %lld"),
+            format: String.apertureLocalized("%lld of %lld"),
             Int64(selectedNetworks.count),
             Int64(SupportedChain.allCases.count)
         )
@@ -329,21 +327,19 @@ private struct AllSupportedNetworksPicker: View {
                     .uniListRowHitTarget()
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
                 ForEach(SupportedChain.allCases, id: \.self) { chain in
                     networkRow(chain)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                 }
             } header: {
                 Text("Networks")
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Networks"))
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedNetworksJSON) { _, newValue in
@@ -372,7 +368,7 @@ private struct AllSupportedNetworksPicker: View {
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .accessibilityLabel(Text("\(chain.displayName) network"))
+        .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ network"), chain.displayName)))
     }
 
     private func toggle(_ chain: SupportedChain) {

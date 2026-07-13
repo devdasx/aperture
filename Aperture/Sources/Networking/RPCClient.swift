@@ -853,7 +853,7 @@ actor RPCClient {
     /// the same fallback rotation + circuit breaker as `callREST`.
     ///
     /// Used by the Bitcoin-family broadcast path: Esplora
-    /// (mempool.space / blockstream / litecoinspace) `POST /tx` wants the
+    /// (BTC: mempool.space only; LTC: litecoinspace) `POST /tx` wants the
     /// raw transaction HEX as a `text/plain` body and returns the txid
     /// as plain text (live-verified 2026-06-15 — a malformed body
     /// returns `sendrawtransaction RPC error: TX decode failed`,
@@ -1197,6 +1197,12 @@ actor RPCClient {
                     lastError = error
                     continue
                 }
+                // HTTP 404 is a valid resource answer (unfunded Stellar
+                // account, missing REST path). The node is healthy — stop
+                // rotating and never trip the breaker.
+                if RPCError.isHTTPNotFound(error) {
+                    throw error
+                }
                 lastError = error
                 recordFailure(for: endpoint.id)
                 continue
@@ -1467,6 +1473,9 @@ actor RPCClient {
                     || (520...527).contains(http.statusCode) {
                     throw .network("HTTP \(http.statusCode) (timeout) from \(endpoint.id)")
                 }
+                // HTTP 404 is a deterministic resource response (e.g. Stellar
+                // Horizon unfunded account). Do not treat it as an endpoint
+                // failure for the circuit breaker — the node answered.
                 throw .invalidResponse("HTTP \(http.statusCode) from \(endpoint.id)")
             }
         }

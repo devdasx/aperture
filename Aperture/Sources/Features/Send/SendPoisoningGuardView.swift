@@ -64,13 +64,13 @@ struct SendPoisoningGuardView: View {
                     Spacer()
                     Button(action: onCancel) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15, weight: .regular))
                             .foregroundStyle(UniColors.Text.secondary)
                             .frame(width: 36, height: 36)
                             .background(.thinMaterial, in: Circle())
                             .contentShape(Circle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniTactile)
                     .accessibilityLabel(Text("Close"))
                 }
                 .padding(.horizontal, UniSpacing.m)
@@ -142,7 +142,7 @@ struct SendPoisoningGuardView: View {
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 HStack(spacing: UniSpacing.xxs) {
                     Image(systemName: isPasted ? "exclamationmark.circle.fill" : "checkmark.seal.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(headerColor)
                     Text(verbatim: header)
                         .font(UniTypography.caption1.weight(.semibold))
@@ -196,15 +196,22 @@ struct SendPoisoningGuardView: View {
     // MARK: - Actions
 
     private var actions: some View {
-        VStack(spacing: UniSpacing.xs) {
-            SendV2PrimaryButton(
-                knownName != nil
+        VStack(spacing: UniSpacing.s) {
+            // Safe default — solid primary CTA (Rule #19 UniButton).
+            UniButton(
+                title: knownName != nil
                     ? "Use \(savedLabel)'s saved address"
                     : "Use the saved address",
+                variant: .primary,
                 systemImage: "checkmark.shield.fill",
                 action: onUseSaved
             )
-            SendV2GhostButton("Continue with the pasted address", isDanger: true, action: onContinuePasted)
+            // Deliberate risk path — glass destructive (red), not quiet text.
+            UniButton(
+                title: "Continue with the pasted address",
+                variant: .destructive,
+                action: onContinuePasted
+            )
         }
         .padding(.top, UniSpacing.xs)
     }

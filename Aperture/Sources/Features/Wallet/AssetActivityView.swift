@@ -107,6 +107,7 @@ struct AssetActivityView: View {
                                 NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
                                     activityRow(tx, chain: chain)
                                 }
+                                .uniListRowSurface()
                             } else {
                                 // The parent address record is missing or
                                 // carries an unrecognized chain — render
@@ -116,6 +117,7 @@ struct AssetActivityView: View {
                                 // display-only proxy from the asset's own
                                 // identity.
                                 activityRow(tx, chain: displayProxyChain(derived))
+                                    .uniListRowSurface()
                             }
                         }
                     } header: {
@@ -124,9 +126,7 @@ struct AssetActivityView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary.ignoresSafeArea())
+        .uniListPageChrome()
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -162,10 +162,12 @@ struct AssetActivityView: View {
         }
     }
 
-    /// Resolve USD unit prices for the asset's symbols so the $0.20-USD
-    /// dust gate can run. Cheap after the first call (engine-cached) and
-    /// cancellation-safe — a re-key cancels this before a stale write.
+    /// Seed disk USD prices immediately, then refresh live (no dust flash).
     private func loadDustPrices(symbols: [String]) async {
+        let seeded = ActivityFiat.usdPriceMapFromCache(symbols: symbols)
+        if !seeded.isEmpty {
+            usdPrices = seeded
+        }
         let map = await ActivityFiat.usdPriceMap(symbols: symbols)
         guard !Task.isCancelled else { return }
         usdPrices = map
@@ -185,12 +187,12 @@ struct AssetActivityView: View {
     private func headerLabel(count: Int, total: Int) -> String {
         if count == total {
             return String(
-                format: String(localized: "All %lld transactions"),
+                format: String.apertureLocalized("All %lld transactions"),
                 Int64(total)
             )
         }
         return String(
-            format: String(localized: "Showing %lld of %lld"),
+            format: String.apertureLocalized("Showing %lld of %lld"),
             Int64(count),
             Int64(total)
         )

@@ -178,7 +178,7 @@ struct BackupVerifyView: View {
                         : UniColors.Background.tertiary
                 )
         )
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
     }
 
     // MARK: - Actions

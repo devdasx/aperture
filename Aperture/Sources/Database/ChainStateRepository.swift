@@ -8,8 +8,11 @@ final class ChainStateRepository {
         self.database = database
     }
 
+    /// Lightweight chain rollup. `address` is the **preferred** path only;
+    /// multi-path wallets also have rows in `wallet_addresses` (P1 #10).
     struct ChainStateSnapshot: Sendable {
         let chainRaw: String
+        /// Preferred send/receive address — not the only address on multi-path chains.
         let address: String
         let nativeBalanceRaw: String
         let nativeFiat: Decimal
@@ -27,6 +30,8 @@ final class ChainStateRepository {
         let isUsed: Bool
         let hasEncryptedKey: Bool
         let syncStateRaw: String
+
+        var preferredAddress: String { address }
     }
 
     struct AddressedUTXO: Sendable {
@@ -70,14 +75,19 @@ final class ChainStateRepository {
                 if let onlyChains, !onlyChains.contains(chain) { continue }
                 rebuiltChains.insert(chain)
                 let state: ChainSyncState = interim ? .syncing : (failedChains.contains(chain) ? .failed : .synced)
+                // First row per chain is preferred (`ORDER BY is_receive_preferred DESC`).
+                // recomputeRow re-resolves preferred and never assumes this is
+                // the only funded address (BTC multi-path / Solana dual-path).
                 try recomputeRow(
                     db: db,
                     walletId: walletId,
                     chain: chain,
-                    addressId: UUID(uuidString: row["id"]),
-                    address: row["address"],
-                    derivationPath: row["derivation_path"],
-                    isUsed: (row["is_used"] as Int) != 0,
+                    preferredHint: PreferredAddressHint(
+                        addressId: UUID(uuidString: row["id"]),
+                        address: row["address"],
+                        derivationPath: row["derivation_path"],
+                        isUsed: (row["is_used"] as Int) != 0
+                    ),
                     fiatCurrencyCode: fiatCurrencyCode,
                     syncState: state
                 )
@@ -87,38 +97,102 @@ final class ChainStateRepository {
         }
     }
 
+    /// Preferred path stamp for `chain_states.address` (not a full address set).
+    private struct PreferredAddressHint: Sendable {
+        let addressId: UUID?
+        let address: String
+        let derivationPath: String
+        let isUsed: Bool
+    }
+
     private func recomputeRow(
         db: Database,
         walletId: UUID,
         chain: SupportedChain,
-        addressId: UUID?,
-        address: String,
-        derivationPath: String,
-        isUsed: Bool,
+        preferredHint: PreferredAddressHint,
         fiatCurrencyCode: String,
         syncState: ChainSyncState
     ) throws {
         let chainRaw = chain.rawValue
         let targetCurrencyCode = fiatCurrencyCode.uppercased()
+
+        // Preferred path for the chain_states.address stamp (P1 #10).
+        let preferred = try Self.resolvePreferredAddress(
+            db: db,
+            walletId: walletId,
+            chainRaw: chainRaw,
+            hint: preferredHint
+        )
+        let address = preferred.address
+        let derivationPath = preferred.derivationPath
+        let addressId = preferred.addressId
+
+        // Solana dual-path: portfolio balances/history = preferred only.
+        // Bitcoin-family: aggregate every gap address; still stamp preferred.
+        let preferredOnly = chain == .solana
         let addressRows = try Row.fetchAll(
             db,
-            sql: "SELECT id FROM wallet_addresses WHERE wallet_id = ? AND chain_raw = ?",
-            arguments: [walletId.uuidString, chainRaw]
+            sql: preferredOnly
+                ? """
+                SELECT id FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ? AND is_receive_preferred = 1
+                """
+                : """
+                SELECT id FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ?
+                """,
+            arguments: preferredOnly
+                ? [walletId.uuidString, chainRaw]
+                : [walletId.uuidString, chainRaw]
         )
-        let addressIds = addressRows.compactMap { UUID(uuidString: $0["id"] as String) }
+        let resolvedAddressRows: [Row]
+        if preferredOnly, addressRows.isEmpty, let addressId {
+            resolvedAddressRows = try Row.fetchAll(
+                db,
+                sql: "SELECT id FROM wallet_addresses WHERE id = ?",
+                arguments: [addressId.uuidString]
+            )
+        } else {
+            resolvedAddressRows = addressRows
+        }
+        let addressIds = resolvedAddressRows.compactMap { UUID(uuidString: $0["id"] as String) }
         let idStrings = addressIds.map(\.uuidString)
 
-        let balanceRows = try Row.fetchAll(
-            db,
-            sql: """
+        // Any path used → chain is used (even when balances are preferred-only).
+        let anyPathUsed: Bool = try {
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*) FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ? AND is_used = 1
+                """,
+                arguments: [walletId.uuidString, chainRaw]
+            ) ?? 0
+            return count > 0 || preferred.isUsed
+        }()
+
+        let balanceSQL: String
+        let balanceArgs: StatementArguments
+        if preferredOnly, !idStrings.isEmpty {
+            let placeholders = Array(repeating: "?", count: idStrings.count).joined(separator: ",")
+            balanceSQL = """
+            SELECT b.token_symbol, b.token_contract, b.raw_balance, b.decimals,
+                   b.fiat_value_cached, b.fiat_currency_code
+            FROM token_balances b
+            WHERE b.address_id IN (\(placeholders))
+            """
+            balanceArgs = StatementArguments(idStrings)
+        } else {
+            balanceSQL = """
             SELECT b.token_symbol, b.token_contract, b.raw_balance, b.decimals,
                    b.fiat_value_cached, b.fiat_currency_code
             FROM token_balances b
             JOIN wallet_addresses a ON a.id = b.address_id
             WHERE a.wallet_id = ? AND a.chain_raw = ?
-            """,
-            arguments: [walletId.uuidString, chainRaw]
-        )
+            """
+            balanceArgs = [walletId.uuidString, chainRaw]
+        }
+        let balanceRows = try Row.fetchAll(db, sql: balanceSQL, arguments: balanceArgs)
 
         // BUG-009: rebuild must never stamp total_fiat = 0 solely because
         // balance rows still carry a different fiat_currency_code. Prefer
@@ -161,16 +235,30 @@ final class ChainStateRepository {
             }
         }
 
-        let txRows = try Row.fetchAll(
-            db,
-            sql: """
-            SELECT t.direction_raw, t.status_raw, t.kind_raw
-            FROM transactions t
-            JOIN wallet_addresses a ON a.id = t.address_id
-            WHERE a.wallet_id = ? AND a.chain_raw = ?
-            """,
-            arguments: [walletId.uuidString, chainRaw]
-        )
+        let txRows: [Row]
+        if preferredOnly, !idStrings.isEmpty {
+            let placeholders = Array(repeating: "?", count: idStrings.count).joined(separator: ",")
+            txRows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT t.direction_raw, t.status_raw, t.kind_raw
+                FROM transactions t
+                WHERE t.address_id IN (\(placeholders))
+                """,
+                arguments: StatementArguments(idStrings)
+            )
+        } else {
+            txRows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT t.direction_raw, t.status_raw, t.kind_raw
+                FROM transactions t
+                JOIN wallet_addresses a ON a.id = t.address_id
+                WHERE a.wallet_id = ? AND a.chain_raw = ?
+                """,
+                arguments: [walletId.uuidString, chainRaw]
+            )
+        }
         var sent = 0
         var received = 0
         var selfTransfers = 0
@@ -255,12 +343,56 @@ final class ChainStateRepository {
                 txRows.count,
                 utxoRows.count,
                 String(utxoTotal),
-                isUsed || !idStrings.isEmpty,
+                anyPathUsed || nativeAmount > 0 || !idStrings.isEmpty,
                 now,
                 syncState.rawValue
             ]
         )
-        _ = addressId
+    }
+
+    /// Preferred `wallet_addresses` row for stamping `chain_states.address`.
+    private static func resolvePreferredAddress(
+        db: Database,
+        walletId: UUID,
+        chainRaw: String,
+        hint: PreferredAddressHint
+    ) throws -> PreferredAddressHint {
+        if let row = try Row.fetchOne(
+            db,
+            sql: """
+            SELECT id, address, derivation_path, is_used
+            FROM wallet_addresses
+            WHERE wallet_id = ? AND chain_raw = ? AND is_receive_preferred = 1
+            LIMIT 1
+            """,
+            arguments: [walletId.uuidString, chainRaw]
+        ), let id = UUID(uuidString: row["id"]) {
+            return PreferredAddressHint(
+                addressId: id,
+                address: row["address"],
+                derivationPath: row["derivation_path"],
+                isUsed: (row["is_used"] as Int) != 0
+            )
+        }
+        if let row = try Row.fetchOne(
+            db,
+            sql: """
+            SELECT id, address, derivation_path, is_used
+            FROM wallet_addresses
+            WHERE wallet_id = ? AND chain_raw = ?
+            ORDER BY is_receive_preferred DESC, address ASC
+            LIMIT 1
+            """,
+            arguments: [walletId.uuidString, chainRaw]
+        ), let id = UUID(uuidString: row["id"]) {
+            return PreferredAddressHint(
+                addressId: id,
+                address: row["address"],
+                derivationPath: row["derivation_path"],
+                isUsed: (row["is_used"] as Int) != 0
+            )
+        }
+        return hint
     }
 
     @discardableResult

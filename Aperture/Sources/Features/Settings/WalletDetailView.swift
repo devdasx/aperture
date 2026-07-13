@@ -24,12 +24,10 @@ struct WalletDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var editedName: String = ""
-    /// Presents `WalletDeleteSheet`, the wallet-scoped sibling of
-    /// `ResetApertureSheet`. The sheet owns its own authorization gate
-    /// internally — passcode-only verify when a passcode is set, native
-    /// destructive confirmation otherwise (user direction 2026-06-13).
-    /// No typed wallet name, no separate passcode-cover state here.
-    @State private var isShowingDeleteConfirm: Bool = false
+    /// Full-screen remove-wallet flow. Uses a snapshot so the cover
+    /// stays up after GRDB deletes the row (avoids the “no longer in
+    /// the local store” flash under the process screen).
+    @State private var removePresentation: RemoveWalletPresentation?
     @State private var isShowingPhrase: Bool = false
     @State private var isShowingKey: Bool = false
     /// Presents `ChainKeysRevealSheet` — the per-chain private-key export.
@@ -60,6 +58,18 @@ struct WalletDetailView: View {
         let startingMethod: WalletBackupMethod
     }
 
+    /// Snapshot of the wallet at the moment remove was requested.
+    /// Kept while the process runs so the cover does not depend on a
+    /// live GRDB row that is deleted mid-flow.
+    private struct RemoveWalletPresentation: Identifiable {
+        var id: UUID { walletId }
+        let walletId: UUID
+        let walletName: String
+        let kind: WalletKind
+        let networkCount: Int
+        let hasStoredSecret: Bool
+    }
+
     // MARK: - Sensitive-reveal auth gate (2026-06-19)
     //
     // One unified resolution for "view recovery phrase / private key(s)":
@@ -74,6 +84,7 @@ struct WalletDetailView: View {
     private enum SensitiveReveal { case phrase, key, chainKeys, backup }
     @State private var pendingReveal: SensitiveReveal?
     @State private var isShowingPasscodeGate: Bool = false
+    @State private var passcodeAutoPromptBiometrics: Bool = true
     @State private var mnemonicAvailability: WalletSecretPersistence.Availability?
     @State private var privateKeyAvailability: WalletSecretPersistence.Availability?
 
@@ -121,11 +132,15 @@ struct WalletDetailView: View {
         Group {
             if let wallet {
                 content(wallet)
+            } else if removePresentation != nil {
+                // Under the remove cover — solid floor only. Never show
+                // `missing` while delete/wipe is in flight.
+                UniColors.Background.primary.ignoresSafeArea()
             } else {
                 missing
             }
         }
-        .navigationTitle(Text(wallet?.name ?? String.apertureLocalized("Wallet")))
+        .navigationTitle(Text(wallet?.name ?? removePresentation?.walletName ?? String.apertureLocalized("Wallet")))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if editedName.isEmpty, let wallet { editedName = wallet.name }
@@ -144,6 +159,27 @@ struct WalletDetailView: View {
         .sheet(item: $walletErrorReport) { report in
             ApertureErrorReportSheet(report: report)
                 .apertureEnvironment()
+        }
+        // Cover is on the outer body so it survives the wallet row vanishing.
+        .fullScreenCover(item: $removePresentation) { presentation in
+            WalletRemoveFlow(
+                walletId: presentation.walletId,
+                walletName: presentation.walletName,
+                kind: presentation.kind,
+                networkCount: presentation.networkCount,
+                hasStoredSecret: presentation.hasStoredSecret,
+                onFinished: { _ in
+                    removePresentation = nil
+                    // Remaining wallets → pop detail. Last wallet → factory
+                    // wipe already ran; RootGate swaps to onboarding.
+                    dismiss()
+                },
+                onCancel: {
+                    removePresentation = nil
+                }
+            )
+            .apertureEnvironment()
+            .presentationBackground(UniColors.Background.primary)
         }
     }
 
@@ -325,38 +361,13 @@ struct WalletDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .task(id: walletId) {
             await refreshSecretAvailability()
             // Resolve the iCloud-backup status for phrase wallets (the only
             // kind with a recovery phrase to back up).
             guard wallet.kind == .created || wallet.kind == .importedMnemonic else { return }
             await refreshICloudBackupStatus()
-        }
-        .sheet(isPresented: $isShowingDeleteConfirm) {
-            // Wallet-scoped sibling of `ResetApertureSheet` (user
-            // direction 2026-06-13: "it should match resetting the
-            // whole app flow but for wallet"). No typed wallet name —
-            // the sheet owns its own passcode-only verify gate (passcode
-            // set) or native destructive `confirmationDialog` (no
-            // passcode) internally, exactly like the reset flow. On
-            // authorization it calls back into `deleteWallet` here, which
-            // delegates to the canonical repository helper.
-            WalletDeleteSheet(
-                walletName: wallet.name,
-                kind: wallet.kind,
-                networkCount: Set(wallet.addresses.map(\.chainRaw)).count,
-                hasStoredSecret: walletHasStoredSecret(wallet),
-                onAuthorized: {
-                    isShowingDeleteConfirm = false
-                    Task { await deleteWallet(wallet) }
-                }
-            )
-            .apertureEnvironment()
-            .uniSheetDetents([.large])
-            .presentationBackground(UniColors.Background.primary)
         }
         // Full-screen export flows (2026-06-19 handoff) — replaced the
         // bottom-sheet reveals. Auth already ran via `requestReveal`
@@ -428,34 +439,23 @@ struct WalletDetailView: View {
             .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
-        // App passcode set → the unified passcode verify screen. It
-        // auto-prompts Face ID when the in-app Face ID toggle is on
-        // (`allowsBiometrics: true`), so a passcode-only user is NOT shown
-        // a raw Face ID prompt — they see the keypad and may use Face ID
-        // only if they enabled it (2026-06-19 user direction).
+        // Passcode fallback after `SensitiveActionAuth` biometric preflight.
         .sheet(isPresented: $isShowingPasscodeGate) {
-            NavigationStack {
-                PinCodeView(
-                    mode: .verify,
-                    onComplete: { _ in
-                        isShowingPasscodeGate = false
-                        let target = pendingReveal
-                        // Defer one runloop so the cover finishes
-                        // dismissing before the reveal sheet presents.
-                        DispatchQueue.main.async {
-                            if let target { performReveal(target) }
-                        }
-                    },
-                    onCancel: { isShowingPasscodeGate = false },
-                    allowsBiometrics: true,
-                    showsNavigationControls: false,
-                    accessContext: .viewWalletSecrets
-                )
-            }
-            .apertureEnvironment()
-            .uniSheetDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
+            SensitiveAuthPasscodeSheet(
+                accessContext: .viewWalletSecrets,
+                autoPromptBiometrics: passcodeAutoPromptBiometrics,
+                allowsBiometrics: true,
+                onComplete: {
+                    isShowingPasscodeGate = false
+                    let target = pendingReveal
+                    // Defer one runloop so the cover finishes
+                    // dismissing before the reveal sheet presents.
+                    DispatchQueue.main.async {
+                        if let target { performReveal(target) }
+                    }
+                },
+                onCancel: { isShowingPasscodeGate = false }
+            )
         }
         .sheet(isPresented: $isShowingIconPicker) {
             WalletIconPickerSheet(walletId: wallet.id)
@@ -468,24 +468,33 @@ struct WalletDetailView: View {
     // MARK: - Rows
 
     private func renameRow(_ wallet: WalletRecord) -> some View {
-        HStack {
+        // Same outer width as Customize / Details / Backup sections —
+        // zero horizontal list insets so the field lines up with the
+        // inset-grouped section cards (extra leading/trailing here made
+        // the Name pill narrower than sibling sections).
+        VStack(alignment: .trailing, spacing: UniSpacing.s) {
             UniTextField(
-                placeholder: LocalizedStringKey(String.apertureLocalized("Wallet")),
+                placeholder: "Wallet",
                 text: $editedName,
-                fill: Color.clear,
-                verticalPadding: UniSpacing.xs,
-                showsChrome: false,
                 autocapitalization: .words,
                 disablesAutocorrection: false,
                 onSubmitAction: { commitRename(wallet) }
             )
-            if editedName != wallet.name && !editedName.trimmingCharacters(in: .whitespaces).isEmpty {
+            if editedName != wallet.name
+                && !editedName.trimmingCharacters(in: .whitespaces).isEmpty {
                 Button("Save") { commitRename(wallet) }
                     .font(UniTypography.subheadlineEmphasized)
                     .foregroundStyle(UniColors.Tint.accent)
             }
         }
-        .listRowBackground(UniColors.List.rowBackground)
+        .listRowInsets(EdgeInsets(
+            top: UniSpacing.xs,
+            leading: 0,
+            bottom: UniSpacing.xs,
+            trailing: 0
+        ))
+        // Field owns its own Input.background pill; avoid a double card.
+        .listRowBackground(Color.clear)
     }
 
     private func kindRow(_ wallet: WalletRecord) -> some View {
@@ -494,8 +503,7 @@ struct WalletDetailView: View {
             Spacer()
             Text(kindLabel(wallet.kind)).font(UniTypography.subheadline).foregroundStyle(UniColors.Text.secondary)
         }
-        .padding(.vertical, UniSpacing.xxs)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     /// Customize row — the wallet's avatar on the leading edge,
@@ -512,15 +520,14 @@ struct WalletDetailView: View {
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: UniDirectionalSymbol.disclosure)
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(UniColors.Icon.tertiary)
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     // `backupStatusRow` removed 2026-06-07. Its meaning is now carried
@@ -535,23 +542,22 @@ struct WalletDetailView: View {
                 Image(systemName: "text.book.closed")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(hasMnemonic ? UniColors.Icon.accent : UniColors.Icon.disabled)
-                    .frame(width: 28)
+                    .frame(width: UniListMetrics.iconSlot, height: UniListMetrics.iconSlot)
                 Text("View recovery phrase")
                     .font(UniTypography.body)
                     .foregroundStyle(hasMnemonic ? UniColors.Text.primary : UniColors.Text.disabled)
                 Spacer()
                 if hasMnemonic {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
+                    Image(systemName: UniDirectionalSymbol.disclosure)
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(UniColors.Icon.tertiary)
                 }
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
         .disabled(!hasMnemonic)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     /// "View private key" — the imported-key counterpart of
@@ -569,23 +575,22 @@ struct WalletDetailView: View {
                 Image(systemName: "key.horizontal")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(hasKey ? UniColors.Icon.accent : UniColors.Icon.disabled)
-                    .frame(width: 28)
+                    .frame(width: UniListMetrics.iconSlot, height: UniListMetrics.iconSlot)
                 Text("View private key")
                     .font(UniTypography.body)
                     .foregroundStyle(hasKey ? UniColors.Text.primary : UniColors.Text.disabled)
                 Spacer()
                 if hasKey {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
+                    Image(systemName: UniDirectionalSymbol.disclosure)
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(UniColors.Icon.tertiary)
                 }
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
         .disabled(!hasKey)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     /// "View private keys" — the per-chain export row. Enabled iff a usable
@@ -603,23 +608,22 @@ struct WalletDetailView: View {
                 Image(systemName: "key.horizontal")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(hasSecret ? UniColors.Icon.accent : UniColors.Icon.disabled)
-                    .frame(width: 28)
+                    .frame(width: UniListMetrics.iconSlot, height: UniListMetrics.iconSlot)
                 Text("View private keys")
                     .font(UniTypography.body)
                     .foregroundStyle(hasSecret ? UniColors.Text.primary : UniColors.Text.disabled)
                 Spacer()
                 if hasSecret {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
+                    Image(systemName: UniDirectionalSymbol.disclosure)
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(UniColors.Icon.tertiary)
                 }
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
         .disabled(!hasSecret)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     /// The distinct chains this wallet holds, each paired with its address,
@@ -639,23 +643,28 @@ struct WalletDetailView: View {
 
     private func deleteRow(_ wallet: WalletRecord) -> some View {
         Button {
-            isShowingDeleteConfirm = true
+            removePresentation = RemoveWalletPresentation(
+                walletId: wallet.id,
+                walletName: wallet.name,
+                kind: wallet.kind,
+                networkCount: Set(wallet.addresses.map(\.chainRaw)).count,
+                hasStoredSecret: walletHasStoredSecret(wallet)
+            )
         } label: {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "trash")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(UniColors.Feedback.Error.foreground)
-                    .frame(width: 28)
+                    .frame(width: UniListMetrics.iconSlot, height: UniListMetrics.iconSlot)
                 Text("Delete wallet")
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Feedback.Error.foreground)
                 Spacer()
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     private var missing: some View {
@@ -751,43 +760,10 @@ struct WalletDetailView: View {
         }
     }
 
-    @MainActor
-    private func deleteWallet(_ wallet: WalletRecord) async {
-        let id = wallet.id
-        // `deleteWallet(id:)` delegates to the canonical
-        // `deleteWalletAndActivateNext(walletId:)`, which owns the whole
-        // contract atomically (2026-06-13): it deletes the wallet-private
-        // GRDB rows and — when the deleted wallet
-        // is the active one — moves `activeWalletId` to a deterministic
-        // successor BEFORE the save commits. So no manual secret wipes here
-        // (the repo does it), and no `activeWalletIdRaw = ""` clobber (the repo
-        // names a real successor; the old clear was the source of the
-        // "$50 wallet selected, $700 wallet's data" report).
-        let repo = WalletRepository(database: AppDatabase.shared)
-        do {
-            try await repo.deleteWallet(id: id)
-        } catch {
-            let message = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
-            walletErrorReport = ApertureErrorReport(
-                context: "Remove wallet",
-                title: "Couldn't remove wallet",
-                message: message,
-                error: error,
-                recoverySuggestion: "Try again. If the wallet remains, email support with the advanced details.",
-                metadata: ["walletId": id.uuidString]
-            )
-            return
-        }
-        // The deleted wallet's detail screen can't stay on screen —
-        // dismiss back to the wallet list.
-        dismiss()
-    }
-
     /// `true` iff this wallet's secret material (recovery phrase or
     /// private key) actually lives in GRDB on this iPhone.
     /// Watch-only wallets and imports persisted before the always-store
-    /// policy hold none — drives `WalletDeleteSheet`'s reversible-vs-final
-    /// consequence line and the inventory's encrypted-secret row.
+    /// policy hold none — drives remove-flow reversible-vs-final copy.
     private func walletHasStoredSecret(_ wallet: WalletRecord) -> Bool {
         switch wallet.kind {
         case .importedKey:
@@ -806,16 +782,19 @@ struct WalletDetailView: View {
     private func requestReveal(_ target: SensitiveReveal) {
         pendingReveal = target
         if PinCodeStorage.hasPin {
-            // App passcode set → the ONE unified passcode screen, which
-            // auto-prompts Face ID when the in-app toggle is on. Every auth
-            // gate routes through this screen — never a raw OS Face ID prompt
-            // (2026-06-21 user direction).
-            isShowingPasscodeGate = true
+            // Biometric-first (no sheet), then passcode sheet only if needed.
+            Task { @MainActor in
+                let gate = await SensitiveActionAuth.gatePreferringBiometric()
+                switch gate {
+                case .authorized:
+                    performReveal(target)
+                case .presentPasscode(let autoPrompt):
+                    passcodeAutoPromptBiometrics = autoPrompt
+                    isShowingPasscodeGate = true
+                }
+            }
         } else {
-            // No app passcode → nothing in-app to verify against. The wallet
-            // is protected by the iPhone's own lock screen; reveal directly
-            // rather than popping a raw OS Face ID prompt. (The old "No lock is
-            // set" warning was removed app-wide, 2026-06-20.)
+            // No app passcode → device lock is the gate; reveal directly.
             performReveal(target)
         }
     }
@@ -847,7 +826,7 @@ struct WalletDetailView: View {
                 Image(systemName: icon)
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(UniColors.Icon.accent)
-                    .frame(width: 28)
+                    .frame(width: UniListMetrics.iconSlot, height: UniListMetrics.iconSlot)
                 Text(title)
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
@@ -877,7 +856,6 @@ struct WalletDetailView: View {
                     chevron
                 }
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
@@ -885,14 +863,13 @@ struct WalletDetailView: View {
         // permanently disabled, so a backed-up wallet can still be backed up
         // again (e.g. add the other method, or re-upload to iCloud).
         .disabled(status == .checking)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     /// Trailing disclosure chevron shared by the backup rows.
+    /// Uses `chevron.forward` so it mirrors correctly in RTL.
     private var chevron: some View {
-        Image(systemName: "chevron.right")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(UniColors.Icon.tertiary)
+        UniDisclosureChevron()
     }
 
     /// Auth-gate → decrypt → present the selected backup path. The row already

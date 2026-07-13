@@ -55,7 +55,7 @@ struct TokenHoldingRow: View {
                 Text(verbatim: balance.tokenSymbol)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
-                Text("on \(chain.displayName)")
+                Text(verbatim: String(format: String.apertureLocalized("on %@"), chain.displayName))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
             }
@@ -63,34 +63,31 @@ struct TokenHoldingRow: View {
             Spacer(minLength: UniSpacing.s)
 
             VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                Text(WalletFormatting.native(
-                    WalletFormatting.decimalAmount(
-                        rawBalance: balance.rawBalance,
-                        decimals: balance.decimals
+                PrivacySensitiveAmount(
+                    text: WalletFormatting.native(
+                        WalletFormatting.decimalAmount(
+                            rawBalance: balance.rawBalance,
+                            decimals: balance.decimals
+                        ),
+                        decimals: min(balance.decimals, 8)
                     ),
-                    decimals: min(balance.decimals, 8),
-                    hidden: hideBalances
-                ))
-                .font(UniTypography.monoBody)
-                .foregroundStyle(UniColors.Text.primary)
-                fiatLabel
+                    font: UniTypography.monoBody,
+                    color: UniColors.Text.primary,
+                    isHidden: hideBalances
+                )
+                PrivacySensitiveAmount(
+                    text: WalletFormatting.fiat(
+                        balance.fiatValueCached,
+                        currencyCode: balance.fiatCurrencyCode
+                    ),
+                    font: UniTypography.footnote,
+                    color: UniColors.Text.tertiary,
+                    isHidden: hideBalances
+                )
             }
         }
         .padding(.vertical, UniSpacing.xs)
         .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
-    }
-
-    private var fiatLabel: some View {
-        // Always render the fiat value — a zero renders "US$0.00", never
-        // "Price unavailable" (user direction 2026-06-18).
-        Text(WalletFormatting.fiat(
-            balance.fiatValueCached,
-            currencyCode: balance.fiatCurrencyCode,
-            hidden: hideBalances
-        ))
-        .font(UniTypography.footnote)
-        .foregroundStyle(UniColors.Text.tertiary)
-        .monospacedDigit()
     }
 }

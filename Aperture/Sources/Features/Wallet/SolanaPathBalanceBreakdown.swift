@@ -105,4 +105,23 @@ enum SolanaPathBalanceBreakdown {
             .first { $0.chainRaw == SupportedChain.solana.rawValue && $0.address == trimmed }
             .flatMap { SolanaPathStyle.parse($0.derivationPath)?.style }
     }
+
+    /// Address ids that should appear on home / portfolio / activity:
+    /// every non-Solana address, plus only the **preferred** Solana path
+    /// (Phantom by default; Trust when the user selects it in Receive).
+    static func displayAddressIds(walletAddresses: [WalletAddressRecord]) -> Set<UUID> {
+        var ids = Set<UUID>()
+        let solanaRows = walletAddresses.filter { $0.chainRaw == SupportedChain.solana.rawValue }
+        let preferredSolana = solanaRows.first(where: \.isReceivePreferred) ?? solanaRows.first
+        for address in walletAddresses {
+            if address.chainRaw == SupportedChain.solana.rawValue {
+                if let preferredSolana, address.id == preferredSolana.id {
+                    ids.insert(address.id)
+                }
+            } else {
+                ids.insert(address.id)
+            }
+        }
+        return ids
+    }
 }

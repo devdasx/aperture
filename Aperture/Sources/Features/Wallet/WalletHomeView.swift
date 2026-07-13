@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import GRDB
 
 // MARK: - RootGate
@@ -65,15 +66,14 @@ struct RootGate: View {
 /// wallet's identity always visible and the boundary statement
 /// always present.
 ///
-/// **Layers (Rule #2 §B.3):** content layer is opaque (hero number,
-/// rows, banners); functional layer is the Liquid Glass toolbar
-/// chrome + the `WalletActionRegion` glass triplet + the wallet
-/// switcher pill. Two glass layers max.
+/// **Layers (Rule #2 §B.3):** lab-promoted solid identity hero (paged
+/// balance + Receive/Send/Scan/Hide) scrolls as one unit with an opaque
+/// primary body (holdings / activity). No legacy GroupBox balance card.
 ///
 /// **Empty / partial states (Rule #2 §A.2 — designed not deferred):**
 /// - No balances yet (fresh wallet, scanner hasn't filled) → calm
 ///   "Add funds to see balance" surface in the holdings section.
-/// - No transactions → calm "No transactions yet." footer.
+/// - No transactions → unified `UniEmptyState` (same family as empty holdings).
 /// - Price unavailable per row → `Text.tertiary` "Price unavailable"
 ///   (never fake `$—`).
 /// - Backup required → top banner (`BackupRequiredBanner`).
@@ -138,6 +138,9 @@ struct WalletHomeView: View {
     /// byte-for-byte unchanged.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.balancePrivacyEnabled) private var hideBalances
+    @Environment(\.colorScheme) private var colorScheme
+    /// Cloud / Midnight / Dark (system resolves light→Cloud, dark→Midnight).
+    @Environment(\.apertureAppearance) private var apertureAppearance
 
     /// One-shot-per-session guard for the iCloud backup-index reconcile
     /// (2026-06-20). Heals the query-free restore index for any wallet backed
@@ -209,6 +212,32 @@ struct WalletHomeView: View {
     }
 
     @State private var isShowingSwitcher: Bool = false
+    /// Hero page — kept in sync with the active wallet; swiping writes
+    /// `ActiveWalletPointer` so holdings/activity follow the page.
+    @State private var selectedPageWalletId: UUID?
+    /// Fractional hero page index for app-bar colour blend (settled only).
+    @State private var pageSwipeProgress: CGFloat = 0
+    /// True while we are applying a pager-driven active-wallet write so the
+    /// `activeWalletIdRaw` handler does not fight the pager selection.
+    @State private var isApplyingPagerActiveWallet: Bool = false
+    /// Vertical scroll offset (negative while pulling) — drives app-bar fade.
+    @State private var homeScrollOffsetY: CGFloat = 0
+    /// Resisted in-hero pull (capped) — what the balance card actually stretches.
+    @State private var heroPullDisplay: CGFloat = 0
+    /// Refresh armed once the in-card chrome is fully revealed.
+    @State private var pullRefreshArmed: Bool = false
+    /// True while the hero is spring-settling after finger-up (ignore raw pull).
+    @State private var isPullSettling: Bool = false
+    /// Lottie phase for `mark-refresh-kit` (pull scrub → loop → success).
+    @State private var markRefreshPhase: WalletHomeMarkRefreshPhase = .idle
+    /// Home vertical scroll phase — used so **rubber-band decay after
+    /// finger-up is not treated as an active pull** (that was shrinking the
+    /// mark strip to 0, then re-opening it for loading = hide → show).
+    @State private var homeScrollPhase: ScrollPhase = .idle
+    /// Measured balance-card height (rest, excluding temporary pull stretch).
+    @State private var balanceCardHeight: CGFloat = 0
+    /// True while programmatic mid-hero snap is in flight.
+    @State private var isHeroSnapInFlight: Bool = false
     @State private var isShowingCreate: Bool = false
     @State private var isShowingImport: Bool = false
     /// Receive v2 (2026-06-06) — the Receive surface is a sheet, not
@@ -267,21 +296,16 @@ struct WalletHomeView: View {
         isRefreshing
     }
 
-    /// Initial create/import scan gate. A new wallet should render loading
-    /// placeholders only during the bounded first-refresh presentation window;
-    /// after that completes, the normal fresh-wallet empty state or balance
-    /// card owns the truth. This is deliberately not tied to `lastScannedAt`:
-    /// a slow or failed chain scan must not leave the skeleton stuck on screen.
+    /// First-refresh skeleton UI was removed (no shimmer / placeholder
+    /// animations on home). Markers still clear via
+    /// `updateFirstRefreshSkeletonFromPresentationMarker` so create/import
+    /// handoff state does not linger.
     private var isShowingFirstRefreshSkeleton: Bool {
-        guard let wallet = activeWallet else { return false }
-        return firstRefreshSkeletonWalletId == wallet.id
+        false
     }
 
-    /// Created (fresh empty) wallets use the empty-state skeleton; imports
-    /// use the balance-card skeleton because they may already have funds.
     private var firstRefreshSkeletonUsesEmptyState: Bool {
-        guard let wallet = activeWallet else { return false }
-        return WalletFirstRefreshPresentationCenter.kind(for: wallet.id) == .created
+        false
     }
 
     private var firstRefreshPresentationFingerprint: String {
@@ -436,13 +460,21 @@ struct WalletHomeView: View {
     /// store level). O(total tx) — moved out of the render path by the
     /// memo above; this runs only on a rebuild trigger.
     private func computeAllTransactions() -> [TransactionRecord] {
-        guard let wallet = activeWallet else { return [] }
-        let ids = Set(wallet.addresses.map { $0.id })
+        guard let wallet = contentWallet else { return [] }
+        // Solana: only the active (preferred) path — default Phantom; Trust
+        // when the user selects it in Receive. Other chains: every address.
+        let ids = displayAddressIds(for: wallet)
         guard !ids.isEmpty else { return [] }
         return allTransactionRecords.filter { tx in
             guard let aid = tx.addressId else { return false }
             return ids.contains(aid)
         }
+    }
+
+    /// Address ids whose balances/activity appear on home: all chains except
+    /// Solana non-preferred dual-path rows.
+    private func displayAddressIds(for wallet: WalletRecord) -> Set<UUID> {
+        SolanaPathBalanceBreakdown.displayAddressIds(walletAddresses: wallet.addresses)
     }
 
     /// The five newest transactions for the home's Recent activity
@@ -536,7 +568,20 @@ struct WalletHomeView: View {
             listSurface
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar(horizontalSizeClass == .compact ? .hidden : .visible, for: .navigationBar)
+                // Scroll-driven chrome: identity at rest → page floor when scrolled.
+                // No tree-wide `.animation(.snappy)` here — springs on this surface
+                // made the hero/holdings overshoot on PTR release and bar fade.
+                .toolbar { labStyleAppBarToolbar }
+                // Live identity mid-swipe via `WalletHomeSwipeChrome` (leaf observer).
+                // Do not drive bar fill from parent `pageSwipeProgress` — that
+                // re-rendered the pager and snapped back to the previous wallet.
+                .modifier(WalletHomeLiveToolbarChrome(
+                    // iPad: no wallet-identity colour in the bar — always page floor.
+                    verticalBlend: horizontalSizeClass == .regular
+                        ? 1
+                        : appBarBlendProgress,
+                    pageFloor: pageFloorAppBarColor
+                ))
                 .navigationDestination(for: WalletHomeDestination.self) { destination in
                     switch destination {
                     case .transaction(let id):                  TransactionDetailView(transactionId: id)
@@ -555,19 +600,7 @@ struct WalletHomeView: View {
                     case .allActivity:                          WalletActivityView()
                     }
                 }
-                // Canonical Aperture refresh (2026-06-09). Replaces
-                // the iOS native pull-to-refresh spinner with the
-                // iris-spin → green-check Lottie indicator. The
-                // gesture, scroll-bounce, and cancellation contract
-                // Native iOS pull-to-refresh — system spinner +
-                // gesture + release-haptic + cancellation. The
-                // 2026-06-09 Lottie indicator was reverted per
-                // user direction.
-                // User-initiated refresh joins the coordinator's in-flight
-                // wallet refresh instead of starting a second pipeline. That
-                // keeps native pull-to-refresh responsive without producing
-                // cancellation storms in the RPC layer.
-                .refreshable { await runRefresh(userInitiated: true) }
+                // PTR is lab-style custom (in-hero), not List `.refreshable`.
                 .task(id: observationScopeKey) {
                     syncObservationScopes()
                 }
@@ -625,13 +658,41 @@ struct WalletHomeView: View {
                 }
                 .onChange(of: activeWalletIdRaw) { _, newValue in
                     cancelFirstRefreshSkeleton(unless: UUID(uuidString: newValue))
-                    syncObservationScopes()
-                    displayRebuildTask?.cancel()
-                    chainReconcileTask?.cancel()
-                    clearWalletScopedSnapshots()
-                    rebuildFilterInputs()
-                    rebuildDisplayRows()
-                    scheduleChainStateReconcile(after: 0)
+                    let newId = UUID(uuidString: newValue)
+                    // Always clear the pager-write flag. Never use it to *skip*
+                    // a page resync — that left hero on wallet A and holdings
+                    // on wallet B (Imported Wallet 2 balances under Wallet 3).
+                    isApplyingPagerActiveWallet = false
+                    // External (create / import / switcher) or recovered desync:
+                    // hero page must match the stored active id.
+                    if selectedPageWalletId != newId {
+                        syncPageSelectionFromActiveWallet(animated: false)
+                    }
+                    applyHomeContentWalletScope(newId)
+                }
+                .onChange(of: selectedPageWalletId) { _, newId in
+                    guard let newId else { return }
+                    activateWalletFromPager(newId)
+                }
+                .onChange(of: sortedWallets.map(\.id)) { _, newIds in
+                    // Prefer the active wallet when it just joined the list
+                    // (create/import). Previously we only re-seeded when the
+                    // *current page* vanished, so a new active wallet left the
+                    // hero stuck on the previous card.
+                    if let activeId = UUID(uuidString: activeWalletIdRaw),
+                       newIds.contains(activeId) {
+                        if selectedPageWalletId != activeId {
+                            syncPageSelectionFromActiveWallet(animated: false)
+                        }
+                        return
+                    }
+                    if let selected = selectedPageWalletId, newIds.contains(selected) {
+                        return
+                    }
+                    syncPageSelectionFromActiveWallet(animated: false)
+                }
+                .onAppear {
+                    syncPageSelectionFromActiveWallet()
                 }
                 .onChange(of: firstRefreshPresentationFingerprint) { _, _ in
                     updateFirstRefreshSkeletonFromPresentationMarker()
@@ -831,6 +892,9 @@ struct WalletHomeView: View {
 
     private var observationScopeKey: String {
         [
+            // Scope must track the *settled hero page*, not only the GRDB
+            // active pointer — otherwise holdings lag or desync from the pill.
+            contentWalletId?.uuidString ?? "",
             activeWalletIdRaw,
             walletRecordsObservation.revision,
             currencyCode
@@ -838,10 +902,26 @@ struct WalletHomeView: View {
     }
 
     private func syncObservationScopes() {
-        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        let scopedWalletId = contentWalletId
+            ?? activeWallet?.id
+            ?? UUID(uuidString: activeWalletIdRaw)
         activeBalancesObservation.setWalletId(scopedWalletId)
         activeTransactionsObservation.setWalletId(scopedWalletId)
         cachedPricesObservation.setCurrencyCode(currencyCode)
+    }
+
+    /// Rebind balance/tx observations + rebuild holdings for one wallet id
+    /// immediately (pager settle must not wait for `activeWalletId` prop).
+    private func applyHomeContentWalletScope(_ walletId: UUID?) {
+        activeBalancesObservation.setWalletId(walletId)
+        activeTransactionsObservation.setWalletId(walletId)
+        cachedPricesObservation.setCurrencyCode(currencyCode)
+        displayRebuildTask?.cancel()
+        chainReconcileTask?.cancel()
+        clearWalletScopedSnapshots()
+        rebuildFilterInputs()
+        rebuildDisplayRows()
+        scheduleChainStateReconcile(after: 0)
     }
 
     // MARK: - Layout
@@ -895,203 +975,501 @@ struct WalletHomeView: View {
     /// distinction and produced visually deep chain → tokens
     /// nesting that the flat split now resolves.
     ///
-    /// **Pull-to-refresh + auto-refresh** continue to attach to this
-    /// surface (`List` consumes `.refreshable` and `.task` the same
-    /// way `ScrollView` did). The bottom test-mode banner continues
-    /// to ride the body-level bottom overlay. The
-    /// 2026-06-09 Lottie indicator was reverted per user direction;
-    /// the system pull-to-refresh spinner is back.
+    /// **Refresh model (no system PTR):** never attach `.refreshable` /
+    /// `UIRefreshControl` here. Apple’s list/scroll chrome paints a white
+    /// gap and fights the identity hero. Pull is measured via
+    /// `onScrollGeometryChange`; the spinner lives **inside** the balance
+    /// card (`WalletHomeHeroPager`). Auto-refresh still runs from `.task`.
     ///
-    /// **List background.** `.scrollContentBackground(.hidden)` strips
-    /// the system's default grouped-list page tone and lets the
-    /// `UniColors.Background.primary` page color (the canonical
-    /// `systemGroupedBackground`) show through — matching the rest of
-    /// the app's pages.
+    /// **Lab-identical layout:** ScrollView + identity hero + opaque
+    /// primary body cards. Real coins/tokens/activity.
+    /// iPad / regular width: no full-bleed wallet identity colour wash.
+    private var usesIdentityColorChrome: Bool {
+        horizontalSizeClass != .regular
+    }
+
     private var listSurface: some View {
-        List {
-            balanceCardSection
-            // 2026-06-14 — sync is background-only: it has no on-screen
-            // surface at all (no under-card footnote, no app-bar mark).
-            // The user removed every sync indicator from the UI; the
-            // background writer keeps `SyncStatusRecord` fresh silently.
-            chromeSection
-            holdingsBody
-                .listRowBackground(UniColors.List.rowBackground)
-            activityListSection
-                .listRowBackground(UniColors.List.rowBackground)
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        // **Regular-width content cap (2026-06-16).** This single cap
-        // is what kills the "blown-up iPhone" feel on iPad landscape /
-        // wide Mac: the inset-grouped list — hero balance, action
-        // triplet, holdings, activity — is capped to a centered 640pt
-        // column instead of stretching to a ~1300pt-wide page. At
-        // `.compact` (iPhone, iPad portrait) the frame falls through to
-        // full width via `.infinity`, so the layout is byte-for-byte
-        // unchanged. The `maxWidth: .infinity` wrapper centers the
-        // capped column within the wider detail pane; the page-color
-        // background fills the full width behind it so the column reads
-        // as a centered card on the page, not a left-pinned strip.
-        .frame(maxWidth: horizontalSizeClass == .regular ? 640 : .infinity)
-        .frame(maxWidth: .infinity)
-        .background(UniColors.Background.primary.ignoresSafeArea())
-        // **Rule #14 search** — `.searchable(text:prompt:)` with NO
-        // `placement:` argument. iOS 26 owns the placement: a
-        // 2026-06-09 — search bar REMOVED from the main wallet
-        // home per user direction. The `.searchable` modifier on
-        // `listSurface` is gone; `filterSearchText` stays as
-        // `@State` (always empty) so the filter pipeline's
-        // step-1 search predicate naturally no-ops, and the
-        // `searchPreview` parameter on the filter sheet still
-        // accepts the empty string and renders the standard
-        // "Showing N of M" preview rather than the search-aware
-        // "Found N for query" shape. Hidden Assets sub-screen
-        // keeps ITS own `.searchable` — that surface has a long
-        // roster and the search is genuinely useful there.
-    }
-
-    /// Holdings region — branches by the network-error state, then by
-    /// filter view mode, then by the segmented tab (in split mode only).
-    ///
-    /// Branches on `filterViewModeRaw`:
-    /// - `.split` — the original shape: a segmented Coins/Tokens
-    ///   switcher as the first holdings row, only the selected
-    ///   section renders below.
-    /// - `.combined` — one unified section with every coin AND every
-    ///   token mixed, sorted by the user's chosen key + direction.
-    ///   The segmented switcher remains visible but disabled, making
-    ///   clear that Combined owns the asset-type presentation.
-    @ViewBuilder
-    private var holdingsBody: some View {
-        if isShowingFirstRefreshSkeleton {
-            firstRefreshHoldingsSkeletonSection
-        } else if showsNetworkErrorState {
-            // Fresh wallet + total scan failure — nothing persisted,
-            // so the all-supported $0.00 list would be a lie. Show
-            // the honest error state with a Retry CTA instead
-            // (2026-06-12).
-            networkErrorSection
-        } else {
-            switch filterViewMode {
-            case .split:
-                splitHoldingsSection
-            case .combined:
-                combinedSection
+        ZStack(alignment: .top) {
+            // Identity sheet under the pull gap — iPhone only. iPad keeps a
+            // neutral page background (no coloured wash behind the split pane).
+            if usesIdentityColorChrome, showsHeroPullBackdrop {
+                WalletHomeLiveIdentityFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 220 + heroPullDisplay)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
             }
-        }
-    }
 
-    /// Unified balance summary. Charts were removed from the wallet home, so
-    /// this leaf renders only the current database-backed total, wallet switcher,
-    /// and hide-balance control inside a native SwiftUI group container.
-    @ViewBuilder
-    private var balanceCardSection: some View {
-        Section {
-            Group {
-                if isShowingFirstRefreshSkeleton {
-                    // Created wallets are empty by definition → empty-state skeleton.
-                    // Imported wallets may hold funds → balance-card skeleton.
-                    if firstRefreshSkeletonUsesEmptyState {
-                        FreshWalletEmptyStateSkeleton(
-                            walletName: activeWallet?.name ?? String.apertureLocalized("Wallet")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Mark strip is inside the hero so it rubber-bands
+                        // with the card — never a screen-fixed overlay that
+                        // jumps on finger-up.
+                        WalletHomeHeroPager(
+                            wallets: sortedWallets,
+                            selectedWalletId: $selectedPageWalletId,
+                            currencyCode: currencyCode,
+                            canSend: displayedWallet?.kind != .watchOnly,
+                            onReceive: { isShowingReceive = true },
+                            onSend: { isShowingSend = true },
+                            onScan: { isShowingScanner = true },
+                            pullDistance: heroPullDisplay,
+                            markRefreshPhase: markRefreshPhase,
+                            onMarkRefreshSuccessFinished: {
+                                // Success check finished — strong double-beat.
+                                UniHapticEngine.shared.play(
+                                    .contextualImpact(.consequential)
+                                )
+                                withAnimation(WalletHomePullMetrics.settleSpring) {
+                                    heroPullDisplay = 0
+                                    markRefreshPhase = .idle
+                                    isRefreshing = false
+                                    isPullSettling = false
+                                }
+                            },
+                            onSwipeProgressChange: { progress in
+                                // Idle / seed only (hero never streams mid-drag).
+                                if abs(progress - pageSwipeProgress) >= 0.01 {
+                                    pageSwipeProgress = progress
+                                }
+                            }
                         )
-                    } else {
-                        FirstRefreshBalanceCardSkeleton(
-                            walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                            currencyCode: currencyCode
-                        )
+                        .background {
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: WalletHomeBalanceCardHeightKey.self,
+                                    // Rest height excludes temporary pull strip.
+                                    value: max(0, geo.size.height - heroPullDisplay)
+                                )
+                            }
+                        }
+                        .id(WalletHomeScrollAnchor.balanceCard)
+
+                        VStack(spacing: UniSpacing.m) {
+                            if requiresBiometricReenrollment {
+                                BiometricReenrollmentBanner()
+                            }
+                            productionHoldingsCard
+                            productionActivityCard
+                        }
+                        .padding(.horizontal, UniSpacing.m)
+                        .padding(.top, UniSpacing.m)
+                        .padding(.bottom, UniSpacing.xxl)
+                        .frame(maxWidth: .infinity)
+                        .background(UniColors.Background.primary)
+                        .id(WalletHomeScrollAnchor.mainContent)
                     }
-                } else if shouldShowFreshWalletBalanceEmptyState {
-                    FreshWalletBalanceEmptyState(
-                        walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                        onSwitchWallet: { isShowingSwitcher = true },
-                        onReceiveFunds: { isShowingReceive = true }
-                    )
-                } else {
-                    // 2026-06-18 native perf fix — the balance card is wrapped in a
-                    // leaf that OWNS the high-churn `chainStateRecords` GRDB observation, so the
-                    // refresh coordinator's ~300ms aggregate commits re-render only
-                    // the card, never this whole body (Apple "extract subviews to
-                    // localize invalidation"). The leaf computes the hero total only
-                    // from the persisted per-chain aggregate rows, which are rebuilt
-                    // from TokenBalanceRecord whenever local balance rows change.
-                    BalanceCardLiveSection(
-                        walletId: activeWallet?.id,
-                        walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                        currencyCode: currencyCode,
-                        onSwitchWallet: { isShowingSwitcher = true },
-                        onAddFunds: { isShowingReceive = true }
-                    )
+                }
+                .scrollIndicators(.hidden)
+                .scrollEdgeEffectHidden(true, for: .top)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, newOffset in
+                    handleHomeScrollOffset(newOffset)
+                }
+                .onScrollPhaseChange { oldPhase, newPhase in
+                    homeScrollPhase = newPhase
+                    // Finger lifted: lock pull → hold/loading immediately.
+                    // Do **not** wait for rubber-band rawPull to decay (that
+                    // path used to scrub strip height 80→0, then re-open).
+                    if oldPhase == .interacting,
+                       newPhase == .decelerating || newPhase == .idle
+                    {
+                        commitPullFingerUp()
+                    }
+                    if newPhase == .idle {
+                        snapBalanceCardIfNeeded(proxy: proxy)
+                    }
+                }
+                .onPreferenceChange(WalletHomeBalanceCardHeightKey.self) { height in
+                    if height > 1, abs(height - balanceCardHeight) >= 1 {
+                        balanceCardHeight = height
+                    }
                 }
             }
-            // Re-key on the active wallet so the card's view state resets
-            // cleanly when the user switches wallets. Hide-balance itself is
-            // global and persists through `HideBalancesPreference`.
-            .id(activeWallet?.id)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            // Zero row insets so the native group surface fills the
-            // inset-grouped section's content width and lines up with the
-            // holdings/transactions group below.
-            .listRowInsets(EdgeInsets())
+        }
+        .frame(maxWidth: horizontalSizeClass == .regular ? 640 : .infinity)
+        .frame(maxWidth: .infinity)
+        .background {
+            // iPad: solid page floor only. iPhone: identity colour under the
+            // hero + primary below (matches the connected balance card).
+            if usesIdentityColorChrome {
+                VStack(spacing: 0) {
+                    WalletHomeLiveIdentityFill()
+                        .ignoresSafeArea(edges: .top)
+                    UniColors.Background.primary
+                }
+                .ignoresSafeArea()
+            } else {
+                UniColors.Background.primary
+                    .ignoresSafeArea()
+            }
         }
     }
 
-    // 2026-06-14 — sync is background-only and has NO UI surface. The
-    // under-card `freshnessStampSection` footnote AND the app-bar
-    // syncing↔iris mark were both removed per user direction ("we don't
-    // need it in the UI, just run in the background"). The background
-    // writer still stamps `SyncStatusRecord` so freshness is tracked;
-    // nothing renders it.
+    /// If the user releases with the balance card only half-scrolled, settle
+    /// natively to fully open (offset 0) or fully past the card (holdings top).
+    private func snapBalanceCardIfNeeded(proxy: ScrollViewProxy) {
+        guard !isHeroSnapInFlight else { return }
+        guard !isRefreshing, !isPullSettling else { return }
+        // Don't fight pull-to-refresh rubber-band.
+        guard homeScrollOffsetY >= 0, heroPullDisplay < 1 else { return }
 
-    // 2026-06-18 — the `walletHomeHeaderRow` helper (a standalone
-    // `WalletHomeHeader`) was DEAD code: never referenced anywhere in the
-    // body. `BalanceCardView` renders its own header, so the production card
-    // never reused this. Removed as part of the native perf fix — it read
-    // the old parent `totalFiat` (now computed inside `BalanceCardLiveSection`).
+        let heroH = balanceCardHeight
+        guard heroH > 40 else { return }
 
-    /// Floating chrome rows — biometric banner and glass action triplet.
-    /// Cleared row backgrounds and
-    /// hidden separators so they float over the page color rather
-    /// than sitting inside an inset card. The balance + chart live
-    /// in `balanceCardSection` above; this section is purely chrome.
-    @ViewBuilder
-    private var chromeSection: some View {
-        Section {
-            if requiresBiometricReenrollment {
-                BiometricReenrollmentBanner()
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(
-                        top: 0,
-                        leading: UniSpacing.m,
-                        bottom: 0,
-                        trailing: UniSpacing.m
-                    ))
+        let y = homeScrollOffsetY
+        // Already at an end — leave free scrolling in holdings alone.
+        let edge: CGFloat = 14
+        guard y > edge, y < heroH - edge else { return }
+
+        let snapToContent = y >= heroH * 0.5
+        isHeroSnapInFlight = true
+        withAnimation(.smooth(duration: 0.32)) {
+            if snapToContent {
+                proxy.scrollTo(WalletHomeScrollAnchor.mainContent, anchor: .top)
+            } else {
+                proxy.scrollTo(WalletHomeScrollAnchor.balanceCard, anchor: .top)
             }
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(360))
+            isHeroSnapInFlight = false
+        }
+    }
 
-            WalletActionRegion(
-                canSend: activeWallet?.kind != .watchOnly,
-                onSend: { isShowingSend = true },
-                onReceive: { isShowingReceive = true },
-                onScan: { isShowingScanner = true }
+    private var showsHeroPullBackdrop: Bool {
+        // Any active pull / loading strip needs identity colour under the mark.
+        heroPullDisplay >= WalletHomePullMetrics.revealThreshold
+            || markRefreshPhase != .idle
+            || isRefreshing
+    }
+
+    /// App bar pill: live nearer-wallet identity mid-swipe (via chrome store).
+    @ToolbarContentBuilder
+    private var labStyleAppBarToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            WalletHomeLiveAppBarPill(
+                // iPad has no identity colour wash — always use page-floor
+                // ink (black on Cloud, white on Midnight/Dark). Identity
+                // light-on-colour labels read as white-on-white.
+                verticalBlend: usesIdentityColorChrome ? appBarBlendProgress : 1,
+                scrolledLabel: scrolledPillLabelColor,
+                scrolledChip: scrolledPillChipColor,
+                onTap: { isShowingSwitcher = true },
+                contextMenu: { walletPillContextMenu }
             )
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: 0,
-                leading: UniSpacing.m,
-                bottom: 0,
-                trailing: UniSpacing.m
-            ))
+            .modifier(
+                WalletPillRegularWidthMenu(
+                    isRegularWidth: horizontalSizeClass == .regular,
+                    menu: { walletPillContextMenu }
+                )
+            )
+        }
+    }
+
+    /// Resistance-limited pull while the finger is down. Rubber-band decay
+    /// after lift is **ignored** so the strip never collapses to empty rest
+    /// before the loading hold opens (video: hide at ~1.8s → show at ~2.0s).
+    private func handleHomeScrollOffset(_ newOffset: CGFloat) {
+        var noAnim = Transaction()
+        noAnim.disablesAnimations = true
+
+        // App-bar fade still tracks raw scroll (positive = scrolled down).
+        withTransaction(noAnim) {
+            if newOffset >= 0 {
+                if homeScrollOffsetY < 0 || abs(newOffset - homeScrollOffsetY) >= 1 {
+                    homeScrollOffsetY = newOffset
+                }
+            } else {
+                homeScrollOffsetY = newOffset
+            }
+        }
+
+        // Refresh state machine owns the strip — never shrink from geometry.
+        if isRefreshing || isPullSettling { return }
+        switch markRefreshPhase {
+        case .loading, .success:
+            return
+        case .idle, .pulling:
+            break
+        }
+
+        // Only grow/track pull while the user is **touching**. After lift the
+        // scroll phase is decelerating/idle and rubber-band would otherwise
+        // scrub heroPullDisplay 80→0 (mark vanishes) before loading reopens it.
+        guard homeScrollPhase == .interacting else { return }
+
+        let rawPull = max(0, -newOffset)
+        guard rawPull > WalletHomePullMetrics.releaseRaw else { return }
+
+        let resisted = WalletHomePullMetrics.resisted(raw: rawPull)
+        withTransaction(noAnim) {
+            heroPullDisplay = resisted
+            markRefreshPhase = .pulling(progress: {
+                let span = max(
+                    1,
+                    WalletHomePullMetrics.armThreshold - WalletHomePullMetrics.revealThreshold
+                )
+                return min(
+                    1,
+                    max(0, (resisted - WalletHomePullMetrics.revealThreshold) / span)
+                )
+            }())
+            if resisted >= WalletHomePullMetrics.armThreshold, !pullRefreshArmed {
+                pullRefreshArmed = true
+                UniHapticEngine.shared.play(.selection)
+            }
+        }
+    }
+
+    /// Finger left the scroll view — commit pull → hold/loading **now**,
+    /// at the current stretch. Do not wait for rubber-band rawPull to hit 0.
+    private func commitPullFingerUp() {
+        if isRefreshing || isPullSettling { return }
+        switch markRefreshPhase {
+        case .loading, .success:
+            return
+        case .idle, .pulling:
+            break
+        }
+
+        if pullRefreshArmed || heroPullDisplay >= WalletHomePullMetrics.armThreshold {
+            pullRefreshArmed = false
+            beginPullRelease(shouldRefresh: true)
+        } else if heroPullDisplay > WalletHomePullMetrics.revealThreshold {
+            pullRefreshArmed = false
+            beginPullRelease(shouldRefresh: false)
+        } else {
+            pullRefreshArmed = false
+            var noAnim = Transaction()
+            noAnim.disablesAnimations = true
+            withTransaction(noAnim) {
+                heroPullDisplay = 0
+                markRefreshPhase = .idle
+            }
+        }
+    }
+
+    /// Spring strip to hold (refresh) or closed (cancel). Hold chrome is locked
+    /// synchronously — never passes through empty rest between pull and load.
+    private func beginPullRelease(shouldRefresh: Bool) {
+        isPullSettling = true
+        if shouldRefresh {
+            isRefreshing = true
+            // Spring stretch → hold only. Never set 0 first (video hide→show).
+            withAnimation(WalletHomePullMetrics.settleSpring) {
+                heroPullDisplay = WalletHomePullMetrics.holdHeight
+                markRefreshPhase = .loading
+            }
+            // Refresh animation starts (loop) — light lifecycle tick.
+            UniHapticEngine.shared.play(.start)
+            Task { @MainActor in
+                try? await Task.sleep(
+                    for: .milliseconds(WalletHomePullMetrics.settleDurationMs)
+                )
+                isPullSettling = false
+                await runRefresh(userInitiated: true)
+            }
+        } else {
+            withAnimation(WalletHomePullMetrics.settleSpring) {
+                heroPullDisplay = 0
+                markRefreshPhase = .idle
+            }
+            Task { @MainActor in
+                try? await Task.sleep(
+                    for: .milliseconds(WalletHomePullMetrics.settleDurationMs)
+                )
+                if !isRefreshing {
+                    isPullSettling = false
+                }
+            }
+        }
+    }
+
+    // 2026-06-14 — sync is background-only and has NO UI surface.
+
+    /// Lab-shaped holdings card with **real** filtered coin/token rows.
+    private var productionHoldingsCard: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            Text("Holdings")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.tertiary)
+
+            VStack(spacing: 0) {
+                HStack(spacing: UniSpacing.s) {
+                    holdingsTabPicker
+                        .disabled(filterViewMode == .combined)
+                        .opacity(filterViewMode == .combined ? 0.46 : 1)
+                    filterButton
+                }
+                .padding(.horizontal, UniSpacing.m)
+                .padding(.vertical, UniSpacing.s)
+
+                Divider().opacity(0.35)
+
+                if showsNetworkErrorState {
+                    networkErrorCardBody
+                } else if filterViewMode == .combined {
+                    combinedCardRows
+                } else {
+                    // Simple fade between Coins ↔ Tokens (no slide).
+                    holdingsTabContent
+                        .id(selectedHoldingsTab)
+                        .transition(.opacity)
+                        .animation(.snappy(duration: 0.28), value: selectedHoldingsTab)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                    .fill(UniColors.List.rowBackground)
+            )
+            .clipped()
+        }
+    }
+
+    @ViewBuilder
+    private var holdingsTabContent: some View {
+        switch selectedHoldingsTab {
+        case .coins:
+            coinCardRows
+        case .tokens:
+            tokenCardRows
+        }
+    }
+
+    @ViewBuilder
+    private var coinCardRows: some View {
+        let allRows = filteredCoinRows
+        let pinnedSet = filterInputs.pinnedAssets
+        let (pinned, nonPinned) = WalletHomeFilterApply.partitionPinned(coins: allRows, pinned: pinnedSet)
+        let displayed = Array(nonPinned.prefix(holdingsDisplayCap))
+        let hasMore = nonPinned.count > holdingsDisplayCap
+        let rows = pinned + displayed
+
+        if rows.isEmpty {
+            holdingsCardEmptyState(kind: .coins)
+        } else {
+            ForEach(Array(rows.enumerated()), id: \.element.chain.rawValue) { index, row in
+                coinNavigationRow(row)
+                if index < rows.count - 1 || hasMore {
+                    Divider().opacity(0.28).padding(.leading, UniSpacing.m + 44)
+                }
+            }
+            if hasMore {
+                showAllRow
+                    .padding(.horizontal, UniSpacing.m)
+                    .padding(.vertical, UniSpacing.s)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tokenCardRows: some View {
+        let allRows = filteredTokenRows
+        let pinnedSet = filterInputs.pinnedAssets
+        let (pinned, nonPinned) = WalletHomeFilterApply.partitionPinned(tokens: allRows, pinned: pinnedSet)
+        let displayed = Array(nonPinned.prefix(holdingsDisplayCap))
+        let hasMore = nonPinned.count > holdingsDisplayCap
+        let rows = pinned + displayed
+
+        if rows.isEmpty {
+            holdingsCardEmptyState(kind: .tokens)
+        } else {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                tokenNavigationRow(row)
+                if index < rows.count - 1 || hasMore {
+                    Divider().opacity(0.28).padding(.leading, UniSpacing.m + 44)
+                }
+            }
+            if hasMore {
+                showAllRow
+                    .padding(.horizontal, UniSpacing.m)
+                    .padding(.vertical, UniSpacing.s)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var combinedCardRows: some View {
+        let merged = combinedFilteredRows
+        let pinnedSet = filterInputs.pinnedAssets
+        let (pinned, nonPinned) = partitionPinnedCombined(merged, pinnedSet: pinnedSet)
+        let displayed = Array(nonPinned.prefix(holdingsDisplayCap))
+        let hasMore = nonPinned.count > holdingsDisplayCap
+        let rows = pinned + displayed
+
+        if rows.isEmpty {
+            holdingsCardEmptyState(kind: .combined)
+        } else {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
+                combinedRow(item)
+                if index < rows.count - 1 || hasMore {
+                    Divider().opacity(0.28).padding(.leading, UniSpacing.m + 44)
+                }
+            }
+            if hasMore {
+                showAllRow
+                    .padding(.horizontal, UniSpacing.m)
+                    .padding(.vertical, UniSpacing.s)
+            }
+        }
+    }
+
+    /// Unified empty body for the lab-shaped holdings card (tabs already
+    /// paint the parent surface — mark + copy only, same as list empty).
+    private func holdingsCardEmptyState(kind: HoldingsEmptyKind) -> some View {
+        UniCardEmptyState(
+            title: holdingsEmptyTitle(kind: kind),
+            detail: holdingsEmptyDetail(kind: kind),
+            mark: holdingsEmptyMark(kind: kind),
+            minHeight: 240
+        )
+    }
+
+    private var networkErrorCardBody: some View {
+        VStack(spacing: UniSpacing.s) {
+            UniEmptyState(
+                title: "Couldn't reach the network",
+                detail: "Your balances will appear once Aperture can reach the chains.",
+                mark: .icon(systemName: "wifi.slash")
+            )
+            UniButton(
+                title: isAnyRefreshInFlight ? "Retrying…" : "Retry",
+                variant: .secondary,
+                isLoading: isAnyRefreshInFlight,
+                isEnabled: !isAnyRefreshInFlight
+            ) {
+                Task { await runRefresh(userInitiated: true) }
+            }
+            .padding(.horizontal, UniSpacing.m)
+            .padding(.bottom, UniSpacing.s)
+        }
+    }
+
+    /// Recent activity as a real Settings-style inset list (separators,
+    /// list-row press chrome), not a flat stack of rows in a pad.
+    private var productionActivityCard: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            activityHeader
+
+            if recentTransactions.isEmpty {
+                emptyActivity
+            } else {
+                VStack(spacing: 0) {
+                    productionActivityRows
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                        .fill(UniColors.List.rowBackground)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+            }
         }
     }
 
     /// The Coins/Tokens segment paired with the Filter & Sort control.
-    /// The segment stays mounted in both Split and Combined modes so the
-    /// holdings card never changes shape; Combined disables it because
-    /// that mode intentionally shows coins and tokens together.
     private var holdingsChromeRow: some View {
         HStack(spacing: UniSpacing.s) {
             holdingsTabPicker
@@ -1101,9 +1479,7 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Native first row for the holdings card. The Coins/Tokens
-    /// segment and Filter control live with the assets now instead
-    /// of floating between the action buttons and the list.
+    /// List-row chrome (kept for any remaining List-based skeleton paths).
     private var holdingsControlsListRow: some View {
         holdingsChromeRow
             .listRowSeparator(.hidden)
@@ -1115,49 +1491,44 @@ struct WalletHomeView: View {
             ))
     }
 
-    /// Native segmented picker — Coins | Tokens.
+    /// Classic (pre–iOS 26) Coins | Tokens segment — soft track + white
+    /// sliding capsule, with snappy selection motion.
     private var holdingsTabPicker: some View {
-        Picker("Holdings tab", selection: $selectedHoldingsTab) {
-            Text("Coins").tag(HoldingsTab.coins)
-            Text("Tokens").tag(HoldingsTab.tokens)
-        }
-        .pickerStyle(.segmented)
+        UniClassicSegmentedControl(
+            selection: $selectedHoldingsTab,
+            options: [
+                (HoldingsTab.coins, "Coins"),
+                (HoldingsTab.tokens, "Tokens")
+            ]
+        )
         .accessibilityLabel(Text("Switch between Coins and Tokens"))
     }
 
-    /// Filter & Sort affordance, now beside the Coins/Tokens segment.
-    /// The native filter glyph (`line.3.horizontal.decrease`) in a
-    /// segment-height rounded fill so it reads as a sibling control of
-    /// the segmented picker; presents `WalletHomeFilterSheet`.
+    /// Filter & Sort — same height as the classic Coins/Tokens segment.
     private var filterButton: some View {
         Button {
             isShowingFilter = true
         } label: {
             Image(systemName: "line.3.horizontal.decrease")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(UniColors.Text.primary)
-                .frame(width: 44, height: 30)
+                .frame(
+                    width: UniClassicSegmentedMetrics.height,
+                    height: UniClassicSegmentedMetrics.height
+                )
                 .background(
                     UniColors.Fill.tertiary,
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    in: Circle()
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
         .accessibilityLabel(Text("Filter and sort"))
     }
 
     // MARK: - Holdings section (native List)
 
-    /// Stable split-mode holdings card. The Coins/Tokens picker is a
-    /// permanent first row; only the asset rows underneath it change.
-    ///
-    /// Previously the picker lived inside `coinsSection` /
-    /// `tokensSection`, so tapping the segment replaced the entire
-    /// `Section` tree, including the control row itself. List diffing
-    /// then animated cell teardown/re-insertion around the picker,
-    /// which made the switch feel jumpy. Keeping one section identity
-    /// lets the native segmented control animate its thumb while the
-    /// rows below change without list-cell transition noise.
+    /// Stable split-mode holdings section. Coins/Tokens picker is the first
+    /// row; asset rows use system hairline separators between them.
     @ViewBuilder
     private var splitHoldingsSection: some View {
         Section {
@@ -1259,9 +1630,9 @@ struct WalletHomeView: View {
     private func firstRefreshSkeletonRow<Content: View>(
         @ViewBuilder content: () -> Content
     ) -> some View {
+        // Skeleton rows are no longer shown; kept as a no-op wrapper if
+        // any call site remains during first-refresh refactor.
         content()
-            .redacted(reason: .placeholder)
-            .firstRefreshSkeletonShimmer()
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -1410,6 +1781,7 @@ struct WalletHomeView: View {
     /// affordance (not a CTA), so plain composition is allowed.
     @ViewBuilder
     private func coinNavigationRow(_ row: WalletCoinSupportedRow) -> some View {
+        let assetID = WalletHomeFilterPreferences.assetID(coin: row)
         NavigationLink(value: WalletHomeDestination.assetDetail(.nativeCoin(row.chain))) {
             AssetRow(
                 chain: row.chain,
@@ -1420,33 +1792,28 @@ struct WalletHomeView: View {
                 fiatCurrencyCode: row.fiatCurrencyCode,
                 detailCaption: solanaPathCaption(for: row.chain)
             )
-            // 2026-06-18 Part 3.5 — skip the row's body re-eval when its
-            // value inputs are unchanged (most parent re-evals during refresh).
-            .equatable()
         }
-        .accessibilityLabel(Text("\(row.chain.displayName) details"))
-        // Pin (main / full-swipe) + Hide — 2026-06-20 user direction.
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            pinSwipeButton(assetID: WalletHomeFilterPreferences.assetID(coin: row))
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            hideSwipeButton(assetID: WalletHomeFilterPreferences.assetID(coin: row))
+        .padding(.horizontal, UniSpacing.m)
+        .padding(.vertical, UniSpacing.s)
+        .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ details"), row.chain.displayName)))
+        .contextMenu {
+            pinSwipeButton(assetID: assetID)
+            hideSwipeButton(assetID: assetID)
         }
     }
 
-    /// Dual-path SOL caption under the Solana home row so total ≠ spendable
-    /// is visible before the user opens Send (P0 dual-path honesty).
+    /// Active Solana path label under the SOL home row (Phantom default;
+    /// Trust Wallet when selected in Receive).
     private func solanaPathCaption(for chain: SupportedChain) -> String? {
-        guard chain == .solana, let wallet = activeWallet else { return nil }
-        let lines = SolanaPathBalanceBreakdown.nativeLines(
-            addresses: wallet.addresses,
-            balances: allBalanceRecords,
-            fallbackCurrencyCode: currencyCode
-        )
-        return SolanaPathBalanceBreakdown.homeCaption(
-            lines: lines,
-            hidden: hideBalances
-        )
+        guard chain == .solana, let wallet = contentWallet else { return nil }
+        let solanaRows = wallet.addresses.filter { $0.chainRaw == SupportedChain.solana.rawValue }
+        guard solanaRows.count > 1 else { return nil }
+        let preferred = solanaRows.first(where: \.isReceivePreferred) ?? solanaRows.first
+        guard let path = preferred?.derivationPath,
+              let style = SolanaPathStyle.parse(path)?.style else {
+            return "Phantom path"
+        }
+        return "\(style.title) path"
     }
 
     /// Wrap a token row in a `NavigationLink(value:)`. The
@@ -1456,15 +1823,16 @@ struct WalletHomeView: View {
     /// from inside the asset detail's Networks section).
     @ViewBuilder
     private func tokenNavigationRow(_ row: WalletTokenSupportedDisplayRow) -> some View {
+        let assetID = WalletHomeFilterPreferences.assetID(token: row)
         NavigationLink(value: WalletHomeDestination.assetDetail(.token(symbol: row.symbol))) {
             supportedTokenRow(row)
         }
-        .accessibilityLabel(Text("\(row.symbol) details"))
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            pinSwipeButton(assetID: WalletHomeFilterPreferences.assetID(token: row))
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            hideSwipeButton(assetID: WalletHomeFilterPreferences.assetID(token: row))
+        .padding(.horizontal, UniSpacing.m)
+        .padding(.vertical, UniSpacing.s)
+        .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ details"), row.symbol)))
+        .contextMenu {
+            pinSwipeButton(assetID: assetID)
+            hideSwipeButton(assetID: assetID)
         }
     }
 
@@ -1670,7 +2038,9 @@ struct WalletHomeView: View {
     private func supportedTokenRow(_ row: WalletTokenSupportedDisplayRow) -> some View {
         // 2026-06-18 Part 3.5 — the value-typed, `.equatable()` row leaf so its
         // body (CoinMark + labels) is skipped when the row model is unchanged.
-        SupportedTokenRow(row: row).equatable()
+        // Not `.equatable()` — privacy hide must re-render amounts when
+        // `balancePrivacyEnabled` flips (Equatable would skip the body).
+        SupportedTokenRow(row: row)
     }
 
     // MARK: - Empty holdings section
@@ -1741,7 +2111,7 @@ struct WalletHomeView: View {
     }
 
     private var shouldShowFreshWalletBalanceEmptyState: Bool {
-        activeWallet != nil
+        contentWallet != nil
             && !hasAnyCurrentBalance
     }
 
@@ -1879,15 +2249,18 @@ struct WalletHomeView: View {
     }
 
     private func computeAllHeldRows() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
-        guard let wallet = activeWallet else { return [] }
+        guard let wallet = contentWallet else { return [] }
         // Read balances from the top-level `allBalanceRecords` GRDB observation (live
         // across cross-context inserts + scalar updates) and attribute each to
         // a chain via the wallet's own address records — NOT the insert-stale
         // `address.balances` relationship.
+        // Solana dual-path: home shows preferred path only (matches Send + rebuild).
+        let allowedIds = displayAddressIds(for: wallet)
         let chainByAddressId = chainByActiveAddressId(wallet)
         var result: [(SupportedChain, TokenBalanceRecord)] = []
         for balance in allBalanceRecords {
             guard let aid = balance.addressId ?? balance.address?.id,
+                  allowedIds.contains(aid),
                   let chain = chainByAddressId[aid],
                   !balance.rawBalance.isEmpty else { continue }
             result.append((chain, balance))
@@ -2043,6 +2416,14 @@ struct WalletHomeView: View {
     /// and triggered directly on `allTransactionRecords` count changes.
     private func rebuildTransactionMemos() {
         allTransactionsMemo = computeAllTransactions()
+        // Immediate disk USD seed so recent activity never paints dust (P1 #11).
+        let symbols = Array(Set((allTransactionsMemo ?? []).lazy.map { $0.tokenSymbol.uppercased() }))
+        if !symbols.isEmpty {
+            let seeded = ActivityFiat.usdPriceMapFromCache(symbols: symbols)
+            if !seeded.isEmpty {
+                usdActivityPrices = seeded
+            }
+        }
     }
 
     private func clearWalletScopedSnapshots() {
@@ -2054,7 +2435,9 @@ struct WalletHomeView: View {
         filteredCoinRows = []
         filteredTokenRows = []
         combinedFilteredRows = []
-        usdActivityPrices = [:]
+        // Keep last USD dust map until the new wallet's feed seeds —
+        // never leave an empty map that would hide *all* activity.
+        // loadDustPrices re-seeds for the active feed immediately.
     }
 
     /// O(1) key for the dust-price load — re-fires on wallet switch or a
@@ -2089,12 +2472,14 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Resolve USD unit prices for the recent feed's distinct symbols so
-    /// the $0.20-USD dust gate can run on the home preview. Cheap after
-    /// the first call (engine-cached) and cancellation-safe — a wallet
-    /// switch re-keys the task, cancelling this before a stale write.
+    /// USD prices for the $0.20 dust gate: seed from disk **synchronously**
+    /// so dust never flashes, then refresh live (P1 #11).
     private func loadDustPrices() async {
         let symbols = Array(Set(allTransactions.lazy.map { $0.tokenSymbol.uppercased() }))
+        let seeded = ActivityFiat.usdPriceMapFromCache(symbols: symbols)
+        if !seeded.isEmpty {
+            usdActivityPrices = seeded
+        }
         let map = await ActivityFiat.usdPriceMap(symbols: symbols)
         guard !Task.isCancelled else { return }
         usdActivityPrices = map
@@ -2235,6 +2620,9 @@ struct WalletHomeView: View {
         if allTransactions.count > 5 {
             HStack(alignment: .firstTextBaseline) {
                 Text("Recent activity")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .textCase(nil)
                 Spacer(minLength: UniSpacing.s)
                 Button {
                     navigationPath.append(WalletHomeDestination.allActivity)
@@ -2244,18 +2632,21 @@ struct WalletHomeView: View {
                         .foregroundStyle(UniColors.Text.link)
                         .textCase(nil)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniTactile)
                 .accessibilityHint(Text("Shows the full transaction history"))
             }
         } else {
             Text("Recent activity")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.tertiary)
+                .textCase(nil)
         }
     }
 
     /// Production activity rows — each `TransactionRecord` becomes
     /// one tappable list row. The `Button` carries the navigation
     /// dispatch; the row's tap target is the row itself thanks to
-    /// `.contentShape` on `ActivityRow` and `.buttonStyle(.plain)`.
+    /// `.contentShape` on `ActivityRow` and `.buttonStyle(.uniTactile)`.
     /// Production activity rows — extracted into the value-typed, `.equatable()`
     /// `RecentActivityRows` leaf (2026-06-18, Part 3.5). The parent maps the 5
     /// recent transactions into a small `ActivityRowModel` snapshot; the leaf
@@ -2285,74 +2676,25 @@ struct WalletHomeView: View {
         )
     }
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        // 2026-06-09 — the four-tab shell (`MainTabView`) replaced
-        // the wallet-home's Settings sheet, so the leading-edge
-        // gear is gone. The toolbar now carries one item: the
-        // wallet-pill in `.principal`, which is the wallet-identity
-        // affordance (tap to switch wallets). The tab bar handles
-        // top-level navigation; the nav bar handles wallet
-        // identity. Different facets, both legitimate.
-        ToolbarItem(placement: .principal) {
-            // 2026-06-09 — the pill now leads with the active
-            // wallet's `WalletAvatar` (symbol + colorHex). The
-            // text remains the wallet's name; the trailing chevron
-            // signals "tap to switch."
-            //
-            // **Tap** opens the full `WalletSwitcherSheet` (the
-            // index of every wallet with create/import affordances
-            // at the bottom). **Long-press** opens the native iOS
-            // 26 Liquid Glass `contextMenu` (the Telegram /
-            // Instagram fast-switch pattern). Both gestures land
-            // on the same affordance because the pill IS the
-            // active-wallet identity on this screen — same affordance,
-            // two depths.
-            //
-            // 2026-06-09 — pass the active wallet's gradient-disc
-            // spec to the pill so the leading slot renders the
-            // new avatar. Falls back to an auto(name)-derived
-            // spec from the default "Wallet" name when no active
-            // wallet exists yet (cold launch before
-            // `ensureActiveWalletSet()` lands one).
-            let pillSpec: WalletAvatarSpec = activeWallet?.avatarSpec
-                ?? WalletAvatarSpec.auto(name: "Wallet")
-            UniButton(
-                verbatim: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                variant: .walletPill,
-                walletSpec: pillSpec,
-                walletId: activeWallet?.id
-            ) {
-                isShowingSwitcher = true
-            }
-            .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
-            // **Long-press switcher — split by size class
-            // (2026-06-16).**
-            //
-            // COMPACT (iPhone): no `.contextMenu` here. The
-            // long-press wallet switcher lives on the bottom
-            // tab bar's Wallet button (via
-            // `TabBarLongPressInstaller`). Tap on this toolbar
-            // pill opens the switcher SHEET; the tab-bar
-            // long-press is the Telegram/Instagram-style fast
-            // switcher. This path is unchanged from 2026-06-09.
-            //
-            // REGULAR (iPad landscape / wide Mac): in sidebar
-            // mode there is no UITabBar, so the installer can't
-            // attach — the switcher would silently die. We
-            // attach the native SwiftUI `walletPillContextMenu`
-            // here instead (Switch wallet / Customise / Add /
-            // Manage — the SAME actions). `.contextMenu` is a
-            // pure-SwiftUI modifier, so it works on the toolbar
-            // pill at any width; gating to `.regular` keeps the
-            // iPhone gesture exactly as it was.
-            .modifier(
-                WalletPillRegularWidthMenu(
-                    isRegularWidth: horizontalSizeClass == .regular,
-                    menu: { walletPillContextMenu }
-                )
+    /// Shared wallet-switcher pill chrome (avatar + name + chevron).
+    private func appBarPillLabel(name: String, label: Color, chip: Color) -> some View {
+        HStack(spacing: UniSpacing.xs) {
+            WalletAvatar(
+                spec: appBarAvatarSpec,
+                size: .toolbarPill,
+                walletId: displayedWallet?.id
             )
+            Text(verbatim: name)
+                .font(UniTypography.bodyEmphasized)
+                .foregroundStyle(label)
+                .lineLimit(1)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(label.opacity(0.85))
         }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+        .background(Capsule(style: .continuous).fill(chip))
     }
 
     // MARK: - Long-press context menu on the toolbar wallet pill
@@ -2410,7 +2752,11 @@ struct WalletHomeView: View {
             Button {
                 customiseTargetId = active.id
             } label: {
-                Label("Customise wallet", systemImage: "paintpalette")
+                Label {
+                    Text("Customise wallet")
+                } icon: {
+                    Image(uiImage: Self.contextMenuSymbol("paintpalette"))
+                }
             }
         }
 
@@ -2418,7 +2764,11 @@ struct WalletHomeView: View {
         Button {
             isShowingCreate = true
         } label: {
-            Label("Add wallet", systemImage: "plus")
+            Label {
+                Text("Add wallet")
+            } icon: {
+                Image(uiImage: Self.contextMenuSymbol("plus"))
+            }
         }
 
         // Manage wallets — stamps the deep-link token, then switches to
@@ -2428,8 +2778,27 @@ struct WalletHomeView: View {
             settingsDeepLink = "wallets"
             selectedTabRaw = MainTab.settings.rawValue
         } label: {
-            Label("Manage wallets", systemImage: "list.bullet")
+            Label {
+                Text("Manage wallets")
+            } icon: {
+                Image(uiImage: Self.contextMenuSymbol("list.bullet"))
+            }
         }
+    }
+
+    /// SF Symbol for SwiftUI context menus at Settings gray
+    /// (`UniColors.Icon.secondary`). Menu items template-render symbols
+    /// and can inherit the wallet-pill’s light-on-identity white, which
+    /// washes icons out on the glass menu — `.alwaysOriginal` + secondary
+    /// gray matches Settings / system menu chrome.
+    private static func contextMenuSymbol(_ systemName: String) -> UIImage {
+        let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+        let base = UIImage(systemName: systemName, withConfiguration: config)
+            ?? UIImage()
+        return base.withTintColor(
+            UIColor(UniColors.Icon.secondary),
+            renderingMode: .alwaysOriginal
+        )
     }
 
     /// Identifiable shim so `.sheet(item:)` can present the icon
@@ -2477,6 +2846,219 @@ struct WalletHomeView: View {
         )
     }
 
+    /// Stable order for hero paging (matches the switcher list).
+    private var sortedWallets: [WalletRecord] {
+        allWallets.sorted {
+            if $0.sortOrder == $1.sortOrder { return $0.createdAt < $1.createdAt }
+            return $0.sortOrder < $1.sortOrder
+        }
+    }
+
+    /// Wallet shown in the hero page + app bar colour. Tracks page
+    /// selection immediately so bar and hero cross-fade together,
+    /// before the GRDB active-wallet write settles.
+    private var displayedWallet: WalletRecord? {
+        if let id = selectedPageWalletId {
+            return sortedWallets.first(where: { $0.id == id }) ?? activeWallet
+        }
+        return activeWallet
+    }
+
+    /// **Single source of truth for home data** (holdings, activity, scopes).
+    /// Always the settled hero page when set — never show another wallet's
+    /// balances under this wallet's name (hero/pager vs `activeWalletId` desync).
+    private var contentWallet: WalletRecord? {
+        if let id = selectedPageWalletId,
+           let wallet = sortedWallets.first(where: { $0.id == id }) {
+            return wallet
+        }
+        return activeWallet
+    }
+
+    private var contentWalletId: UUID? { contentWallet?.id }
+
+    private var appBarAvatarSpec: WalletAvatarSpec {
+        // Mid-swipe: follow the nearer wallet so the pill matches the fade.
+        let pair = WalletHomeHeroPager.swipePair(
+            wallets: sortedWallets,
+            progress: pageSwipeProgress
+        )
+        return pair.t < 0.5 ? pair.from : pair.to
+    }
+
+    private var prefersLightForeground: Bool {
+        UniColors.WalletAvatar.prefersLightForeground(for: appBarAvatarSpec)
+    }
+
+    /// Identity fill blended across neighbouring wallets while swiping.
+    private var appBarWalletColor: Color {
+        let pair = WalletHomeHeroPager.swipePair(
+            wallets: sortedWallets,
+            progress: pageSwipeProgress
+        )
+        return Self.mixColors(
+            UniColors.WalletAvatar.identityColor(for: pair.from),
+            UniColors.WalletAvatar.identityColor(for: pair.to),
+            t: pair.t
+        )
+    }
+
+    /// Distance over which the nav bar eases from wallet identity → page floor.
+    private var appBarFadeDistance: CGFloat { 160 }
+
+    /// 0 = on hero (identity bar), 1 = scrolled (page-floor bar).
+    private var appBarBlendProgress: CGFloat {
+        min(1, max(0, homeScrollOffsetY / appBarFadeDistance))
+    }
+
+    /// Resolve Cloud / Midnight / Dark for scroll chrome.
+    /// System follows iOS: light → Cloud, dark → Midnight.
+    private var resolvedHomeAppearance: ApertureAppearance {
+        switch apertureAppearance {
+        case .system:
+            return colorScheme == .dark ? .midnight : .cloud
+        case .cloud, .midnight, .dark:
+            return apertureAppearance
+        }
+    }
+
+    /// Page-floor fills matching the app background in each mode.
+    /// Hardcoded sRGB (not `UniColors`) so `UIColor.getRed` mix is stable —
+    /// dynamic palette colours resolve inconsistently when mixed for the bar.
+    /// Hexes match the shipped page floor: Cloud `#F5F5F7`, Midnight `#191A1E`, Dark `#000000`.
+    private var pageFloorAppBarColor: Color {
+        switch resolvedHomeAppearance {
+        case .cloud, .system:
+            return Color(red: 245 / 255, green: 245 / 255, blue: 247 / 255)
+        case .midnight:
+            return Color(red: 25 / 255, green: 26 / 255, blue: 30 / 255)
+        case .dark:
+            return Color(red: 0, green: 0, blue: 0)
+        }
+    }
+
+    /// Pill label once the bar has faded onto the page floor.
+    private var scrolledPillLabelColor: Color {
+        switch resolvedHomeAppearance {
+        case .cloud, .system:
+            return Color(red: 0, green: 0, blue: 0)
+        case .midnight, .dark:
+            return Color(red: 1, green: 1, blue: 1)
+        }
+    }
+
+    /// Soft chip under the pill on the page-floor bar (card-like lift).
+    private var scrolledPillChipColor: Color {
+        switch resolvedHomeAppearance {
+        case .cloud, .system:
+            return Color(red: 1, green: 1, blue: 1).opacity(0.92)
+        case .midnight:
+            return Color(red: 33 / 255, green: 34 / 255, blue: 41 / 255)
+        case .dark:
+            return Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
+        }
+    }
+
+    /// Nav bar fill: wallet identity at rest → page floor as the user scrolls.
+    private var scrolledAppBarColor: Color {
+        Self.mixColors(appBarWalletColor, pageFloorAppBarColor, t: appBarBlendProgress)
+    }
+
+    /// Stay on identity scheme until the bar is almost fully page-floor so
+    /// we don’t snap `toolbarColorScheme` mid-scroll (layout flash / bounce).
+    private var scrolledAppBarColorScheme: ColorScheme {
+        if appBarBlendProgress < 0.9 {
+            return prefersLightForeground ? .dark : .light
+        }
+        switch resolvedHomeAppearance {
+        case .cloud, .system: return .light
+        case .midnight, .dark: return .dark
+        }
+    }
+
+    /// Linear sRGB mix for scroll-driven chrome (t in 0…1).
+    private static func mixColors(_ a: Color, _ b: Color, t: CGFloat) -> Color {
+        let t = min(1, max(0, t))
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        guard UIColor(a).getRed(&r1, green: &g1, blue: &b1, alpha: &a1),
+              UIColor(b).getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        else {
+            return t < 0.5 ? a : b
+        }
+        return Color(
+            red: Double(r1 + (r2 - r1) * t),
+            green: Double(g1 + (g2 - g1) * t),
+            blue: Double(b1 + (b2 - b1) * t),
+            opacity: Double(a1 + (a2 - a1) * t)
+        )
+    }
+
+    /// Keep hero page in lockstep with the active-wallet preference
+    /// (sheet pick, external switch, first load, wallet list changes).
+    /// - Parameter animated: when true (and multiple wallets), the balance
+    ///   pager scrolls like a finger swipe onto the active wallet.
+    private func syncPageSelectionFromActiveWallet(animated: Bool = false) {
+        // Prefer the stored active id once it appears in the observed list —
+        // don't fall back to `first` while the new wallet is mid-merge.
+        let preferredId = UUID(uuidString: activeWalletIdRaw)
+        let resolved: UUID? = {
+            if let preferredId, sortedWallets.contains(where: { $0.id == preferredId }) {
+                return preferredId
+            }
+            return activeWallet?.id ?? sortedWallets.first?.id
+        }()
+
+        guard let resolved else {
+            selectedPageWalletId = nil
+            return
+        }
+
+        let apply = {
+            selectedPageWalletId = resolved
+            pageSwipeProgress = CGFloat(
+                sortedWallets.firstIndex(where: { $0.id == resolved }) ?? 0
+            )
+        }
+
+        if selectedPageWalletId != resolved {
+            if animated, sortedWallets.count > 1 {
+                withAnimation(.snappy(duration: 0.38)) { apply() }
+            } else {
+                apply()
+            }
+        } else if selectedPageWalletId == nil {
+            apply()
+        }
+    }
+
+    /// Pager settled on a wallet: scope holdings to that page **now**, set
+    /// active pointer, and refresh. Holdings must not wait for GRDBStorage.
+    @MainActor
+    private func activateWalletFromPager(_ walletId: UUID) {
+        let isAlreadyActive = walletId.uuidString == activeWalletIdRaw
+
+        Task {
+            await WalletBackgroundWorkCoordinator.shared.cancelAllJobs(
+                exceptWalletId: walletId
+            )
+        }
+
+        // Immediate content scope — hero page and holdings stay one wallet.
+        applyHomeContentWalletScope(walletId)
+
+        if !isAlreadyActive {
+            isApplyingPagerActiveWallet = true
+            ActiveWalletPointer.set(walletId)
+            UniHapticEngine.shared.play(.selection)
+            // `.task(id: activeWalletIdRaw)` also refreshes after preference
+            // propagates; fire now so we don't wait on that path alone.
+            Task { await runRefresh(userInitiated: false) }
+        } else {
+            Task { await runRefresh(userInitiated: false) }
+        }
+    }
+
     private func handleReceiveSheetDismiss() {
         receivePath = NavigationPath()
     }
@@ -2496,7 +3078,9 @@ struct WalletHomeView: View {
     }
 
     private func computeBalances() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
-        guard let wallet = activeWallet else { return [] }
+        // contentWallet (settled hero page), not activeWallet alone — prevents
+        // showing Imported Wallet 2 balances under a Wallet 3 pill.
+        guard let wallet = contentWallet else { return [] }
         let threshold = Decimal(hideSmallThreshold)
         // Read from the top-level `allBalanceRecords` GRDB observation (live across
         // cross-context inserts + scalar updates) attributed via the wallet's
@@ -2553,7 +3137,7 @@ struct WalletHomeView: View {
     /// Latest `lastScannedAt` across all addresses, or nil if no scan
     /// has ever completed.
     private var mostRecentScanAt: Date? {
-        guard let wallet = activeWallet else { return nil }
+        guard let wallet = contentWallet else { return nil }
         return wallet.addresses.compactMap { $0.lastScannedAt }.max()
     }
 
@@ -2620,36 +3204,43 @@ struct WalletHomeView: View {
 
     /// Run one wallet refresh. The coordinator serializes refresh work per
     /// wallet, so user-initiated pulls and automatic refreshes share the same
-    /// in-flight pipeline instead of overlapping network calls. The refresh
-    /// outcome (failed chains, if any) is published on
-    /// `WalletRefreshState.shared`, which this view observes to render the
-    /// honest network-error surfaces.
+    /// in-flight pipeline instead of overlapping network calls.
     ///
-    /// **Pull-to-refresh (BUG-015):** the spinner tracks **balances**
-    /// (and prices applied with them) only. History / Electrum history /
-    /// explorers continue in the background after the await returns.
+    /// **Pull-to-refresh UX (`mark-refresh-kit`):**
+    /// pull scrubs frames 0…66 → settle to 70pt hold + loop 66…124 while
+    /// loading → success 124…210 → strip dismisses.
     @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
-        guard let walletId = await resolveRefreshWalletId() else { return }
+        guard let walletId = await resolveRefreshWalletId() else {
+            if userInitiated {
+                withAnimation(WalletHomePullMetrics.settleSpring) {
+                    heroPullDisplay = 0
+                    markRefreshPhase = .idle
+                    isRefreshing = false
+                    isPullSettling = false
+                }
+            }
+            return
+        }
         if shouldShowFirstRefreshSkeleton(for: walletId) {
             startFirstRefreshSkeleton(for: walletId)
         }
+
+        let code = currencyCode
+
         if !userInitiated {
             Task {
-                // Balances + prices first, then non-blocking full (history).
                 await WalletBackgroundWorkCoordinator.shared.refreshBalances(
                     walletId: walletId,
-                    currencyCode: currencyCode,
+                    currencyCode: code,
                     database: AppDatabase.shared,
-                    userInitiated: false,
-                    trigger: .walletOpen
+                    userInitiated: false
                 )
                 guard !Task.isCancelled else { return }
                 await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
                     walletId: walletId,
-                    currencyCode: currencyCode,
-                    database: AppDatabase.shared,
-                    trigger: .walletOpen
+                    currencyCode: code,
+                    database: AppDatabase.shared
                 )
                 await WalletBackgroundWorkCoordinator.shared.startChainKeyBackfill(
                     walletId: walletId,
@@ -2659,24 +3250,38 @@ struct WalletHomeView: View {
             return
         }
 
-        isRefreshing = true
-        defer {
-            isRefreshing = false
+        // Hold strip + `isRefreshing` are already locked in `beginPullRelease`.
+        // Re-affirm if we were called without that path.
+        if !isRefreshing {
+            isRefreshing = true
+        }
+        if markRefreshPhase != .loading && markRefreshPhase != .success {
+            markRefreshPhase = .loading
+            withAnimation(WalletHomePullMetrics.settleSpring) {
+                heroPullDisplay = WalletHomePullMetrics.holdHeight
+            }
+            UniHapticEngine.shared.play(.start)
         }
 
-        // Awaits balancesOnly (balances + prices). Coordinator then starts
-        // a background full refresh for history without holding the spinner.
-        await WalletBackgroundWorkCoordinator.shared.refreshBalances(
-            walletId: walletId,
-            currencyCode: currencyCode,
-            database: AppDatabase.shared,
-            userInitiated: true,
-            trigger: .pullToRefresh
-        )
-        guard UUID(uuidString: activeWalletIdRaw) == walletId else { return }
-        rebuildFilterInputs()
-        rebuildDisplayRows()
-        UniHapticEngine.shared.play(.signature(.irisSettle))
+        Task { @MainActor in
+            await WalletBackgroundWorkCoordinator.shared.refreshBalances(
+                walletId: walletId,
+                currencyCode: code,
+                database: AppDatabase.shared,
+                userInitiated: true
+            )
+            guard UUID(uuidString: activeWalletIdRaw) == walletId else { return }
+            rebuildFilterInputs()
+            rebuildDisplayRows()
+            // Strong “done” haptic fires when the success Lottie finishes
+            // (`onMarkRefreshSuccessFinished`) — not mid-loop on data land.
+        }
+        // Minimum hold so the loop is visible; then play success (kit total 3.5s).
+        try? await Task.sleep(for: .seconds(1.6))
+        // Only advance if we still own the strip (not cancelled).
+        guard isRefreshing, case .loading = markRefreshPhase else { return }
+        markRefreshPhase = .success
+        // Success completion callback dismisses the strip + strong haptic.
     }
 
     private func shouldShowFirstRefreshSkeleton(for walletId: UUID) -> Bool {
@@ -2686,23 +3291,11 @@ struct WalletHomeView: View {
     }
 
     private func startFirstRefreshSkeleton(for walletId: UUID) {
-        guard let deadline = firstRefreshSkeletonDeadline(for: walletId) else {
-            finishFirstRefreshSkeleton(for: walletId)
-            return
-        }
-        let remainingSeconds = max(0, deadline.timeIntervalSinceNow)
-        let runId = UUID()
-        firstRefreshSkeletonTask?.cancel()
-        firstRefreshSkeletonWalletId = walletId
-        firstRefreshSkeletonRunId = runId
-        firstRefreshSkeletonTask = Task { @MainActor in
-            let nanoseconds = UInt64((remainingSeconds * 1_000_000_000).rounded())
-            if nanoseconds > 0 {
-                try? await Task.sleep(nanoseconds: nanoseconds)
-            }
-            guard !Task.isCancelled else { return }
-            clearFirstRefreshSkeleton(walletId: walletId, runId: runId)
-        }
+        // No skeleton UI — clear the create/import presentation marker now.
+        cancelFirstRefreshSkeleton()
+        finishFirstRefreshSkeleton(for: walletId)
+        rebuildFilterInputs()
+        rebuildDisplayRows()
     }
 
     private func updateFirstRefreshSkeletonFromPresentationMarker() {
@@ -2710,15 +3303,14 @@ struct WalletHomeView: View {
             cancelFirstRefreshSkeleton()
             return
         }
-        guard shouldShowFirstRefreshSkeleton(for: walletId) else {
-            cancelFirstRefreshSkeleton()
-            if firstRefreshPresentationWalletIdRaw == walletId.uuidString,
-               firstRefreshSkeletonDeadline(for: walletId) == nil {
-                WalletFirstRefreshPresentationCenter.clearIfCurrent(walletId)
-            }
-            return
+        // Immediately clear any pending first-refresh marker so home never
+        // enters a skeleton/shimmer presentation window.
+        cancelFirstRefreshSkeleton()
+        if firstRefreshPresentationWalletIdRaw == walletId.uuidString {
+            WalletFirstRefreshPresentationCenter.clearIfCurrent(walletId)
         }
-        startFirstRefreshSkeleton(for: walletId)
+        rebuildFilterInputs()
+        rebuildDisplayRows()
     }
 
     private func firstRefreshSkeletonDeadline(for walletId: UUID) -> Date? {
@@ -2798,20 +3390,6 @@ struct WalletHomeView: View {
         rebuildFilterInputs()
         rebuildDisplayRows()
 
-        let pnlFXRate: Decimal?
-        if code == "USD" {
-            pnlFXRate = 1
-        } else {
-            pnlFXRate = await TokenPricingEngine.shared.crossRate(from: "USD", to: code)
-        }
-        if let pnlFXRate {
-            try? PortfolioPnLRepository(database: AppDatabase.shared).projectLatestSummary(
-                walletId: walletId,
-                displayCurrencyCode: code,
-                fxRateFromUSD: pnlFXRate
-            )
-        }
-
         let symbols = (try? projectionRepository.tokenSymbols(walletId: walletId)) ?? []
         guard !symbols.isEmpty else { return }
         // unitPrices always persists token quotes in USD and FX rates in DB.
@@ -2868,305 +3446,6 @@ struct WalletHomeView: View {
     }
 }
 
-// MARK: - FirstRefreshBalanceCardSkeleton
-
-/// Import-wallet loading surface — same chrome as the live balance card
-/// because an imported wallet may already hold funds.
-private struct FirstRefreshBalanceCardSkeleton: View {
-    let walletName: String
-    let currencyCode: String
-
-    var body: some View {
-        BalanceCardView(
-            walletId: nil,
-            walletName: walletName,
-            totalFiat: .zero,
-            currencyCode: currencyCode,
-            lastUpdated: nil,
-            showsFirstRefreshBalanceSkeleton: true,
-            onSwitchWallet: {},
-            onAddFunds: {}
-        )
-        .redacted(reason: .placeholder)
-        .firstRefreshSkeletonShimmer()
-        .disabled(true)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
-// MARK: - FreshWalletEmptyStateSkeleton
-
-/// Create-wallet loading surface — pixel-matches `FreshWalletBalanceEmptyState`
-/// (not the balance card). Same card padding, min height, mark size, and CTA.
-private struct FreshWalletEmptyStateSkeleton: View {
-    let walletName: String
-
-    var body: some View {
-        UniCard(padding: UniSpacing.l, cornerRadius: UniRadius.hero) {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                // Wallet switcher row (matches empty-state header metrics).
-                HStack(spacing: 3) {
-                    Text(verbatim: walletName)
-                        .font(UniTypography.BalanceCard.walletName)
-                        .foregroundStyle(UniColors.Text.primary)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(UniColors.Text.primary)
-                }
-                .redacted(reason: .placeholder)
-
-                VStack(spacing: UniSpacing.m) {
-                    // Dashed mark footprint — same 72pt as the empty state.
-                    RoundedRectangle(cornerRadius: 36, style: .continuous)
-                        .fill(UniColors.Skeleton.base)
-                        .frame(width: 72, height: 72)
-                        .opacity(0.55)
-
-                    VStack(spacing: UniSpacing.xs) {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(UniColors.Skeleton.base)
-                            .frame(width: 220, height: 22)
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(UniColors.Skeleton.base)
-                            .frame(width: 260, height: 14)
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(UniColors.Skeleton.base)
-                            .frame(width: 200, height: 14)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, UniSpacing.s)
-
-                // Primary CTA pill — UniButton.primary is 47pt + Capsule().
-                Capsule(style: .continuous)
-                    .fill(UniColors.Skeleton.base)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 47)
-            }
-            .frame(maxWidth: .infinity, minHeight: 284, alignment: .topLeading)
-        }
-        .firstRefreshSkeletonShimmer()
-        .disabled(true)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
-private extension View {
-    func firstRefreshSkeletonShimmer() -> some View {
-        modifier(FirstRefreshSkeletonShimmer())
-    }
-}
-
-private struct FirstRefreshSkeletonShimmer: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isAnimating = false
-
-    func body(content: Content) -> some View {
-        if reduceMotion {
-            content
-        } else {
-            content
-                .overlay {
-                    GeometryReader { proxy in
-                        let travel = max(proxy.size.width, proxy.size.height) * 1.8
-                        Rectangle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.clear,
-                                        UniColors.Skeleton.highlight.opacity(0.18),
-                                        Color.clear
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: max(80, proxy.size.width * 0.42))
-                            .rotationEffect(.degrees(8))
-                            .offset(x: isAnimating ? travel : -travel)
-                    }
-                    .allowsHitTesting(false)
-                    .blendMode(.screen)
-                    .mask(content)
-                }
-                .onAppear {
-                    isAnimating = false
-                    withAnimation(.linear(duration: 1.35).repeatForever(autoreverses: false)) {
-                        isAnimating = true
-                    }
-                }
-                .onDisappear {
-                    isAnimating = false
-                }
-        }
-    }
-}
-
-// MARK: - FreshWalletBalanceEmptyState
-
-private struct FreshWalletBalanceEmptyState: View {
-    let walletName: String
-    let onSwitchWallet: () -> Void
-    let onReceiveFunds: () -> Void
-
-    var body: some View {
-        UniCard(padding: UniSpacing.l, cornerRadius: UniRadius.hero) {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                walletHeader
-
-                VStack(spacing: UniSpacing.m) {
-                    Image("MarkEmptyDashed")
-                        .resizable()
-                        .renderingMode(.template)
-                        .scaledToFit()
-                        .foregroundStyle(UniColors.EmptyState.icon)
-                        .frame(width: 72, height: 72)
-                        .opacity(0.28)
-                        .accessibilityHidden(true)
-
-                    VStack(spacing: UniSpacing.xs) {
-                        UniHeadline(
-                            text: "Receive funds to see your balance",
-                            alignment: .center
-                        )
-                        UniFootnote(
-                            text: "Your balance card will appear here after this wallet receives crypto on-chain.",
-                            alignment: .center,
-                            color: UniColors.Text.secondary
-                        )
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, UniSpacing.s)
-
-                UniButton(title: "Receive funds", variant: .primary, systemImage: "arrow.down.left") {
-                    onReceiveFunds()
-                }
-                .accessibilityHint(Text("Opens Receive so you can copy an address or QR code"))
-            }
-            .frame(maxWidth: .infinity, minHeight: 284, alignment: .topLeading)
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private var walletHeader: some View {
-        Button {
-            UniHapticEngine.shared.play(.contextualImpact(.tap))
-            onSwitchWallet()
-        } label: {
-            HStack(spacing: 3) {
-                Text(verbatim: walletName)
-                    .font(UniTypography.BalanceCard.walletName)
-                    .foregroundStyle(UniColors.Text.primary)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(UniColors.Text.primary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Switch wallet, currently \(walletName)"))
-    }
-}
-
-// MARK: - BalanceCardLiveSection (native invalidation-localization leaf)
-
-/// Database-backed balance card leaf. It owns only the narrow observations the
-/// card needs: chain state totals, portfolio summaries, and wallet sync status.
-private struct BalanceCardLiveSection: View {
-    let walletId: UUID?
-    let walletName: String
-    let currencyCode: String
-    let onSwitchWallet: () -> Void
-    let onAddFunds: () -> Void
-
-    @StateObject private var cardObservation = WalletBalanceCardObservation()
-
-    private var chainStateRecords: [ChainStateRecord] {
-        cardObservation.chainStates
-    }
-
-    private var portfolioSummaries: [WalletPortfolioSummaryRecord] {
-        cardObservation.portfolioSummaries
-    }
-
-    private var syncStatuses: [SyncStatusRecord] {
-        cardObservation.syncStatuses
-    }
-
-    private var cardScopeKey: String {
-        "\(walletId?.uuidString ?? "none")|\(currencyCode.uppercased())"
-    }
-
-    /// Hero total. The balance card is backed by the database read model only:
-    /// scanners write `TokenBalanceRecord`, the local reconciliation task
-    /// rebuilds `ChainStateRecord`, and the card sums those persisted
-    /// per-chain rows for the active wallet/currency.
-    ///
-    /// P1-007 / BUG-009: only sum amounts whose `fiat_currency_code` matches
-    /// the **display** currency. Never fall back to prior-currency totals and
-    /// format them with the new symbol (that looks like a portfolio crash or
-    /// jump). While rebuild/projection is in flight, show 0 rather than a
-    /// lie — `repriceForCurrencyChange` + rebuild fill matching rows promptly.
-    private var totalFiat: Decimal {
-        WalletHeroFiat.total(
-            walletId: walletId,
-            displayCurrencyCode: currencyCode,
-            portfolioSummaries: portfolioSummaries.map {
-                WalletHeroFiat.Summary(walletId: $0.walletId, currencyCode: $0.currencyCode, totalFiat: $0.totalFiat)
-            },
-            chainStates: chainStateRecords.map {
-                WalletHeroFiat.ChainTotal(
-                    walletId: $0.walletId,
-                    fiatCurrencyCode: $0.fiatCurrencyCode,
-                    totalFiat: $0.totalFiat
-                )
-            }
-        )
-    }
-
-    /// When the active wallet's balances + history were last refreshed —
-    /// the latest successful sync of the wallet's `balances` /
-    /// `transactions` domains in the freshness ledger. Stamped on every
-    /// refresh by `WalletRefreshCoordinator` (scope = wallet UUID), so it
-    /// shows even for a zero-balance wallet. `nil` before the first scan.
-    private var lastUpdated: Date? {
-        guard let walletId else { return nil }
-        let scope = walletId.uuidString
-        let domains: Set<String> = [
-            SyncDomain.balances.rawValue,
-            SyncDomain.transactions.rawValue
-        ]
-        return syncStatuses
-            .filter { $0.scopeId == scope && domains.contains($0.domainRaw) }
-            .compactMap(\.lastSyncedAt)
-            .max()
-    }
-
-    var body: some View {
-        BalanceCardView(
-            walletId: walletId,
-            walletName: walletName,
-            totalFiat: totalFiat,
-            currencyCode: currencyCode,
-            lastUpdated: lastUpdated,
-            pnlSummary: cardObservation.pnlSummary,
-            onSwitchWallet: onSwitchWallet,
-            onAddFunds: onAddFunds
-        )
-        .task(id: cardScopeKey) {
-            cardObservation.setScope(walletId: walletId, currencyCode: currencyCode)
-        }
-    }
-}
-
 // MARK: - RecentActivityRows (value-typed, equatable leaf)
 
 /// Value-typed snapshot of one recent-activity row's TRANSACTION-derived
@@ -3204,13 +3483,19 @@ private struct RecentActivityRows: View {
     let cachedPrices: [CachedPriceRecord]
     let onSelect: (UUID) -> Void
 
+    /// Leading inset for separators — matches logo + gap so the line
+    /// aligns under the title text (Settings / Holdings list geometry).
+    private var separatorLeading: CGFloat {
+        UniSpacing.m + AssetLogoMetrics.standard + UniSpacing.s
+    }
+
     private var priceMap: [String: Decimal] {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
     }
 
     var body: some View {
         let map = priceMap
-        ForEach(rows) { row in
+        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
             Button {
                 onSelect(row.id)
             } label: {
@@ -3228,8 +3513,20 @@ private struct RecentActivityRows: View {
                     tokenContract: row.tokenContract,
                     txHash: row.txHash
                 )
+                .padding(.horizontal, UniSpacing.m)
+                .padding(.vertical, UniSpacing.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            // Settings-style full-row press fill (not plain opacity).
+            .buttonStyle(.uniListRow)
+            .uniListRowSurface()
+
+            if index < rows.count - 1 {
+                Divider()
+                    .opacity(0.28)
+                    .padding(.leading, separatorLeading)
+            }
         }
     }
 }
@@ -3273,15 +3570,20 @@ private struct SupportedTokenRow: View, Equatable {
             Spacer(minLength: UniSpacing.s)
 
             VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                Text(WalletFormatting.native(row.amount, decimals: 6, hidden: hideBalances))
-                    .font(UniTypography.monoBody)
-                    .foregroundStyle(UniColors.Text.primary)
+                PrivacySensitiveAmount(
+                    text: WalletFormatting.native(row.amount, decimals: 6),
+                    font: UniTypography.monoBody,
+                    color: UniColors.Text.primary,
+                    isHidden: hideBalances
+                )
                 // Zero/unheld → "US$0.00", never "Price unavailable"
                 // (user direction 2026-06-18).
-                Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode, hidden: hideBalances))
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .monospacedDigit()
+                PrivacySensitiveAmount(
+                    text: WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode),
+                    font: UniTypography.footnote,
+                    color: UniColors.Text.tertiary,
+                    isHidden: hideBalances
+                )
             }
         }
         .padding(.vertical, UniSpacing.xs)
@@ -3460,6 +3762,24 @@ enum WalletHomeDestination: Hashable, Codable {
 private struct WalletPillCustomiseTarget: Identifiable {
     let walletId: UUID
     var id: UUID { walletId }
+}
+
+// MARK: - Balance-card scroll snap anchors
+
+/// Vertical snap ends for the home ScrollView: fully open balance card
+/// vs. holdings flush under the app bar.
+private enum WalletHomeScrollAnchor: Hashable {
+    case balanceCard
+    case mainContent
+}
+
+/// Reports the resting height of the identity balance card so mid-scroll
+/// release can snap to the nearest end.
+private struct WalletHomeBalanceCardHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
 }
 
 // MARK: - Wallet-pill regular-width menu modifier

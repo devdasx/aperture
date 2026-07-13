@@ -15,9 +15,17 @@ import Foundation
 /// when the user has selected Arabic in Settings → Language. The
 /// catalog has the Arabic translation; it's just unreachable.
 ///
-/// Fix: read the user's `languagePreference` from the GRDB preference store,
-/// derive a `Locale`, and pass it to `String(localized:locale:)`
-/// every time. This file is the single helper every site uses.
+/// **Why `locale:` alone is not enough.** `String(localized:locale:)` uses
+/// `locale` for *formatting* (numbers, dates), **not** for picking which
+/// `.lproj` translation to load. Translation selection still follows
+/// `Bundle.preferredLocalizations` (launch-time English on most devices).
+/// Filter-sheet previews like “Showing all 0 transactions” stayed English
+/// while the rest of the sheet (SwiftUI `Text` keys) followed the
+/// environment locale.
+///
+/// **Fix:** resolve the matching `*.lproj` bundle for the in-app language
+/// and pass it as `bundle:` to `String(localized:bundle:locale:)` (or
+/// `NSLocalizedString` for raw keys).
 enum ApertureLocalization {
 
     /// The user's currently-selected `Locale`, derived from
@@ -27,6 +35,38 @@ enum ApertureLocalization {
     static var currentLocale: Locale {
         let stored = AppPreferenceStore.shared.string("languagePreference", default: LanguagePreference.systemCode)
         return LanguagePreference.locale(for: stored) ?? .current
+    }
+
+    /// BCP-47 code of the language whose `.lproj` we should load, or `nil`
+    /// to use `Bundle.main` (system / unknown).
+    private static var preferredLanguageCode: String? {
+        let stored = AppPreferenceStore.shared.string(
+            "languagePreference",
+            default: LanguagePreference.systemCode
+        )
+        if stored != LanguagePreference.systemCode, !stored.isEmpty {
+            return stored
+        }
+        return LanguagePreference.preferredSystemLanguageCode()
+    }
+
+    /// Bundle whose `Localizable.strings` match the in-app language.
+    /// Falls back to `Bundle.main` when no matching `.lproj` exists.
+    static var localizationBundle: Bundle {
+        guard let code = preferredLanguageCode else { return .main }
+        if let path = Bundle.main.path(forResource: code, ofType: "lproj"),
+           let bundle = Bundle(path: path) {
+            return bundle
+        }
+        // e.g. "pt_BR" → try "pt-BR"; "zh_CN" → "zh-Hans" already handled
+        // by LanguagePreference codes. Last resort: language-only code.
+        if let dash = code.split(separator: "-").first.map(String.init),
+           dash != code,
+           let path = Bundle.main.path(forResource: dash, ofType: "lproj"),
+           let bundle = Bundle(path: path) {
+            return bundle
+        }
+        return .main
     }
 }
 
@@ -42,7 +82,11 @@ extension String {
     /// `String(localized:)` — but in this codebase that's basically
     /// nowhere.
     static func apertureLocalized(_ key: String.LocalizationValue) -> String {
-        String(localized: key, locale: ApertureLocalization.currentLocale)
+        String(
+            localized: key,
+            bundle: ApertureLocalization.localizationBundle,
+            locale: ApertureLocalization.currentLocale
+        )
     }
 
     /// Runtime catalog key (English source string already stored in a `String`
@@ -50,6 +94,12 @@ extension String {
     /// Use this for fee notes and other dynamic keys so they still honor the
     /// in-app language and resolve through `Localizable.xcstrings`.
     static func apertureLocalizedKey(_ key: String) -> String {
-        apertureLocalized(String.LocalizationValue(stringLiteral: key))
+        NSLocalizedString(
+            key,
+            tableName: nil,
+            bundle: ApertureLocalization.localizationBundle,
+            value: key,
+            comment: ""
+        )
     }
 }

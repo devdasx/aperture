@@ -97,7 +97,10 @@ struct BroadcastService: Sendable {
 
     private func broadcastBitcoinFamily(_ signed: SignedTransaction, chain: SupportedChain) async throws(SigningError) -> String {
         switch chain {
-        case .bitcoin, .litecoin:
+        case .bitcoin:
+            // P1 #8: BTC broadcast is mempool.space only (no Blockstream Esplora).
+            return try await broadcastBitcoinMempool(signed)
+        case .litecoin:
             return try await broadcastEsplora(signed, chain: chain)
         case .dogecoin:
             // Multi-provider: Blockbook sendtx → BlockCypher → Blockchair.
@@ -113,14 +116,20 @@ struct BroadcastService: Sendable {
         }
     }
 
-    /// Esplora `POST /tx` with the raw tx HEX as a `text/plain` body;
-    /// returns the txid as plain text (BTC: mempool.space / blockstream;
-    /// LTC: litecoinspace — all Esplora). Doc:
-    /// https://github.com/Blockstream/esplora/blob/master/API.md#post-tx ;
-    /// https://mempool.space/docs/api/rest#post-transaction. Live-verified
-    /// 2026-06-15: a malformed body returns `sendrawtransaction RPC
-    /// error: TX decode failed` (HTTP 400) on both mempool.space and
-    /// litecoinspace, proving the endpoint + raw-hex body shape.
+    /// BTC broadcast via **mempool.space only** (P1 #8 — no Blockstream).
+    private func broadcastBitcoinMempool(_ signed: SignedTransaction) async throws(SigningError) -> String {
+        do {
+            return try await BitcoinMempoolSpaceClient.shared.broadcast(rawHex: signed.rawHex)
+        } catch let rpc as RPCError {
+            throw Self.mapBroadcastError(rpc)
+        } catch let signing as SigningError {
+            throw signing
+        } catch {
+            throw SigningError.broadcastAmbiguous(error.localizedDescription)
+        }
+    }
+
+    /// Litecoinspace Esplora-shaped `POST /tx` with raw tx HEX body.
     private func broadcastEsplora(_ signed: SignedTransaction, chain: SupportedChain) async throws(SigningError) -> String {
         do {
             let data = try await client.callRESTPostRaw(

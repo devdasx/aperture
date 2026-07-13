@@ -41,62 +41,63 @@ struct AppLockView: View {
     @State private var eraseFailureReport: ApertureErrorReport?
 
     var body: some View {
-        NavigationStack {
-            PinCodeView(
-                mode: .verify,
-                onComplete: { _ in
-                    // 2026-06-09 v3 — wrap the unlock in a smooth iOS 26
-                    // spring so the lock's exit transition (scale 1.08
-                    // + opacity, set in `AppRoot`) and the home's
-                    // scale-from-0.97 reveal animate together. Without
-                    // `withAnimation` the state change is instantaneous
-                    // and SwiftUI uses no curve.
-                    withAnimation(.smooth(duration: 0.55)) {
-                        lockController.unlock()
-                    }
-                    // Capture a fresh biometric snapshot after every
-                    // successful unlock so drift detection stays accurate
-                    // (Rule #17 mechanism + the BiometricEnrollmentTracker
-                    // shipped 2026-06-06).
-                    if biometricEnabled {
-                        BiometricEnrollmentTracker.captureSnapshot(database: AppDatabase.shared)
-                    }
-                    // A successful unlock clears the Erase-Data counter — the
-                    // threshold counts only CONSECUTIVE lock-screen failures.
-                    PinCodeStorage.clearUnlockFailures()
-                },
-                onCancel: {
-                    // Cancel from a verify-mode PIN keeps the wallet
-                    // locked — the user must authenticate to enter.
-                },
-                onForgotPin: {
-                    isShowingForgotSheet = true
-                },
-                onFailedAttempt: { handleFailedUnlock() },
-                // The wrong-passcode line shows "N attempts remaining" ONLY when
-                // the user armed Erase Data — that's the only mode with a real
-                // finite count (the wipe at the threshold). Read after the failure
-                // is recorded, so it reflects the just-incremented count.
-                attemptsRemaining: {
-                    guard eraseDataEnabled else { return nil }
-                    return max(0, PinCodeStorage.eraseDataThreshold - PinCodeStorage.unlockFailureCount())
-                },
-                showsForgotPasscodeOption: true,
-                accessContext: .unlockApp
-            )
+        // Fill with Aperture page chrome (Cloud / Midnight / Dark) —
+        // never rely on `NavigationStack`'s system background. In
+        // system dark that fill is pure black OLED (`#000`), which is
+        // only correct for the explicit "Dark" theme; Midnight is
+        // `#191A1E` and must show through the lock surface.
+        ZStack {
+            UniColors.Background.primary.ignoresSafeArea()
+
+            NavigationStack {
+                PinCodeView(
+                    mode: .verify,
+                    onComplete: { _ in
+                        // 2026-06-09 v3 — wrap the unlock in a smooth iOS 26
+                        // spring so the lock's exit transition (scale 1.08
+                        // + opacity, set in `AppRoot`) and the home's
+                        // scale-from-0.97 reveal animate together. Without
+                        // `withAnimation` the state change is instantaneous
+                        // and SwiftUI uses no curve.
+                        withAnimation(.smooth(duration: 0.55)) {
+                            lockController.unlock()
+                        }
+                        // Capture a fresh biometric snapshot after every
+                        // successful unlock so drift detection stays accurate
+                        // (Rule #17 mechanism + the BiometricEnrollmentTracker
+                        // shipped 2026-06-06).
+                        if biometricEnabled {
+                            BiometricEnrollmentTracker.captureSnapshot(database: AppDatabase.shared)
+                        }
+                        // A successful unlock clears the Erase-Data counter — the
+                        // threshold counts only CONSECUTIVE lock-screen failures.
+                        PinCodeStorage.clearUnlockFailures()
+                    },
+                    onCancel: {
+                        // Cancel from a verify-mode PIN keeps the wallet
+                        // locked — the user must authenticate to enter.
+                    },
+                    onForgotPin: {
+                        isShowingForgotSheet = true
+                    },
+                    onFailedAttempt: { handleFailedUnlock() },
+                    // The wrong-passcode line shows "N attempts remaining" ONLY when
+                    // the user armed Erase Data — that's the only mode with a real
+                    // finite count (the wipe at the threshold). Read after the failure
+                    // is recorded, so it reflects the just-incremented count.
+                    attemptsRemaining: {
+                        guard eraseDataEnabled else { return nil }
+                        return max(0, PinCodeStorage.eraseDataThreshold - PinCodeStorage.unlockFailureCount())
+                    },
+                    showsForgotPasscodeOption: true,
+                    accessContext: .unlockApp
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(UniColors.Background.primary.ignoresSafeArea())
+                .toolbarBackground(UniColors.Background.primary, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+            }
         }
-        // Opaque backing. `AppLockView` used to ship inside a
-        // `.fullScreenCover`, which provided window-level opacity
-        // automatically — when the cover moved into `AppRoot`'s
-        // ZStack on 2026-06-07 (for the splash race + foreground
-        // flash fixes) the cover semantics went away and the
-        // wallet home started bleeding through the keypad gaps.
-        // The lock owning its own background is the honest fix:
-        // the surface guarantees its own opacity regardless of how
-        // it's presented, so any future caller (a sheet, a cover, a
-        // direct mount in another stack) gets correct behavior for
-        // free.
-        .background(UniColors.Background.primary.ignoresSafeArea())
         .sheet(isPresented: $isShowingForgotSheet) {
             ForgotPinSheet(
                 onResetAperture: {
@@ -239,7 +240,13 @@ private struct ForgotPinSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
 
                 if resetFromForgotPasscodeEnabled {
-                    Text(verbatim: "Because lock-screen reset is enabled, you can erase Aperture from this iPhone and set it up again. This removes every local wallet, recovery phrase, passcode, \(resetSecurityItemName), transaction cache, custom token, and app setting from this device.")
+                    Text(verbatim: String(
+                        format: String.apertureLocalized(
+                            "Because lock-screen reset is enabled, you can erase Aperture from this iPhone and set it up again. This removes every local wallet, recovery phrase, passcode, %@, transaction cache, custom token, and app setting from this device."
+                        ),
+                        locale: ApertureLocalization.currentLocale,
+                        resetSecurityItemName
+                    ))
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Text.secondary)
                         .multilineTextAlignment(.leading)
@@ -282,11 +289,28 @@ private struct ForgotPinSheet: View {
                 onResetAperture()
             }
         } message: {
-            Text(verbatim: "This removes all local wallets, recovery phrases, passcodes, \(resetSecurityItemName), transaction history cache, custom tokens, and app data from this device. Wallets can only be restored from their recovery phrases.")
+            Text(verbatim: eraseApertureConfirmMessage)
         }
     }
 
     private var resetSecurityItemName: String {
-        biometricService.isAvailable ? "\(biometricService.biometryType.displayName) settings" : "security settings"
+        if biometricService.isAvailable {
+            return String(
+                format: String.apertureLocalized("%@ settings"),
+                locale: ApertureLocalization.currentLocale,
+                biometricService.biometryType.displayName
+            )
+        }
+        return String.apertureLocalized("security settings")
+    }
+
+    private var eraseApertureConfirmMessage: String {
+        String(
+            format: String.apertureLocalized(
+                "This removes all local wallets, recovery phrases, passcodes, %@, transaction history cache, custom tokens, and app data from this device. Wallets can only be restored from their recovery phrases."
+            ),
+            locale: ApertureLocalization.currentLocale,
+            resetSecurityItemName
+        )
     }
 }

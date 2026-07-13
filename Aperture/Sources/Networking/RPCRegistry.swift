@@ -316,9 +316,11 @@ enum RPCRegistry {
     // MARK: - Bitcoin family (4 chains, REST)
 
     private static func bitcoinEndpoints() -> [RPCEndpoint?] {
+        // P1 #8: BTC REST is **mempool.space only** (fees, broadcast, tx
+        // detail). Blockstream Esplora removed — no multi-Esplora rotation.
+        // Balance/listunspent stays on Electrum, not this registry entry.
         [
-            rs("btc-mempool",     "https://mempool.space/api",     .bitcoin, "mempool.space", .moderate10, 0),
-            rs("btc-blockstream", "https://blockstream.info/api",  .bitcoin, "blockstream",   .moderate10, 1),
+            rs("btc-mempool", "https://mempool.space/api", .bitcoin, "mempool.space", .moderate10, 0),
         ]
     }
     private static func bitcoinCashEndpoints() -> [RPCEndpoint?] {

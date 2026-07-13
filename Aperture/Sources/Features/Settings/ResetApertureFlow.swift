@@ -32,7 +32,6 @@ final class ResetFlowGate {
 struct ResetApertureFlow: View {
     let onClose: () -> Void
 
-    @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Route: Hashable {
@@ -46,14 +45,14 @@ struct ResetApertureFlow: View {
     private var typedMatches: Bool { typed == confirmWord }
     @State private var didFireTypedHaptic = false
     @State private var isShowingPinGate = false
+    @State private var pinGateAutoPromptBiometrics = true
     /// Defers the PIN cover until the keyboard has fully retracted.
     @State private var pinGateTask: Task<Void, Never>?
 
-    @State private var stagesDone: Set<FactoryReset.Stage> = []
-    @State private var isComplete = false
-    @State private var eraseError: String?
-    @State private var eraseErrorReport: ApertureErrorReport?
     @State private var confirmFocused = false
+    /// Prevents SwiftUI `.task` re-entry from starting a second wipe while
+    /// the first is still in flight (nested GRDB writes reenter fatally).
+    @State private var isWiping = false
 
     // MARK: - Tokens (handoff-exact)
 
@@ -65,7 +64,6 @@ struct ResetApertureFlow: View {
         .keys,
         .security
     ]
-    private static let minimumProcessStepDuration: Duration = .milliseconds(650)
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -78,23 +76,16 @@ struct ResetApertureFlow: View {
         // ID (when the user enabled biometrics) with the PIN keypad fallback,
         // not a raw LAContext prompt. Presented after the user types RESET.
         .sheet(isPresented: $isShowingPinGate) {
-            NavigationStack {
-                PinCodeView(
-                    mode: .verify,
-                    onComplete: { _ in
-                        isShowingPinGate = false
-                        push(.erasing)
-                    },
-                    onCancel: { isShowingPinGate = false },
-                    allowsBiometrics: true,
-                    showsNavigationControls: false,
-                    accessContext: .resetAperture
-                )
-            }
-            .apertureEnvironment()
-            .uniSheetDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
+            SensitiveAuthPasscodeSheet(
+                accessContext: .resetAperture,
+                autoPromptBiometrics: pinGateAutoPromptBiometrics,
+                allowsBiometrics: true,
+                onComplete: {
+                    isShowingPinGate = false
+                    push(.erasing)
+                },
+                onCancel: { isShowingPinGate = false }
+            )
         }
     }
 
@@ -139,9 +130,7 @@ struct ResetApertureFlow: View {
                 }
                 resetImpactSection
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
 
             GlassEffectContainer(spacing: 10) {
                 VStack(spacing: 10) {
@@ -160,6 +149,9 @@ struct ResetApertureFlow: View {
     }
 
     private var resetImpactSection: some View {
+        // Same grouped-card fill as Settings sections (`List.rowBackground`),
+        // not the system inset-grouped default — that drifts off Midnight
+        // cards and looks blacker than the rest of the app.
         Section {
             resetImpactRow("creditcard", "Wallets", "Every wallet you’ve created, imported, or are watching.")
             resetImpactRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s local database.")
@@ -186,6 +178,7 @@ struct ResetApertureFlow: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+        .uniListRowSurface()
     }
 
     // MARK: - 2 · Confirm (type RESET + Face ID)
@@ -206,7 +199,12 @@ struct ResetApertureFlow: View {
                 // P2-029: factory reset is local device only — iCloud backups remain.
                 subtitle("Typing the word below confirms the reset. This erases wallets, keys, and settings on this iPhone. iCloud backups on this Apple ID are not deleted and can still restore a wallet.", centered: true)
                 VStack(spacing: 10) {
-                    Text("Type \(Text(verbatim: confirmWord).foregroundColor(UniColors.Text.primary).bold()) to continue")
+                    // Localized format string; confirmation word stays fixed Latin
+                    // (must match what the user types, e.g. "RESET").
+                    Text(verbatim: String(
+                        format: String.apertureLocalized("Type %@ to continue"),
+                        confirmWord
+                    ))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(UniColors.Text.secondary)
                     ZStack {
@@ -257,16 +255,20 @@ struct ResetApertureFlow: View {
             push(.erasing)
             return
         }
-        // Dismiss the keyboard FIRST and let it fully retract before the PIN
-        // cover slides up — otherwise the keyboard and the cover animate over
-        // each other (2026-06-21 user direction). Resign focus, then present
-        // once the standard keyboard-dismiss animation has settled.
+        // Dismiss keyboard, then biometric-first; passcode sheet only if needed.
         confirmFocused = false
         pinGateTask?.cancel()
         pinGateTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
-            isShowingPinGate = true
+            let gate = await SensitiveActionAuth.gatePreferringBiometric()
+            switch gate {
+            case .authorized:
+                push(.erasing)
+            case .presentPasscode(let autoPrompt):
+                pinGateAutoPromptBiometrics = autoPrompt
+                isShowingPinGate = true
+            }
         }
     }
 
@@ -274,253 +276,50 @@ struct ResetApertureFlow: View {
         value.uppercased(with: Locale(identifier: "en_US_POSIX"))
     }
 
-    // MARK: - 3 · Erasing → Factory fresh (one morphing screen)
+    // MARK: - 3 · Erasing — unified ProcessLyricsScreen (same as create wallet)
 
+    /// Factory-reset process — same `ProcessLyricsScreen` as wallet setup.
     private var erasingScreen: some View {
-        VStack(spacing: 0) {
-            List {
-                erasingHeaderSection
-                if eraseError == nil, !isComplete { processSection }
-                if isComplete { feedbackSection }
+        ProcessLyricsScreen(
+            configuration: .factoryReset,
+            perform: { report in
+                try await runWipeReporting(report)
+            },
+            onPrimary: {
+                close()
+            },
+            mapFailureMessage: { _ in
+                String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
-            GlassEffectContainer(spacing: 10) {
-                VStack(spacing: 10) {
-                    if eraseError != nil {
-                        dangerButton("Try again") {
-                            eraseError = nil
-                            eraseErrorReport = nil
-                            stagesDone = []
-                            Task { await runWipe() }
-                        }
-                        ghostButton("Cancel") { close() }
-                    } else if isComplete {
-                        primaryButton("Get Started") { close() }
-                    }
-                }
-            }
-            .padding(.horizontal, hPad)
-            .padding(.bottom, UniSpacing.l)
-        }
-        .navigationTitle("Reset Aperture")
-        .navigationBarTitleDisplayMode(.inline)
+        )
         .navigationBarBackButtonHidden(true)
-        .task { await runWipe() }
     }
 
-    @ViewBuilder
-    private var erasingHeaderSection: some View {
-        Section {
-            VStack(spacing: UniSpacing.mPlus) {
-                morphingEmblem
-                bigTitle(isComplete ? "Reset complete" : (eraseError == nil ? "Erasing Aperture…" : "Couldn’t reset"), centered: true)
-                if let eraseError {
-                    subtitleVerbatim(eraseError)
-                } else {
-                    subtitle(isComplete
-                        ? "Aperture has been restored to its original state. Everything on this device has been erased."
-                        : "Securely erasing all wallets and data from this device.",
-                        centered: true)
-                }
-                if let eraseErrorReport {
-                    ApertureErrorSupportSection(report: eraseErrorReport)
-                        .padding(.top, UniSpacing.xs)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, hPad)
-            .padding(.top, UniSpacing.s)
-            .padding(.bottom, UniSpacing.s)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-        }
-    }
+    /// Drive the handoff process screen from the real staged wipe (4 segments).
+    private func runWipeReporting(
+        _ report: @escaping @MainActor (Int, Double) async -> Void
+    ) async throws {
+        guard !isWiping else { return }
+        isWiping = true
+        defer { isWiping = false }
 
-    private let emblem: CGFloat = 132
-    private var ringProgress: Double {
-        Double(stagesDone.count) / Double(Self.visibleProcessStages.count)
-    }
-
-    private var morphingEmblem: some View {
-        ZStack {
-            ZStack {
-                Circle().stroke(UniColors.Fill.quaternary, lineWidth: 7)
-                Circle()
-                    .trim(from: 0, to: ringProgress)
-                    .stroke(danger, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.45), value: ringProgress)
-                Image(systemName: "trash")
-                    .font(.system(size: 44, weight: .regular))
-                    .foregroundStyle(danger)
-            }
-            .opacity(isComplete ? 0 : 1)
-            .scaleEffect(!reduceMotion && isComplete ? 0.9 : 1)
-
-            irisDisc(size: emblem)
-                .opacity(isComplete ? 1 : 0)
-                .scaleEffect(isComplete ? 1 : (reduceMotion ? 1 : 0.85))
-        }
-        .frame(width: emblem, height: emblem)
-        .padding(.vertical, 12)
-        .animation(reduceMotion ? .easeInOut(duration: 0.3) : .smooth(duration: 0.6), value: isComplete)
-    }
-
-    /// The brand iris seal — an `--ink` disc with the iris in the `--surface`
-    /// colour, matching the handoff.
-    private func irisDisc(size: CGFloat, irisFraction: CGFloat = 0.82) -> some View {
-        ApertureAppLogo(size: size, irisScale: irisFraction)
-    }
-
-    @ViewBuilder
-    private var processSection: some View {
-        Section {
-            ForEach(Self.visibleProcessStages, id: \.self) { stage in
-                processRow(stage, state: stepState(stage))
-                    .listRowBackground(UniColors.List.rowBackground)
+        func lyricIndex(for stage: FactoryReset.Stage) -> Int? {
+            switch stage {
+            case .wallets: return 0
+            case .privateData: return 1
+            case .keys: return 2
+            case .security: return 3
+            case .networkCache, .settings: return nil
             }
         }
-    }
 
-    private enum StepVisual { case done, active, idle }
-    private func stepState(_ stage: FactoryReset.Stage) -> StepVisual {
-        if stagesDone.contains(stage) { return .done }
-        if Self.visibleProcessStages.first(where: { !stagesDone.contains($0) }) == stage { return .active }
-        return .idle
-    }
-
-    private func processRow(_ stage: FactoryReset.Stage, state: StepVisual) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            processStatusGlyph(state)
-                .frame(width: 24, height: 24)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(stage.processTitle)
-                    .font(.system(size: 15.5, weight: .semibold))
-                    .foregroundStyle(state == .idle ? UniColors.Text.tertiary : UniColors.Text.primary)
-                Text(stage.processDetail)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 6)
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private func processStatusGlyph(_ state: StepVisual) -> some View {
-        switch state {
-        case .done:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(danger)
-        case .active:
-            ProgressView()
-                .controlSize(.small)
-                .tint(danger)
-        case .idle:
-            Image(systemName: "circle")
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(UniColors.Fill.quaternary)
-        }
-    }
-
-    @ViewBuilder
-    private var feedbackSection: some View {
-        Section {
-            feedbackCard
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-        }
-    }
-
-    private var feedbackCard: some View {
-        VStack(spacing: 0) {
-            Text("Help us improve")
-                .font(.system(size: 15.5, weight: .bold))
-                .foregroundStyle(UniColors.Text.primary)
-                .padding(.bottom, 5)
-            Text("We’d love to know why you’re leaving and how we could be better. Every message reaches our team.")
-                .font(.system(size: 13))
-                .foregroundStyle(UniColors.Text.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 14)
-            Button {
-                UniHapticEngine.shared.play(.contextualImpact(.whisper))
-                if let url = URL(string: "mailto:care@aperturex.io?subject=Aperture%20feedback") { openURL(url) }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "envelope").font(.system(size: 16, weight: .semibold))
-                    Text(verbatim: "care@aperturex.io").font(.system(size: 14.5, weight: .bold))
-                }
-                .foregroundStyle(UniColors.Text.primary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(UniColors.Fill.quaternary, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 18)
-        .background(UniColors.Background.secondary, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.top, UniSpacing.s)
-    }
-
-    // MARK: - The wipe
-
-    private func runWipe() async {
-        guard eraseError == nil, !isComplete else { return }
-        let animate = !reduceMotion
-
-        do {
-            try await FactoryReset.performStagedWipe(database: AppDatabase.shared) { stage in
-                await completeVisibleProcessStage(stage, animate: animate)
-            }
-        } catch {
-            UniHapticEngine.shared.play(.error)
-            withAnimation { stagesDone = [] }
-            let message = String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
-            eraseError = message
-            eraseErrorReport = ApertureErrorReport(
-                context: "Reset Aperture",
-                title: "Couldn't reset",
-                message: message,
-                error: error,
-                recoverySuggestion: "Try again. If reset keeps failing, email support with the advanced details.",
-                metadata: [
-                    "completedStages": stagesDone.map { String(describing: $0) }.sorted().joined(separator: ", "),
-                    "visibleStages": Self.visibleProcessStages.map { String(describing: $0) }.joined(separator: ", ")
-                ]
-            )
-            return
-        }
-
-        if stagesDone.count < Self.visibleProcessStages.count {
-            withAnimation(animate ? .easeOut(duration: 0.28) : nil) {
-                stagesDone = Set(Self.visibleProcessStages)
+        try await FactoryReset.performStagedWipe(database: AppDatabase.shared) { stage in
+            if let index = lyricIndex(for: stage) {
+                let fraction = Double(index + 1) / 4.0
+                await report(index, fraction)
             }
         }
-        if animate { try? await Task.sleep(for: .milliseconds(450)) }
-        UniHapticEngine.shared.play(.success)
-        withAnimation { isComplete = true }
-    }
-
-    private func completeVisibleProcessStage(_ stage: FactoryReset.Stage, animate: Bool) async {
-        guard Self.visibleProcessStages.contains(stage), !stagesDone.contains(stage) else { return }
-        try? await Task.sleep(for: Self.minimumProcessStepDuration)
-        UniHapticEngine.shared.play(.contextualImpact(.whisper))
-        withAnimation(animate ? .easeOut(duration: 0.28) : nil) {
-            _ = stagesDone.insert(stage)
-        }
+        await report(3, 1.0)
     }
 
     private func close() {
@@ -542,7 +341,7 @@ struct ResetApertureFlow: View {
                     onTap()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text("Close"))
             }
@@ -632,42 +431,6 @@ struct ResetApertureFlow: View {
     /// Secondary CTA — the unified `.glass` button (no longer bare text).
     private func ghostButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         UniButton(title: title, variant: .secondary, action: action)
-    }
-}
-
-private extension FactoryReset.Stage {
-    var processTitle: LocalizedStringKey {
-        switch self {
-        case .wallets:
-            return "Erasing wallets & history"
-        case .privateData:
-            return "Clearing private app records"
-        case .keys:
-            return "Wiping keys & recovery phrases"
-        case .security:
-            return "Clearing passcode & app keys"
-        case .networkCache:
-            return ""
-        case .settings:
-            return "Restoring default settings"
-        }
-    }
-
-    var processDetail: LocalizedStringKey {
-        switch self {
-        case .wallets:
-            return "Wallet records, balances, transactions, and manifests."
-        case .privateData:
-            return "Security records and wallet-specific sync data."
-        case .keys:
-            return "Seeds, mnemonics, and imported private keys."
-        case .security:
-            return "PIN records and app encryption keys."
-        case .networkCache:
-            return ""
-        case .settings:
-            return "Active wallet, screen restoration, and resettable preferences."
-        }
     }
 }
 

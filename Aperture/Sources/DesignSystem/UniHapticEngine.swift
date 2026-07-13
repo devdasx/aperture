@@ -143,12 +143,24 @@ final class UniHapticEngine {
             notificationGenerator.prepare()
         case .error:
             playError()
-        case .increase, .decrease, .alignment, .levelChange, .start, .stop:
-            // These cases have no direct UIKit generator analogue; the
-            // platform's `SensoryFeedback` is the only correct path.
-            // Directional-fire of these via UIKit isn't supported;
-            // call sites use `.uniHaptic(_:trigger:)` instead.
-            break
+        case .increase:
+            lightImpact.impactOccurred(intensity: 0.75)
+            lightImpact.prepare()
+        case .decrease:
+            lightImpact.impactOccurred(intensity: 0.55)
+            lightImpact.prepare()
+        case .alignment:
+            mediumImpact.impactOccurred(intensity: 0.7)
+            mediumImpact.prepare()
+        case .levelChange:
+            mediumImpact.impactOccurred(intensity: 0.85)
+            mediumImpact.prepare()
+        case .start:
+            mediumImpact.impactOccurred(intensity: 0.6)
+            mediumImpact.prepare()
+        case .stop:
+            lightImpact.impactOccurred(intensity: 0.5)
+            lightImpact.prepare()
         case .toggle:
             // 2026-06-10 handoff toggle pattern — rigid impact.
             rigidImpact.impactOccurred(intensity: 0.9)

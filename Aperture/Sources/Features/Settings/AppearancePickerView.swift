@@ -34,23 +34,20 @@ struct AppearancePickerView: View {
 
                             if current == option {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.system(size: 15, weight: .regular))
                                     .foregroundStyle(UniColors.Icon.accent)
                                     .accessibilityHidden(true)
                             }
                         }
-                        .padding(.vertical, UniSpacing.xxs)
                         .uniListRowHitTarget()
                     }
                     .buttonStyle(.uniListRow)
                     .accessibilityAddTraits(current == option ? [.isSelected, .isButton] : .isButton)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Choose appearance"))
         .navigationBarTitleDisplayMode(.large)
         .uniHaptic(.selection, trigger: themeRaw)

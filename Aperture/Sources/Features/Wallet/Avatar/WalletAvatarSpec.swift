@@ -275,8 +275,12 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         // the same gradient across devices and across re-runs). The
         // NEW-wallet creation paths use `randomDefault()` instead so
         // each new wallet's gradient is genuinely random.
+        //
+        // Pool is chromatic-only (no graphite / slate): auto identity
+        // never lands black, grey, or white (2026-07 product rule).
+        let pool = WalletAvatarGradient.randomAssignable
         let h = deterministicHash(name.isEmpty ? "Wallet" : name)
-        let gradient = WalletAvatarGradient.allCases[Int(h % UInt32(WalletAvatarGradient.allCases.count))]
+        let gradient = pool[Int(h % UInt32(pool.count))]
         return WalletAvatarSpec.walletMark(
             gradient: gradient,
             badge: nil
@@ -284,24 +288,24 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
     }
 
     /// New-wallet default identity: iris glyph + a **randomly-picked**
-    /// gradient. Called from `WalletAvatarDefaults.spec(forName:kind:)`
-    /// (used by `WalletRecord.init` when no avatar fields are
-    /// supplied), so every freshly-created wallet lands a different
-    /// color from the 12 curated gradients — and the user direction
-    /// of *"same icon, but always different color (Random color)"* is
-    /// satisfied for create / import flows.
+    /// colour from `WalletAvatarGradient.chromaticCases` (the same
+    /// named list as the icon picker — Sky, Coral, Ocean, etc.; never
+    /// black / grey). Called from `WalletAvatarDefaults.spec` on every
+    /// create / import insert.
+    ///
+    /// - Parameter excluding: Gradient keys already used by other
+    ///   wallets (raw values). Prefer an unused colour so successive
+    ///   creates feel distinct; if every chromatic colour is taken,
+    ///   falls back to a full random pick.
     ///
     /// **Why not call this from `auto(name:)`.** Several surfaces use
     /// `auto(name:)` as a fallback when the active wallet is briefly
-    /// nil (cold-launch frame between GRDB open and the first
-    /// GRDB observation snapshot). If those calls were random, the tab icon
-    /// would flash a different color on every body recompute. Keeping
-    /// `auto(name:)` deterministic and adding `randomDefault()`
-    /// exclusively for the new-wallet write paths preserves stability
-    /// on the read side and gives the genuine randomness the user
-    /// asked for on the write side.
-    static func randomDefault() -> WalletAvatarSpec {
-        let gradient = WalletAvatarGradient.allCases.randomElement() ?? .graphite
+    /// nil. If those calls were random, the tab icon would flash a
+    /// different color on every body recompute.
+    static func randomDefault(excluding usedRawValues: Set<String> = []) -> WalletAvatarSpec {
+        let pool = WalletAvatarGradient.chromaticCases
+        let unused = pool.filter { !usedRawValues.contains($0.rawValue) }
+        let gradient = (unused.isEmpty ? pool : unused).randomElement() ?? .blue
         return WalletAvatarSpec.walletMark(
             gradient: gradient,
             badge: nil

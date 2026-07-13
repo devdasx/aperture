@@ -135,11 +135,16 @@ enum WalletAvatarDefaults {
     static var symbol: String { legacySymbol }
     static var colorHex: String { legacyColorHex }
 
+    /// Random chromatic colour for a new create / import wallet.
+    /// Uses the full picker palette (including Sky, Mint, Coral, …).
+    /// - Parameter excludingGradientRaws: Already-used `avatar_gradient`
+    ///   values so we prefer a colour not yet on another wallet.
     static func spec(
         forName name: String,
-        kind: WalletKind
+        kind: WalletKind,
+        excludingGradientRaws: Set<String> = []
     ) -> (gradient: String, symbolType: String, glyph: String?, monogram: String?, badge: String?) {
-        let spec = WalletAvatarSpec.randomDefault()
+        let spec = WalletAvatarSpec.randomDefault(excluding: excludingGradientRaws)
         _ = name
         return (
             gradient: spec.gradient.rawValue,

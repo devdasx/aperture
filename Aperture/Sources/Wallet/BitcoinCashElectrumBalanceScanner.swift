@@ -92,26 +92,8 @@ actor BitcoinCashElectrumBalanceScanner {
             fiatCurrencyCode: currencyCode,
             save: false
         )
-        // BUG-010: persist activity rows so BCH Activity is not empty.
-        if includeHistory {
-            let history = await safeRecentEvents(scans: scans)
-            for event in history.prefix(50) {
-                try txRepo.upsertTransaction(
-                    addressId: plan.primaryAddressId,
-                    txHash: event.txHash,
-                    direction: event.direction,
-                    amountRaw: event.amount,
-                    tokenSymbol: SupportedChain.bitcoinCash.ticker,
-                    tokenContract: nil,
-                    blockNumber: event.blockNumber,
-                    occurredAt: event.occurredAt,
-                    status: event.status,
-                    counterparty: event.counterparty,
-                    feeRaw: event.fee,
-                    save: false
-                )
-            }
-        }
+        // History is persisted after gap extension so every scanned address
+        // gets its own activity rows (not only primaryAddressId).
         if includeHistory || totalSats > 0 {
             try txRepo.markScanComplete(
                 addressId: plan.primaryAddressId,
@@ -196,6 +178,34 @@ actor BitcoinCashElectrumBalanceScanner {
             try txRepo.flush()
         }
 
+        // P1 history: per-address legs for every scanned path.
+        if includeHistory {
+            let addressIds = try Self.addressIdByAddress(
+                walletId: walletId,
+                chain: .bitcoinCash,
+                database: database
+            )
+            let history = await safeRecentEvents(scans: allScans)
+            for event in history {
+                guard let addressId = addressIds[event.ownerAddress] else { continue }
+                try txRepo.upsertTransaction(
+                    addressId: addressId,
+                    txHash: event.txHash,
+                    direction: event.direction,
+                    amountRaw: event.amount,
+                    tokenSymbol: SupportedChain.bitcoinCash.ticker,
+                    tokenContract: nil,
+                    blockNumber: event.blockNumber,
+                    occurredAt: event.occurredAt,
+                    status: event.status,
+                    counterparty: event.counterparty,
+                    feeRaw: event.fee,
+                    save: false
+                )
+            }
+            try txRepo.flush()
+        }
+
         let utxos = allScans.flatMap { scan in
             scan.utxos.map { utxo in
                 ChainStateRepository.AddressedUTXO(
@@ -226,6 +236,26 @@ actor BitcoinCashElectrumBalanceScanner {
         )
     }
 
+    private static func addressIdByAddress(
+        walletId: UUID,
+        chain: SupportedChain,
+        database: AppDatabase
+    ) throws -> [String: UUID] {
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, address FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ?
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            ).reduce(into: [String: UUID]()) { partial, row in
+                guard let id = UUID(uuidString: row["id"]) else { return }
+                partial[row["address"]] = id
+            }
+        }
+    }
+
     private func safeRecentEvents(scans: [BitcoinCashElectrumAddressScan]) async -> [BitcoinCashHistoryEvent] {
         do {
             return try await recentEvents(scans: scans)
@@ -235,34 +265,44 @@ actor BitcoinCashElectrumBalanceScanner {
         }
     }
 
-    /// Electrum `get_history` → Haskoin `bch/transaction/{txid}` detail,
-    /// same shape `TransactionDetailService.bitcoinHaskoin` already uses.
+    /// Electrum `get_history` → Haskoin `bch/transaction/{txid}` detail.
+    /// One activity leg per owner address that saw the tx.
     private func recentEvents(scans: [BitcoinCashElectrumAddressScan]) async throws -> [BitcoinCashHistoryEvent] {
-        let ownAddresses = Set(scans.map { BitcoinCashHistorySupport.normalizeAddress($0.address) })
-        guard !ownAddresses.isEmpty else { return [] }
+        let walletAddresses = BitcoinCashHistorySupport.normalizeAddressSet(scans.map(\.address))
+        guard !walletAddresses.isEmpty else { return [] }
 
         var heightsByHash: [String: Int] = [:]
+        var ownersByHash: [String: Set<String>] = [:]
         for scan in scans {
-            for item in scan.history {
-                heightsByHash[item.txHash] = item.height
+            let newest = scan.history.sorted { lhs, rhs in
+                if lhs.height == rhs.height { return lhs.txHash > rhs.txHash }
+                return lhs.height > rhs.height
+            }.prefix(HistoryScanLimits.perAddress)
+            for item in newest {
+                if let existing = heightsByHash[item.txHash] {
+                    if item.height > existing { heightsByHash[item.txHash] = item.height }
+                } else {
+                    heightsByHash[item.txHash] = item.height
+                }
+                ownersByHash[item.txHash, default: []].insert(scan.address)
             }
         }
         guard !heightsByHash.isEmpty else { return [] }
 
-        // Newest heights first (mempool height 0 / -1 last among ties).
         let txHashes = heightsByHash
             .sorted { lhs, rhs in
                 if lhs.value == rhs.value { return lhs.key < rhs.key }
                 return lhs.value > rhs.value
             }
-            .prefix(50)
+            .prefix(HistoryScanLimits.maxDetailFetches)
             .map(\.key)
 
         var events: [BitcoinCashHistoryEvent] = []
-        events.reserveCapacity(txHashes.count)
-        await withTaskGroup(of: BitcoinCashHistoryEvent?.self) { group in
+        events.reserveCapacity(min(txHashes.count * 2, HistoryScanLimits.maxDetailFetches))
+        await withTaskGroup(of: [BitcoinCashHistoryEvent].self) { group in
             for txHash in txHashes {
                 let fallbackHeight = heightsByHash[txHash]
+                let owners = ownersByHash[txHash] ?? []
                 group.addTask { [client] in
                     guard
                         let data = try? await client.callREST(
@@ -271,20 +311,21 @@ actor BitcoinCashElectrumBalanceScanner {
                         ),
                         let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
                     else {
-                        return nil
+                        return []
                     }
-                    return BitcoinCashHistorySupport.event(
-                        object: object,
-                        txHash: txHash,
-                        ownAddresses: ownAddresses,
-                        fallbackHeight: fallbackHeight
-                    )
+                    return owners.compactMap { owner in
+                        BitcoinCashHistorySupport.event(
+                            object: object,
+                            txHash: txHash,
+                            ownerAddress: owner,
+                            walletAddresses: walletAddresses,
+                            fallbackHeight: fallbackHeight
+                        )
+                    }
                 }
             }
-            for await event in group {
-                if let event {
-                    events.append(event)
-                }
+            for await batch in group {
+                events.append(contentsOf: batch)
             }
         }
         events.sort { $0.occurredAt > $1.occurredAt }
@@ -310,6 +351,8 @@ actor BitcoinCashElectrumBalanceScanner {
 /// Kept internal (not `private`) so unit tests can pin real mainnet fixtures.
 enum BitcoinCashHistorySupport {
     struct Event: Sendable, Equatable {
+        /// Wallet address this leg is stored under (cashaddr as in DB).
+        let ownerAddress: String
         let txHash: String
         let direction: TransactionDirection
         let amount: String
@@ -333,20 +376,25 @@ enum BitcoinCashHistorySupport {
     }
 
     /// Parse a Haskoin `GET /bch/transaction/{txid}` JSON object into an
-    /// activity event relative to `ownAddresses` (already normalized).
+    /// activity event relative to one `ownerAddress` (amounts) and the full
+    /// wallet address set (counterparty / internal).
     static func event(
         object: [String: Any],
         txHash: String,
-        ownAddresses: Set<String>,
+        ownerAddress: String,
+        walletAddresses: Set<String>,
         fallbackHeight: Int?
     ) -> Event? {
+        let ownerNorm = normalizeAddress(ownerAddress)
+        guard !ownerNorm.isEmpty else { return nil }
+
         let inputs = object["inputs"] as? [[String: Any]] ?? []
         let outputs = object["outputs"] as? [[String: Any]] ?? []
         let inputRows = inputs.compactMap(addressValue(fromHaskoinIO:))
         let outputRows = outputs.compactMap(addressValue(fromHaskoinIO:))
 
-        let spent = sum(inputRows.filter { ownAddresses.contains($0.normalized) }.map(\.value))
-        let received = sum(outputRows.filter { ownAddresses.contains($0.normalized) }.map(\.value))
+        let spent = sum(inputRows.filter { $0.normalized == ownerNorm }.map(\.value))
+        let received = sum(outputRows.filter { $0.normalized == ownerNorm }.map(\.value))
         let feeSats = int64(object["fee"])
 
         let direction: TransactionDirection
@@ -355,13 +403,20 @@ enum BitcoinCashHistorySupport {
         if spent == 0, received > 0 {
             direction = .incoming
             amountSats = received
-            counterparty = inputRows.first { !ownAddresses.contains($0.normalized) }?.display ?? ""
+            counterparty = inputRows.first { !walletAddresses.contains($0.normalized) }?.display ?? ""
         } else if spent > 0 {
-            let externalSent = max(0, spent - received - max(0, feeSats))
-            if externalSent > 0 {
+            let netFromAddress = max(0, spent - received)
+            let hasExternalOutput = outputRows.contains { !walletAddresses.contains($0.normalized) }
+            if netFromAddress > 0, hasExternalOutput {
                 direction = .outgoing
-                amountSats = externalSent
-                counterparty = outputRows.first { !ownAddresses.contains($0.normalized) }?.display ?? ""
+                amountSats = netFromAddress
+                counterparty = outputRows.first { !walletAddresses.contains($0.normalized) }?.display ?? ""
+            } else if netFromAddress > 0 {
+                direction = .internal
+                amountSats = netFromAddress
+                counterparty = outputRows.first {
+                    $0.normalized != ownerNorm && walletAddresses.contains($0.normalized)
+                }?.display ?? ""
             } else if received > 0 {
                 direction = .internal
                 amountSats = received
@@ -369,7 +424,7 @@ enum BitcoinCashHistorySupport {
             } else {
                 direction = .outgoing
                 amountSats = max(0, spent - max(0, feeSats))
-                counterparty = outputRows.first { !ownAddresses.contains($0.normalized) }?.display ?? ""
+                counterparty = outputRows.first { !walletAddresses.contains($0.normalized) }?.display ?? ""
             }
         } else {
             return nil
@@ -388,6 +443,7 @@ enum BitcoinCashHistorySupport {
             : Date()
 
         return Event(
+            ownerAddress: ownerAddress,
             txHash: txHash,
             direction: direction,
             amount: display(raw: amountSats),
@@ -396,6 +452,29 @@ enum BitcoinCashHistorySupport {
             status: confirmed ? .confirmed : .pending,
             counterparty: counterparty,
             fee: spent > 0 && feeSats > 0 ? display(raw: feeSats) : nil
+        )
+    }
+
+    /// Wallet-wide helper retained for tests that still pass the full set.
+    static func event(
+        object: [String: Any],
+        txHash: String,
+        ownAddresses: Set<String>,
+        fallbackHeight: Int?
+    ) -> Event? {
+        // Attribute to the first own address that participates (tests / legacy).
+        let inputs = object["inputs"] as? [[String: Any]] ?? []
+        let outputs = object["outputs"] as? [[String: Any]] ?? []
+        let rows = (inputs + outputs).compactMap(addressValue(fromHaskoinIO:))
+        let owner = rows.first { ownAddresses.contains($0.normalized) }?.display
+            ?? ownAddresses.first.map { "bitcoincash:\($0)" }
+        guard let owner else { return nil }
+        return event(
+            object: object,
+            txHash: txHash,
+            ownerAddress: owner,
+            walletAddresses: ownAddresses,
+            fallbackHeight: fallbackHeight
         )
     }
 
@@ -731,11 +810,12 @@ private actor BitcoinCashElectrumClient {
 
     private init(server: BitcoinCashElectrumServer) {
         self.server = server
-        let parameters: NWParameters = server.tls ? .tls : .tcp
+        // Electrum-Cash peers use self-signed certs — CA verify fails on device.
+        // See `ElectrumTLS` (same model as probe tests / desktop Electrum).
         self.connection = NWConnection(
             host: NWEndpoint.Host(server.host),
             port: NWEndpoint.Port(rawValue: server.port)!,
-            using: parameters
+            using: ElectrumTLS.parameters(tls: server.tls)
         )
     }
 

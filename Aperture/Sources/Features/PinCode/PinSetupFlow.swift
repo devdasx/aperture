@@ -1,12 +1,9 @@
 import SwiftUI
 
 /// First-time PIN setup coordinator, pushed onto the create-wallet
-/// `NavigationStack` after `BackupVerifyView` succeeds (or after the user
-/// skips backup, per the user's 2026-06-04 direction that both paths land
-/// at the PIN offer).
+/// `NavigationStack` after the recovery phrase (or from Settings → Security).
 ///
-/// **Intent (one sentence):** invite the user to set a PIN — honestly, and
-/// without locking them out if they decline.
+/// **Intent (one sentence):** set a 6-digit passcode (and optionally Face ID).
 ///
 /// **Sequence (Rule #17 §E).**
 /// 1. `.set` step — `PinCodeView(mode: .set)`. User picks 6 digits.
@@ -15,27 +12,18 @@ import SwiftUI
 ///    `pinEnabled = true`, advance to the biometric prompt.
 /// 3. `.biometricPrompt` step — invite the user to enable the current device
 ///    biometric. **Skipped entirely** if `BiometricService.isAvailable == false`.
-/// 4. The view calls `onFinish()`. The parent flow pushes `WalletReadyView`.
+/// 4. The view calls `onFinish()`.
 ///
 /// **No nested `NavigationStack`.** This view is itself pushed onto the
 /// parent recovery-phrase stack; the steps advance via internal `@State`
-/// + `withAnimation`, not via push. Nesting `NavigationStack` inside
-/// `NavigationStack` was the root cause of the 2026-06-04 "opens a
-/// screen, then navigates me back" bug: iOS treats the inner stack's
-/// pushes as parent-stack pops in some cases, popping the user out of
-/// the entire flow. This file's prior implementation had that bug; the
-/// flat state-machine is the fix.
+/// + `withAnimation`, not via push.
 ///
-/// **Skip path.** A "Skip" affordance lives in the trailing toolbar from
-/// the moment the user lands. Tapping presents a native iOS confirmation
-/// dialog that names the consequence and offers "Set Passcode" /
-/// "Skip anyway".
+/// **No passcode Skip.** Set/confirm always complete a PIN. Biometric
+/// still offers "Not now" on the optional Face ID step.
 struct PinSetupFlow: View {
 
-    /// Fires when the flow resolves — either by completing PIN + biometric
-    /// (with whatever combination of `pinEnabled` / `biometricEnabled`
-    /// state the user chose), or by skipping with the warning sheet
-    /// confirmation. The caller pushes `WalletReadyView`.
+    /// Fires when the flow resolves by completing PIN setup (and optional
+    /// biometric). Caller continues create/import or dismisses Settings cover.
     let onFinish: () -> Void
 
     /// Fires when the user taps the leading back chevron on the `.set`
@@ -65,8 +53,6 @@ struct PinSetupFlow: View {
     /// step can pass it back as the `expected` value. Cleared on completion
     /// so it doesn't linger in memory longer than necessary.
     @State private var pendingSetPin: String = ""
-
-    @State private var isShowingSkipWarning: Bool = false
 
     /// Direction flag for the step transition. `false` = forward push
     /// (incoming from trailing, outgoing to leading — iOS NavigationStack
@@ -127,9 +113,7 @@ struct PinSetupFlow: View {
                                 step = .confirm
                             }
                         },
-                        onCancel: {
-                            isShowingSkipWarning = true
-                        },
+                        onCancel: {},
                         showsNavigationControls: false
                     )
                     .transition(stepTransition)
@@ -140,9 +124,7 @@ struct PinSetupFlow: View {
                         onComplete: { _ in
                             commitPin()
                         },
-                        onCancel: {
-                            isShowingSkipWarning = true
-                        },
+                        onCancel: {},
                         onConfirmMismatch: {
                             // User direction 2026-06-05: on mismatch,
                             // send the user back to .set so they can
@@ -179,14 +161,6 @@ struct PinSetupFlow: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar { toolbar }
-        .alert(Text("Skip passcode setup?"), isPresented: $isShowingSkipWarning) {
-            Button("Set Passcode", role: .cancel) {}
-            Button("Skip anyway", role: .destructive) {
-                skipPasscodeSetup()
-            }
-        } message: {
-            Text("Without a passcode, your wallet is only protected by your iPhone's lock screen. If your iPhone is unlocked, anyone with it can use your wallet. You can enable a passcode anytime in Settings.")
-        }
         .onDisappear {
             commitTask?.cancel()
             biometricEnableTask?.cancel()
@@ -269,36 +243,20 @@ struct PinSetupFlow: View {
                 Button {
                     onBack()
                 } label: {
-                    Image(systemName: "chevron.backward")
+                    Image(systemName: UniDirectionalSymbol.back)
                 }
                 .accessibilityLabel(Text("Back"))
             } else if step == .confirm {
                 Button {
                     revertToSet()
                 } label: {
-                    Image(systemName: "chevron.backward")
+                    Image(systemName: UniDirectionalSymbol.back)
                 }
                 .accessibilityLabel(Text("Back"))
             }
             // .biometricPrompt: no leading toolbar item.
-        }
-        // Trailing "Skip" — present the skip-PIN warning sheet on the
-        // .set and .confirm steps (PIN isn't saved yet there; skipping
-        // means "no PIN"). On `.biometricPrompt`, the PIN is already
-        // committed — "Skip" here means "no biometric unlock", which is what the
-        // body's "Not now" CTA already handles. Surfacing the
-        // PIN-skip-warning sheet again at that point was the
-        // 2026-06-05 bug: it asked the user to set a PIN they had
-        // already just set. So hide this trailing button on the
-        // biometric step.
-        if step != .biometricPrompt {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingSkipWarning = true
-                } label: {
-                    Text("Skip").foregroundStyle(UniColors.Button.text)
-                }
-            }
+            // No trailing Skip on set/confirm — passcode is required for
+            // first-time setup (can be disabled later in Security).
         }
     }
 
@@ -330,14 +288,19 @@ struct PinSetupFlow: View {
             }
             pinEnabled = true
 
-            if biometricService.isAvailable {
+            // Always offer Face ID / Touch ID when the *hardware* supports it.
+            // `isAvailable` can be false when biometrics aren't enrolled yet
+            // or the policy can't evaluate briefly after PIN commit — that
+            // used to skip straight past this screen into wallet provisioning.
+            // Process / Open Wallet must stay *after* this step.
+            biometricService.refresh()
+            if biometricService.biometryType != .none {
                 withAnimation(stepAnimation) {
                     step = .biometricPrompt
                 }
             } else {
-                // Device has no biometry — skip the prompt entirely per the
-                // user's 2026-06-04 direction. Don't show a "biometry not
-                // available" message; just advance to WalletReadyView.
+                // No biometric hardware — skip the prompt; caller continues
+                // to the process screen (last step).
                 finishSuccessfully()
             }
         }
@@ -366,17 +329,6 @@ struct PinSetupFlow: View {
     }
 
     private func finishSuccessfully() {
-        onFinish()
-    }
-
-    private func skipPasscodeSetup() {
-        // User chose no PIN — clear any half-written state + ensure the
-        // flags are honest.
-        pendingSetPin = ""
-        PinCodeStorage.clear()
-        pinEnabled = false
-        biometricEnabled = false
-        requireForSend = false
         onFinish()
     }
 }

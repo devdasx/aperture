@@ -72,10 +72,8 @@ struct SendAssetListView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .uniListPageChrome()
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
         .task(id: rowsKey) {
             let tokens = SendAsset.tokens(
                 availableChains: Set(availableChains),
@@ -132,7 +130,7 @@ struct SendAssetListView: View {
                     )
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
         } header: {
             UniCaption(text: "Native assets", color: UniColors.Text.tertiary)
@@ -157,7 +155,7 @@ struct SendAssetListView: View {
                         )
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             }
         } header: {

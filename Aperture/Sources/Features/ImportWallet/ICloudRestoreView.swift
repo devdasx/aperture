@@ -143,7 +143,7 @@ struct ICloudRestoreView: View {
                         if isEditingBackups {
                             backupRow(blob, showsChevron: false)
                                 .tag(blob.id)
-                                .listRowBackground(UniColors.List.rowBackground)
+                                .uniListRowSurface()
                         } else {
                             Button {
                                 UniHapticEngine.shared.play(.selection)
@@ -158,7 +158,7 @@ struct ICloudRestoreView: View {
                             }
                             .buttonStyle(.uniListRow)
                             .tag(blob.id)
-                            .listRowBackground(UniColors.List.rowBackground)
+                            .uniListRowSurface()
                         }
                     }
                     .onDelete { offsets in
@@ -172,9 +172,7 @@ struct ICloudRestoreView: View {
                         .textCase(nil)
                 }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
         }
     }
 
@@ -293,8 +291,8 @@ struct ICloudRestoreView: View {
             }
             Spacer(minLength: 0)
             if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: UniDirectionalSymbol.disclosure)
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(UniColors.Icon.tertiary)
             }
         }
@@ -538,11 +536,11 @@ struct ICloudRestoreView: View {
                         .foregroundStyle(UniColors.Text.secondary)
                     Spacer()
                     Image(systemName: showOptionalPassphrase ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(UniColors.Text.tertiary)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniTactile)
 
             if showOptionalPassphrase {
                 Text("Only for wallets created with an extra passphrase. Most users leave this blank. A wrong passphrase restores the wrong (empty) addresses.")

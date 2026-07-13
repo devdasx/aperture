@@ -281,7 +281,7 @@ struct WalletsListView: View {
                         NavigationLink(value: SettingsDestination.walletDetail(wallet.id)) {
                             walletRow(wallet)
                         }
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                     }
                     .onMove(perform: moveWallets)
                 } header: {
@@ -298,7 +298,7 @@ struct WalletsListView: View {
                     entryRow(systemImage: "plus", title: "Create new wallet")
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 Button {
                     isShowingImport = true
@@ -306,12 +306,10 @@ struct WalletsListView: View {
                     entryRow(systemImage: "square.and.arrow.down", title: "Import existing wallet")
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Wallets"))
         .navigationBarTitleDisplayMode(.large)
         .searchableIfNeeded(text: $searchText, when: wallets.count > 5)
@@ -374,6 +372,7 @@ struct WalletsListView: View {
     // MARK: - Rows
 
     private func walletRow(_ wallet: WalletRecord) -> some View {
+        // Single row: avatar | name + status pills | balance  (chevron from NavigationLink)
         HStack(spacing: UniSpacing.s) {
             // 2026-06-09 — gradient-disc avatar per the design
             // handoff. Reads `wallet.avatarSpec`, which hydrates the
@@ -383,43 +382,52 @@ struct WalletsListView: View {
             // tab icon, the toolbar pill, and the wallet switcher.
             WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
 
-            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                HStack(spacing: UniSpacing.xs) {
-                    Text(wallet.name)
-                        .font(UniTypography.body)
-                        .foregroundStyle(UniColors.Text.primary)
-                    if wallet.id.uuidString == activeWalletIdRaw {
-                        Text("Active")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(UniColors.Feedback.Success.foreground)
-                            .padding(.horizontal, UniSpacing.xs)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(UniColors.Feedback.Success.background)
-                            )
-                    }
+            HStack(spacing: UniSpacing.xs) {
+                Text(wallet.name)
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+                if wallet.id.uuidString == activeWalletIdRaw {
+                    walletStatusPill(
+                        title: "Active",
+                        foreground: UniColors.Feedback.Success.foreground,
+                        background: UniColors.Feedback.Success.background
+                    )
                 }
-                // Balance as the subtitle — same layout as the wallet
-                // switcher sheet (2026-06-19 user direction): footnote /
-                // secondary / monospaced-digit / forced-LTR. The
-                // "imported from…" kind subtitle was removed; it lives on
-                // the wallet detail screen's Kind row.
-                Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode, hidden: hideBalances))
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .monospacedDigit()
-                    .environment(\.layoutDirection, .leftToRight)
                 if wallet.requiresBackup {
-                    Text("Not backed up")
-                        .font(UniTypography.caption1)
-                        .foregroundStyle(UniColors.Feedback.Warning.foreground)
+                    walletStatusPill(
+                        title: "Not backed up",
+                        foreground: UniColors.Feedback.Warning.foreground,
+                        background: UniColors.Feedback.Warning.background
+                    )
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: UniSpacing.s)
+            // Balance sits with the trailing chevron, not under the name.
+            Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode, hidden: hideBalances))
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .environment(\.layoutDirection, .leftToRight)
         }
-        .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
+    }
+
+    private func walletStatusPill(
+        title: LocalizedStringKey,
+        foreground: Color,
+        background: Color
+    ) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, UniSpacing.xs)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(background))
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityAddTraits(.isStaticText)
     }
 
     private func entryRow(systemImage: String, title: LocalizedStringKey) -> some View {
@@ -433,11 +441,10 @@ struct WalletsListView: View {
                 .font(UniTypography.body)
                 .foregroundStyle(UniColors.Text.primary)
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: UniDirectionalSymbol.disclosure)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
-        .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
     }
 
@@ -493,7 +500,7 @@ private extension View {
     @ViewBuilder
     func searchableIfNeeded(text: Binding<String>, when condition: Bool) -> some View {
         if condition {
-            self.searchable(text: text, prompt: Text("Search wallets"))
+            self.searchable(text: text, prompt: Text(verbatim: String.apertureLocalized("Search wallets")))
         } else {
             self
         }
@@ -724,9 +731,7 @@ struct WalletsListFilterSheet: View {
                 securitySection
                 dateSection
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -786,14 +791,14 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Sort by").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
-            Toggle(isOn: $sortAscending) {
+            UniToggle(isOn: $sortAscending) {
                 Text("Ascending order").font(UniTypography.body).foregroundStyle(isCustomSort ? UniColors.Text.disabled : UniColors.Text.primary)
             }
             .tint(UniColors.Button.Primary.tint)
             .disabled(isCustomSort)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Sort").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -819,7 +824,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Active state").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             Picker(selection: $visibilityScopeRaw) {
                 ForEach(WalletsListVisibilityScope.allCases) { scope in
@@ -828,7 +833,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Visibility").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Status").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -843,17 +848,17 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Balance").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             amountField(placeholder: "Minimum", text: $minFiatRaw)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
             amountField(placeholder: "Maximum", text: $maxFiatRaw)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("Holdings").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         } footer: {
-            Text("Balance filters use cached wallet totals in \(currencyCode).")
+            Text(verbatim: String(format: String.apertureLocalized("Balance filters use cached wallet totals in %@."), currencyCode))
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -869,7 +874,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Coverage").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink {
                 WalletsListNetworkFilterView(selectedNetworksJSON: $selectedNetworksJSON)
@@ -880,7 +885,7 @@ struct WalletsListFilterSheet: View {
                     readout: networkReadout
                 )
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Networks").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -896,7 +901,7 @@ struct WalletsListFilterSheet: View {
                 Text("Backup").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
             .onChange(of: backupScopeRaw) { _, _ in legacyOnlyUnbackedUp = false }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             Picker(selection: $secretScopeRaw) {
                 ForEach(WalletsListSecretScope.allCases) { scope in
@@ -905,13 +910,13 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Signing key").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
-            Toggle(isOn: $onlyPassphrase) {
+            UniToggle(isOn: $onlyPassphrase) {
                 Text("Only wallets with passphrase").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
             .tint(UniColors.Button.Primary.tint)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Security").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -926,18 +931,18 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Date added").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Added").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
     }
 
     private func kindToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
-        Toggle(isOn: isOn) {
+        UniToggle(isOn: isOn) {
             Text(title).font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
         }
         .tint(UniColors.Button.Primary.tint)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     private var networkReadout: String {
@@ -971,10 +976,9 @@ struct WalletsListFilterSheet: View {
                 .foregroundStyle(UniColors.Text.secondary)
                 .monospacedDigit()
         }
-        .padding(.vertical, UniSpacing.xxs)
     }
 
-    private func amountField(placeholder: LocalizedStringKey, text: Binding<String>) -> some View {
+    private func amountField(placeholder: String, text: Binding<String>) -> some View {
         HStack(spacing: UniSpacing.s) {
             Text(verbatim: currencyCode)
                 .font(UniTypography.subheadline)
@@ -990,7 +994,6 @@ struct WalletsListFilterSheet: View {
                 keyboardType: .decimalPad
             )
         }
-        .padding(.vertical, UniSpacing.xxs)
     }
 
     private func migrateLegacyBackupFilter() {
@@ -1058,19 +1061,18 @@ private struct WalletsListNetworkFilterView: View {
                         Spacer()
                         if selectedNetworks.isEmpty {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 15, weight: .regular))
                                 .foregroundStyle(UniColors.Tint.accent)
                         }
                     }
-                    .padding(.vertical, UniSpacing.xxs)
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
                 ForEach(chains, id: \.rawValue) { chain in
                     networkRow(chain)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                 }
             } header: {
                 Text("Networks")
@@ -1078,12 +1080,10 @@ private struct WalletsListNetworkFilterView: View {
                     .foregroundStyle(UniColors.Text.tertiary)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Networks"))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: Text("Search networks"))
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search networks")))
     }
 
     private func networkRow(_ chain: SupportedChain) -> some View {
@@ -1108,15 +1108,14 @@ private struct WalletsListNetworkFilterView: View {
 
                 if selectedNetworks.contains(chain.rawValue) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15, weight: .regular))
                         .foregroundStyle(UniColors.Tint.accent)
                 }
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .accessibilityLabel(Text("\(chain.displayName) network"))
+        .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ network"), chain.displayName)))
     }
 
     private func toggle(_ chain: SupportedChain) {

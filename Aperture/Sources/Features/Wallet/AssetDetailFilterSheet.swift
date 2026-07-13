@@ -93,9 +93,7 @@ struct AssetDetailFilterSheet: View {
                 viewSection
                 showSection
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -159,19 +157,19 @@ struct AssetDetailFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         }
     }
 
     private var previewMessage: String {
         if visibleTransactions == totalTransactions {
             return String(
-                format: String(localized: "Showing all %lld transactions"),
+                format: String.apertureLocalized("Showing all %lld transactions"),
                 Int64(totalTransactions)
             )
         }
         return String(
-            format: String(localized: "Showing %lld of %lld transactions"),
+            format: String.apertureLocalized("Showing %lld of %lld transactions"),
             Int64(visibleTransactions),
             Int64(totalTransactions)
         )
@@ -183,11 +181,11 @@ struct AssetDetailFilterSheet: View {
     private var viewSection: some View {
         Section {
             sortKeyPicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             directionPicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             timeRangePicker
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("View")
         }
@@ -255,10 +253,10 @@ struct AssetDetailFilterSheet: View {
             NavigationLink(value: AssetFilterDestination.networks) {
                 networksLink
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             hideZeroNetworksToggle
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("Show")
         } footer: {
@@ -295,7 +293,7 @@ struct AssetDetailFilterSheet: View {
             return String.apertureLocalized("All")
         }
         return String(
-            format: String(localized: "%lld of %lld"),
+            format: String.apertureLocalized("%lld of %lld"),
             Int64(selectedNetworks.count),
             Int64(availableNetworks.count)
         )
@@ -399,21 +397,19 @@ private struct AssetDetailNetworksPicker: View {
                     .uniListRowHitTarget()
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
                 ForEach(availableNetworks, id: \.id) { row in
                     networkRow(row)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                 }
             } header: {
                 Text("Networks")
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Networks"))
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedNetworksJSON) { _, newValue in
@@ -442,7 +438,7 @@ private struct AssetDetailNetworksPicker: View {
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .accessibilityLabel(Text("\(row.chain.displayName) network"))
+        .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ network"), row.chain.displayName)))
     }
 
     private func toggle(_ chain: SupportedChain) {

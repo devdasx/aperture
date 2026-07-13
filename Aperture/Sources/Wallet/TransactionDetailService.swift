@@ -105,6 +105,7 @@ enum TransactionDetailService {
     ) async -> TransactionDetail? {
         switch chain {
         case .bitcoin, .litecoin:
+            // BTC registry is mempool.space only (P1 #8); LTC is litecoinspace.
             return await bitcoinEsplora(chain: chain, txid: txid, client: client)
         case .dogecoin:
             return await bitcoinBlockCypher(chain: chain, txid: txid, client: client)
@@ -115,9 +116,9 @@ enum TransactionDetailService {
         }
     }
 
-    /// Esplora (BTC mempool.space, LTC litecoinspace). Detail JSON + raw
-    /// hex + tip height fetched in parallel; `vsize = ceil(weight/4)`,
-    /// `feeRate = fee/vsize`, `confirmations = tip - blockHeight + 1`.
+    /// Esplora-shaped detail: BTC → mempool.space only; LTC → litecoinspace.
+    /// `vsize = ceil(weight/4)`, `feeRate = fee/vsize`,
+    /// `confirmations = tip - blockHeight + 1`.
     private static func bitcoinEsplora(
         chain: SupportedChain,
         txid: String,
@@ -484,13 +485,18 @@ enum TransactionDetailService {
 
     // MARK: - Solana
 
-    /// Single `getTransaction` (jsonParsed, maxSupportedTransactionVersion:0
-    /// — MANDATORY for v0 txs). Returns slot/fee/CU/blockhash/err/
-    /// instructions/logs/balance-deltas.
+    /// `getTransaction` (jsonParsed, maxSupportedTransactionVersion:0 —
+    /// MANDATORY for v0 txs) with `commitment: confirmed`. Returns
+    /// slot/fee/CU/blockhash/err/instructions/logs/balance-deltas.
+    ///
+    /// Right after broadcast many RPCs return null until the tx is indexed
+    /// (P1 #12). Confirmation polling uses `getSignatureStatuses` first;
+    /// this path is for full detail once the ledger is queryable.
     private static func solana(hash: String, client: RPCClient) async -> TransactionDetail? {
         let options: [String: Sendable] = [
             "encoding": "jsonParsed",
             "maxSupportedTransactionVersion": 0,
+            "commitment": "confirmed",
         ]
         guard let data = try? await client.callJSONResultData(
             chain: .solana, method: "getTransaction", params: [hash, options]

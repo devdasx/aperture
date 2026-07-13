@@ -49,7 +49,7 @@ struct OpenSourceSheet: View {
                 UniButton(
                     title: "View on GitHub",
                     variant: .primary,
-                    systemImage: "arrow.up.right.square"
+                    systemImage: UniDirectionalSymbol.externalSquare
                 ) {
                     openURL(repositoryURL)
                 }

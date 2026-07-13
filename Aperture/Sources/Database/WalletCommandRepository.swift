@@ -245,7 +245,6 @@ final class WalletCommandRepository {
         addresses: [AddressSeed]
     ) throws -> UUID {
         let now = Date.databaseMilliseconds
-        let avatar = WalletAvatarDefaults.spec(forName: name, kind: kind)
         let descriptor = WalletDescriptor(id: id, kind: kind, hasPassphrase: hasPassphrase)
 
         try database.write { db in
@@ -256,6 +255,16 @@ final class WalletCommandRepository {
                ) {
                 throw WalletCommandRepositoryError.alreadyImported(existing)
             }
+            // Prefer a colour not already used so create/import cycles
+            // through the full chromatic list (Sky, Coral, Ocean, …).
+            let usedGradients = Set(
+                try String.fetchAll(db, sql: "SELECT avatar_gradient FROM wallets")
+            )
+            let avatar = WalletAvatarDefaults.spec(
+                forName: name,
+                kind: kind,
+                excludingGradientRaws: usedGradients
+            )
             let sortOrder = try nextSortOrder(db)
             try db.execute(
                 sql: """
@@ -454,8 +463,9 @@ final class WalletCommandRepository {
                     isFirstAddressForChain
                 ]
             )
-            // chain_states is one row per chain — only the preferred (first)
-            // address seeds it. Rebuild later sums balances across all path rows.
+            // chain_states is one row per chain: preferred address stamp only
+            // (P1 #10). Other paths live in wallet_addresses; rebuild aggregates
+            // balances (BTC sum / Solana preferred) without inventing "one address".
             if isFirstAddressForChain {
                 try db.execute(
                     sql: """

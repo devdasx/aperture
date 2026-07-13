@@ -50,6 +50,8 @@ final class SendComposeModel {
 
     /// Whether the amount field shows crypto or fiat. The user types in the
     /// active unit; the inactive unit is shown beneath as the conversion.
+    /// Seeded from `SendAmountEntryUnitPreference` so the last choice
+    /// (local currency vs native) sticks across sends.
     enum EntryUnit: Hashable { case crypto, fiat }
     var entryUnit: EntryUnit = .crypto
 
@@ -140,6 +142,12 @@ final class SendComposeModel {
     /// A fingerprint of the inputs that drive the UTXO vsize-dependent fee:
     /// the selected (or available) coin set + the target amount + the
     /// current byte-fee rate + tier. Recompute when this changes (FIX 3).
+    ///
+    /// **Max / send-all:** fee depends only on inputs + rate (all coins,
+    /// no change), not on the typed amount. Fingerprint amount as `MAX`
+    /// so rewriting the field after a fee recompute does not invalidate
+    /// the overlay key and briefly drop back to the typical estimate
+    /// (which re-inflates Max and flashes red).
     var utxoFeeKey: String {
         guard capability.supportsUTXO else { return "" }
         let coins = (selectedUTXOs ?? availableUTXOs).map(\.id).sorted().joined(separator: ",")
@@ -147,7 +155,10 @@ final class SendComposeModel {
         // `rawTotalCrypto` (NOT `totalCrypto`) — the latter reads the funding
         // cascade → `resolvedFee` → here, an infinite recursion. See
         // `rawTotalCrypto`'s doc.
-        let amount = Self.plainString(rawTotalCrypto, decimals: effectiveDecimals)
+        let amount: String = {
+            if isMaxSend { return "MAX" }
+            return Self.plainString(rawTotalCrypto, decimals: effectiveDecimals)
+        }()
         return "\(coins)|\(amount)|\(rate)|\(selectedTier.rawValue)"
     }
 
@@ -183,6 +194,12 @@ final class SendComposeModel {
         computed.setTotals(estimated: feeNative, worst: feeNative)
         utxoComputedFee = computed
         utxoComputedFeeKey = key
+        // Max was filled with the previous fee; the send-all recompute often
+        // raises worst-case. Re-fill immediately so amount never sits above
+        // `allocatableTotal` (red flash) waiting on a separate onChange.
+        if isAllSends {
+            engageMax()
+        }
     }
 
     // MARK: - Balances (handed in from the local-first store)
@@ -202,6 +219,11 @@ final class SendComposeModel {
     var memo: SendMemoValue = .none
     /// OP_RETURN payload (UTXO advanced).
     var opReturnText: String = ""
+    /// BIP-125 Replace-By-Fee opt-in for Bitcoin / Litecoin. Default on
+    /// so the user can bump a stuck tx later; toggleable from the amount
+    /// screen options menu. Ignored (and forced off) on chains that don't
+    /// support RBF (BCH, DOGE, non-UTXO).
+    var signalsRBF: Bool = true
     /// Selected UTXOs (nil = auto-select via coin selection).
     var selectedUTXOs: [SelectedUTXO]?
     /// The fetched UTXO set (Bitcoin family). Empty until fetched.
@@ -258,6 +280,10 @@ final class SendComposeModel {
         self.capability = ChainComposeCapability.capability(for: chain)
         self.amounts = recipients.map { AmountEntry(address: $0.address, name: $0.name) }
         self.memo = recipients.compactMap(\.memo).first ?? .none
+        // Restore last entry unit (fiat vs crypto). Price may still be
+        // loading — `setPrices` keeps fiat only when a real unit price is
+        // available, otherwise falls back to crypto for this session.
+        self.entryUnit = SendAmountEntryUnitPreference.prefersFiat ? .fiat : .crypto
     }
 
     // MARK: - Derived identity
@@ -266,6 +292,13 @@ final class SendComposeModel {
     var assetSymbol: String { tokenSymbol ?? chain.ticker }
     var effectiveDecimals: Int { tokenDecimals ?? chain.nativeDecimals }
     var isMultiRecipient: Bool { capability.maxRecipients > 1 && amounts.count > 1 }
+
+    /// Whether this compose session can opt into BIP-125 RBF. Matches the
+    /// signer: only BTC and LTC set sequence ≤ 0xFFFFFFFD; BCH/DOGE are
+    /// always final.
+    var supportsRBF: Bool {
+        chain == .bitcoin || chain == .litecoin
+    }
 
     /// The single amount entry (single-recipient screens bind to this).
     var primaryAmountText: String {
@@ -447,6 +480,13 @@ final class SendComposeModel {
             // the quote lands.
             return Array(repeating: .ok, count: amounts.count)
         }
+        // Max / send-all is always the honest residual after fee. Fee
+        // resync rewrites the field via `engageMax()`; never paint the
+        // Max row red for a transient fee gap (BTC UTXO and all other
+        // coins/tokens).
+        if isMaxSend, amounts.count == 1 {
+            return [.ok]
+        }
         let floor = max(minimumOutput, 0)
         let total = allocatableTotal
         var consumed: Decimal = .zero
@@ -482,13 +522,13 @@ final class SendComposeModel {
     private func blockReason(_ kind: BlockKind, index: Int) -> String {
         switch kind {
         case .exhausted:
-            return String(localized: "The earlier recipients use your whole balance — nothing is left for this one.")
+            return String.apertureLocalized("The earlier recipients use your whole balance — nothing is left for this one.")
         case .belowMinimum:
             // DISPLAY string → go through the central 8-decimal-truncated
             // helper (not plainString, which would render the chain's full
             // 18/24-decimal precision for this user-facing sentence).
             let floor = "\(WalletFormatting.native(minimumOutput, decimals: WalletFormatting.maxDisplayFractionDigits)) \(assetSymbol)"
-            return String(localized: "Less than the network minimum (\(floor)) remains, so this recipient can't be paid.")
+            return String.apertureLocalized("Less than the network minimum (\(floor)) remains, so this recipient can't be paid.")
         }
     }
 
@@ -500,8 +540,10 @@ final class SendComposeModel {
 
     /// Single-recipient over-balance (FIX 3): the typed amount exceeds what
     /// can be sent. Drives the hero amount's red color.
+    /// Max is never “over” — the field is the residual after fee.
     var isOverBalance: Bool {
-        recipientFundingStatuses.first == .overBalance
+        if isMaxSend, amounts.count == 1 { return false }
+        return recipientFundingStatuses.first == .overBalance
     }
 
     /// A recipient with a POSITIVE typed amount that resolved to `.blocked`
@@ -593,8 +635,22 @@ final class SendComposeModel {
     func setPrices(asset: Decimal?, native: Decimal?) {
         assetUnitPrice = asset
         nativeUnitPrice = native
-        // If no asset price, force crypto entry (the fiat toggle is moot).
-        if assetUnitPrice == nil { entryUnit = .crypto }
+        // No price → fiat entry is dishonest; force crypto for this session
+        // without clearing the stored preference (next priced send restores).
+        guard let unitPrice = assetUnitPrice, unitPrice > 0 else {
+            entryUnit = .crypto
+            return
+        }
+        // Apply the remembered unit only when nothing is typed yet so a late
+        // price refresh never reinterprets an in-progress amount under the
+        // other unit. Once the user types or toggles, `entryUnit` (and the
+        // preference via `toggleEntryUnit`) owns the session.
+        let anyTyped = amounts.contains {
+            !$0.amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if !anyTyped {
+            entryUnit = SendAmountEntryUnitPreference.prefersFiat ? .fiat : .crypto
+        }
     }
 
     func setAvailableUTXOs(_ utxos: [SelectedUTXO]) {
@@ -612,8 +668,13 @@ final class SendComposeModel {
     /// Always fills the field when single-recipient: uses fee-aware Max when
     /// the quote is ready, otherwise available balance (fee re-engages Max on
     /// arrival). Zero balance writes `"0"` — the control stays enabled.
+    ///
+    /// Arm `isMaxSend` **before** reading `maxAmount` so UTXO overlays that
+    /// key on Max (see `utxoFeeKey`) already apply the send-all fee when we
+    /// compute the fill — not the typical 1-in/2-out estimate.
     func engageMax() {
         guard amounts.count == 1 else { return }
+        isMaxSend = true
         let crypto: Decimal = {
             if let maxAmount {
                 return max(maxAmount, 0)
@@ -622,9 +683,9 @@ final class SendComposeModel {
             // fee refresh re-runs engageMax while `isMaxSend` is armed.
             return max(availableAssetBalance, 0)
         }()
-        isMaxSend = true
         // Write the max into the field in the ACTIVE unit so the user sees
-        // what they're sending.
+        // what they're sending. Direct write (not `primaryAmountText`) so
+        // we do not clear `isMaxSend`.
         switch entryUnit {
         case .crypto:
             amounts[0].amountText = Self.plainString(crypto, decimals: effectiveDecimals)
@@ -662,6 +723,8 @@ final class SendComposeModel {
                 amounts[i].amountText = Self.plainString(cryptoValues[i], decimals: effectiveDecimals)
             }
         }
+        // Remember for the next send (and any later price refresh).
+        SendAmountEntryUnitPreference.setPrefersFiat(entryUnit == .fiat)
     }
 
     /// Plain decimal string (no grouping, trimmed trailing zeros) for
@@ -753,7 +816,7 @@ final class SendComposeModel {
             changeAddress: changeAddress,
             changeSats: changeSats,
             opReturn: opReturnData,
-            signalsRBF: capability.supportsUTXO && chain != .dogecoin && chain != .bitcoinCash,
+            signalsRBF: supportsRBF && signalsRBF,
             memo: memo,
             isMaxSend: isMaxSend,
             recipientNeedsActivation: recipientNeedsActivation,
@@ -801,7 +864,7 @@ final class SendComposeModel {
         } catch {
             guard !Task.isCancelled else { return }
             Self.log.error("Fee quote failed for \(self.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
-            feeState = .failed(String(localized: "Couldn't load the network fee"))
+            feeState = .failed(String.apertureLocalized("Couldn't load the network fee"))
         }
     }
 
@@ -817,6 +880,9 @@ final class SendComposeModel {
     func applyFeeQuote(_ quote: FeeQuote) {
         feeQuote = quote
         selectedTier = resolvedSelectedTier(for: quote)
+        // Any chain: fee quote refresh while Max is armed → re-subtract
+        // the new fee from the residual so the amount never goes red.
+        if isMaxSend { engageMax() }
     }
 
     /// Decide which tier survives a fee refresh given the NEW quote (BUG 1 ·
@@ -840,10 +906,9 @@ final class SendComposeModel {
     /// Fetch the Bitcoin-family UTXO set off-main (advanced "Select coins"
     /// + auto-selection). No-op for non-UTXO chains.
     ///
-    /// Always refreshes from the **same source as balance** (Electrum for
-    /// BTC/BCH, Esplora for LTC, DogecoinDataClient for DOGE). On network
-    /// failure, falls back to the last balance-scanner `chain_utxos` cache
-    /// so compose still works offline after a successful scan.
+    /// Live UTXOs for coin selection: BTC = mempool.space; BCH = Electrum;
+    /// LTC/DOGE = balance REST. On network failure, falls back to last
+    /// balance-scanner `chain_utxos` cache.
     func loadUTXOs(
         walletId: UUID? = nil,
         database: AppDatabase = .shared,

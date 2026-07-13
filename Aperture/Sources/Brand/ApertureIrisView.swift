@@ -44,8 +44,8 @@ struct ApertureIrisView: View {
     /// The `rc:` (legacy opening radius) and `negativeColor:` (legacy
     /// seam-carving color) parameters are accepted for source
     /// compatibility with pre-2026-06-07 call sites (e.g.
-    /// `ApertureMotion.Frame` consumers, `RollYourOwnSheet`'s coin
-    /// face) and **deliberately discarded** — the static "Iris Solid"
+    /// `ApertureMotion.Frame` consumers) and **deliberately discarded**
+    /// — the static "Iris Solid"
     /// asset has no opening to animate and no negative space to carve,
     /// so they are not stored.
     init(

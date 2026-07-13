@@ -90,36 +90,36 @@ enum SigningError: Error, Sendable, Equatable {
     /// product path.
     case chainNotWired(SupportedChain)
 
-    /// Honest, user-facing English sentence (Rule #9 source). The Send
-    /// UI renders this verbatim; nothing here leaks key material.
+    /// Honest, user-facing sentence (Rule #9 source). Honors the in-app
+    /// language via `String.apertureLocalized`. Nothing here leaks key material.
     var userMessage: String {
         switch self {
         case .noWallet:
-            return "No wallet is selected to sign this transaction."
+            return String.apertureLocalized("No wallet is selected to sign this transaction.")
         case .walletCannotSign:
-            return "This wallet can't sign — it's watch-only."
+            return String.apertureLocalized("This wallet can't sign — it's watch-only.")
         case .secretUnavailable:
-            return "Aperture can't sign this transaction on this device yet."
+            return String.apertureLocalized("Aperture can't sign this transaction on this device yet.")
         case .keyAddressMismatch:
-            return "The signing key doesn't match this wallet's address. The transaction was not sent."
+            return String.apertureLocalized("The signing key doesn't match this wallet's address. The transaction was not sent.")
         case .invalidMnemonic:
-            return "This wallet's recovery phrase couldn't be read."
+            return String.apertureLocalized("This wallet's recovery phrase couldn't be read.")
         case .invalidPrivateKey:
-            return "This wallet's private key couldn't be read for this network."
+            return String.apertureLocalized("This wallet's private key couldn't be read for this network.")
         case .unsupportedCoin(let chain):
-            return "\(chain.displayName) isn't supported for sending."
+            return String(format: String.apertureLocalized("%@ isn't supported for sending."), chain.displayName)
         case .malformedDraft(let what):
-            return "The transaction is incomplete: \(what)."
+            return String(format: String.apertureLocalized("The transaction is incomplete: %@."), what)
         case .signingFailed:
-            return "Signing failed. The transaction was not sent."
+            return String.apertureLocalized("Signing failed. The transaction was not sent.")
         case .justInTimeRefreshFailed:
-            return "Couldn't reach the network to prepare the transaction. Please try again."
+            return String.apertureLocalized("Couldn't reach the network to prepare the transaction. Please try again.")
         case .broadcastFailed(let reason):
-            return "The network rejected the transaction: \(reason)"
+            return String(format: String.apertureLocalized("The network rejected the transaction: %@"), reason)
         case .broadcastAmbiguous:
-            return "Aperture couldn't confirm whether the transaction went through. Check the explorer before sending again."
+            return String.apertureLocalized("Aperture couldn't confirm whether the transaction went through. Check the explorer before sending again.")
         case .chainNotWired(let chain):
-            return "Sending on \(chain.displayName) isn't available yet."
+            return String(format: String.apertureLocalized("Sending on %@ isn't available yet."), chain.displayName)
         }
     }
 }

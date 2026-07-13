@@ -106,11 +106,8 @@ struct WalletActivityView: View {
     /// changes (wallet switch or a tx count change) — not per body pass.
     @State private var sortedTransactions: [TransactionRecord] = []
 
-    /// USD unit prices for the feed's symbols, used ONLY for the $0.20-USD
-    /// dust gate (see `ActivityFiat.usdPriceMap`). Loaded async after each
-    /// rebuild; until it arrives every row shows (we never hide what we
-    /// can't yet measure in dollars). Mutating it re-renders, which
-    /// re-applies `displayedTransactions`.
+    /// USD unit prices for the $0.20-USD dust gate. Seeded from disk cache
+    /// before the first paint so sub-$0.20 spam never flashes (P1 #11).
     @State private var usdPrices: [String: Decimal] = [:]
 
     /// Cheap rebuild key — O(1). Replaces the O(all-tx) data fingerprint.
@@ -123,11 +120,8 @@ struct WalletActivityView: View {
         "\(activeWalletIdRaw)|\(activeTransactionsObservation.revision)"
     }
 
-    /// The honest base feed — the wallet's transactions with sub-$0.20-USD
-    /// dust removed (2026-06-19 user direction). This is the "M" in the
-    /// preview's "Showing N of M": dust is never part of what the user can
-    /// see, so it isn't part of the total either. A leg with no known USD
-    /// price is kept (honesty over a guessed hide).
+    /// Wallet transactions with sub-$0.20-USD dust removed (and unpriced
+    /// legs held out until USD is known — never flash then hide).
     private var dustFreeTransactions: [TransactionRecord] {
         sortedTransactions.filter { tx in
             !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdPrices)
@@ -264,7 +258,7 @@ struct WalletActivityView: View {
                         Image(systemName: "doc.text")
                             .accessibilityLabel(Text("Export PDF"))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniTactile)
                     .tint(UniColors.Icon.accent)
                     .disabled(isGeneratingPDF)
                 }
@@ -284,7 +278,7 @@ struct WalletActivityView: View {
                     }
                     .accessibilityLabel(Text("Filter and sort"))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniTactile)
                 .tint(UniColors.Icon.accent)
             }
         }
@@ -353,6 +347,9 @@ struct WalletActivityView: View {
                             NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
                                 activityRow(tx, chain: chain)
                             }
+                            // Same Midnight card fill as Settings / Wallet
+                            // home — never the system dark grouped default.
+                            .uniListRowSurface()
                         } else {
                             // The parent address record is missing or
                             // carries an unrecognized chain — render the
@@ -362,6 +359,7 @@ struct WalletActivityView: View {
                             // uses — a silent `.ethereum` fallback once
                             // showed users the wrong chain's detail.)
                             activityRow(tx, chain: .ethereum)
+                                .uniListRowSurface()
                         }
                     }
                 } header: {
@@ -369,8 +367,7 @@ struct WalletActivityView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
+        .uniListPageChrome()
     }
 
     /// Native progress overlay shown while the PDF document renders.
@@ -397,8 +394,7 @@ struct WalletActivityView: View {
                 emptyState
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
+        .uniListPageChrome()
     }
 
     private var emptyState: some View {
@@ -437,12 +433,13 @@ struct WalletActivityView: View {
         }
     }
 
-    /// Resolve USD unit prices for the feed's distinct symbols so the
-    /// $0.20-USD dust gate can run. Cheap after the first call (the engine
-    /// caches), and cancellation-safe — a wallet switch re-keys the task,
-    /// cancelling this before it writes a stale wallet's prices.
+    /// Seed disk USD prices immediately, then refresh live (no dust flash).
     private func loadDustPrices() async {
         let symbols = sortedTransactions.map(\.tokenSymbol)
+        let seeded = ActivityFiat.usdPriceMapFromCache(symbols: symbols)
+        if !seeded.isEmpty {
+            usdPrices = seeded
+        }
         let map = await ActivityFiat.usdPriceMap(symbols: symbols)
         guard !Task.isCancelled else { return }
         usdPrices = map
@@ -598,8 +595,8 @@ struct WalletActivityView: View {
         }
         return ActivityPDFDocument(
             appName: "Aperture",
-            title: String(localized: "Activity Statement"),
-            walletName: activeWallet?.name ?? String(localized: "Wallet"),
+            title: String.apertureLocalized("Activity Statement"),
+            walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
             generatedText: Self.statementGeneratedFormatter.string(from: Date()),
             transactionCount: rowCount,
             assetCount: assets.count,
@@ -612,13 +609,13 @@ struct WalletActivityView: View {
             netIsPositive: net >= .zero,
             periodText: periodText,
             chainSummaries: chainCounts,
-            downloadCaption: String(localized: "Get Aperture"),
+            downloadCaption: String.apertureLocalized("Get Aperture"),
             appStoreURLText: ApertureWeb.appStoreDisplay,
             footerSiteText: "aperturex.io",
-            pageLabelFormat: String(localized: "Page %1$lld of %2$lld"),
-            emptyText: String(localized: "No transactions to show."),
-            legalTitle: String(localized: "About this statement"),
-            legalText: String(localized: "This statement was generated by Aperture from on-chain data for the wallet shown above. Fiat values are estimates at the time of each transaction and are for reference only. Aperture is a self-custodial wallet — your keys never leave your device. This document is informational and is not tax or financial advice."),
+            pageLabelFormat: String.apertureLocalized("Page %1$lld of %2$lld"),
+            emptyText: String.apertureLocalized("No transactions to show."),
+            legalTitle: String.apertureLocalized("About this statement"),
+            legalText: String.apertureLocalized("This statement was generated by Aperture from on-chain data for the wallet shown above. Fiat values are estimates at the time of each transaction and are for reference only. Aperture is a self-custodial wallet — your keys never leave your device. This document is informational and is not tax or financial advice."),
             isRTL: isRTL
         )
     }
@@ -631,49 +628,49 @@ struct WalletActivityView: View {
         switch inputs.sortKey {
         case .newest: break
         case .oldest:
-            lines.append(String(format: String(localized: "Sort: %@"), String(localized: "Oldest first")))
+            lines.append(String(format: String.apertureLocalized("Sort: %@"), String.apertureLocalized("Oldest first")))
         case .largest:
-            lines.append(String(format: String(localized: "Sort: %@"), String(localized: "Largest first")))
+            lines.append(String(format: String.apertureLocalized("Sort: %@"), String.apertureLocalized("Largest first")))
         case .smallest:
-            lines.append(String(format: String(localized: "Sort: %@"), String(localized: "Smallest first")))
+            lines.append(String(format: String.apertureLocalized("Sort: %@"), String.apertureLocalized("Smallest first")))
         }
 
         switch inputs.direction {
         case .all: break
         case .incoming:
-            lines.append(String(format: String(localized: "Direction: %@"), String(localized: "Received")))
+            lines.append(String(format: String.apertureLocalized("Direction: %@"), String.apertureLocalized("Received")))
         case .outgoing:
-            lines.append(String(format: String(localized: "Direction: %@"), String(localized: "Sent")))
+            lines.append(String(format: String.apertureLocalized("Direction: %@"), String.apertureLocalized("Sent")))
         case .internal:
-            lines.append(String(format: String(localized: "Direction: %@"), String(localized: "Internal")))
+            lines.append(String(format: String.apertureLocalized("Direction: %@"), String.apertureLocalized("Internal")))
         }
 
         switch inputs.status {
         case .all: break
         case .confirmed:
-            lines.append(String(format: String(localized: "Status: %@"), String(localized: "Confirmed")))
+            lines.append(String(format: String.apertureLocalized("Status: %@"), String.apertureLocalized("Confirmed")))
         case .pending:
-            lines.append(String(format: String(localized: "Status: %@"), String(localized: "Pending")))
+            lines.append(String(format: String.apertureLocalized("Status: %@"), String.apertureLocalized("Pending")))
         case .failed:
-            lines.append(String(format: String(localized: "Status: %@"), String(localized: "Failed")))
+            lines.append(String(format: String.apertureLocalized("Status: %@"), String.apertureLocalized("Failed")))
         }
 
         switch inputs.kind {
         case .all: break
         case .transfer:
-            lines.append(String(format: String(localized: "Kind: %@"), String(localized: "Transfers")))
+            lines.append(String(format: String.apertureLocalized("Kind: %@"), String.apertureLocalized("Transfers")))
         case .selfTransfer:
-            lines.append(String(format: String(localized: "Kind: %@"), String(localized: "Self transfers")))
+            lines.append(String(format: String.apertureLocalized("Kind: %@"), String.apertureLocalized("Self transfers")))
         case .bridge:
-            lines.append(String(format: String(localized: "Kind: %@"), String(localized: "Bridge")))
+            lines.append(String(format: String.apertureLocalized("Kind: %@"), String.apertureLocalized("Bridge")))
         }
 
         switch inputs.assetClass {
         case .all: break
         case .coins:
-            lines.append(String(format: String(localized: "Asset type: %@"), String(localized: "Coins")))
+            lines.append(String(format: String.apertureLocalized("Asset type: %@"), String.apertureLocalized("Coins")))
         case .tokens:
-            lines.append(String(format: String(localized: "Asset type: %@"), String(localized: "Tokens")))
+            lines.append(String(format: String.apertureLocalized("Asset type: %@"), String.apertureLocalized("Tokens")))
         }
 
         if !inputs.selectedNetworks.isEmpty {
@@ -682,26 +679,26 @@ struct WalletActivityView: View {
                 .sorted()
                 .joined(separator: ", ")
             if !names.isEmpty {
-                lines.append(String(format: String(localized: "Networks: %@"), names))
+                lines.append(String(format: String.apertureLocalized("Networks: %@"), names))
             }
         }
 
         if !inputs.selectedSymbols.isEmpty {
             let names = inputs.selectedSymbols.sorted().joined(separator: ", ")
-            lines.append(String(format: String(localized: "Assets: %@"), names))
+            lines.append(String(format: String.apertureLocalized("Assets: %@"), names))
         }
 
         if inputs.timeRange != .all {
-            lines.append(String(format: String(localized: "Period: %@"), pdfPeriodText(inputs)))
+            lines.append(String(format: String.apertureLocalized("Period: %@"), pdfPeriodText(inputs)))
         }
 
         if let amountText = pdfAmountText(inputs) {
-            lines.append(String(format: String(localized: "Amount: %@"), amountText))
+            lines.append(String(format: String.apertureLocalized("Amount: %@"), amountText))
         }
 
         let query = inputs.searchText
         if !query.isEmpty {
-            lines.append(String(format: String(localized: "Search: %@"), query))
+            lines.append(String(format: String.apertureLocalized("Search: %@"), query))
         }
 
         return lines
@@ -709,19 +706,19 @@ struct WalletActivityView: View {
 
     private func pdfPeriodText(_ inputs: WalletActivityFilterInputs) -> String {
         switch inputs.timeRange {
-        case .day:   return String(localized: "Last 24 hours")
-        case .week:  return String(localized: "Last 7 days")
-        case .month: return String(localized: "Last 30 days")
-        case .year:  return String(localized: "Last year")
-        case .all:   return String(localized: "All time")
+        case .day:   return String.apertureLocalized("Last 24 hours")
+        case .week:  return String.apertureLocalized("Last 7 days")
+        case .month: return String.apertureLocalized("Last 30 days")
+        case .year:  return String.apertureLocalized("Last year")
+        case .all:   return String.apertureLocalized("All time")
         case .custom:
             let from = inputs.customStart.map { Self.rowDateFormatter.string(from: $0) }
             let to = inputs.customEnd.map { Self.rowDateFormatter.string(from: $0) }
             switch (from, to) {
             case let (f?, t?): return "\(f) – \(t)"
-            case let (f?, nil): return String(format: String(localized: "From %@"), f)
-            case let (nil, t?): return String(format: String(localized: "Until %@"), t)
-            case (nil, nil): return String(localized: "Custom")
+            case let (f?, nil): return String(format: String.apertureLocalized("From %@"), f)
+            case let (nil, t?): return String(format: String.apertureLocalized("Until %@"), t)
+            case (nil, nil): return String.apertureLocalized("Custom")
             }
         }
     }
@@ -739,9 +736,9 @@ struct WalletActivityView: View {
 
     private func pdfTypeLabel(_ direction: TransactionDirection) -> String {
         switch direction {
-        case .incoming: return String(localized: "Received")
-        case .outgoing: return String(localized: "Sent")
-        case .internal: return String(localized: "Internal")
+        case .incoming: return String.apertureLocalized("Received")
+        case .outgoing: return String.apertureLocalized("Sent")
+        case .internal: return String.apertureLocalized("Internal")
         }
     }
 
@@ -755,9 +752,9 @@ struct WalletActivityView: View {
 
     private func pdfStatusLabel(_ status: TransactionStatus) -> String {
         switch status {
-        case .confirmed: return String(localized: "Confirmed")
-        case .pending:   return String(localized: "Pending")
-        case .failed:    return String(localized: "Failed")
+        case .confirmed: return String.apertureLocalized("Confirmed")
+        case .pending:   return String.apertureLocalized("Pending")
+        case .failed:    return String.apertureLocalized("Failed")
         }
     }
 
@@ -877,15 +874,17 @@ enum ActivityDateGrouper {
             return String.apertureLocalized("Yesterday")
         }
 
-        return sectionDateFormatter.string(from: day)
+        // Absolute day headers ("10 Jul 2026") must follow Settings → Language.
+        // Value-type FormatStyle — no shared mutable DateFormatter.
+        let locale = ApertureLocalization.currentLocale
+        return day.formatted(
+            Date.FormatStyle()
+                .day()
+                .month(.abbreviated)
+                .year()
+                .locale(locale)
+        )
     }
-
-    private static let sectionDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.setLocalizedDateFormatFromTemplate("dMMMy")
-        return formatter
-    }()
 }
 
 // MARK: - PDF Export Options
@@ -965,9 +964,7 @@ private struct ActivityPDFExportSheet: View {
                 amountSection
                 searchSection
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Export PDF"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1031,12 +1028,12 @@ private struct ActivityPDFExportSheet: View {
     private var previewText: String {
         if visibleCount == totalTransactions {
             return String(
-                format: String(localized: "Exporting all %lld transactions"),
+                format: String.apertureLocalized("Exporting all %lld transactions"),
                 Int64(totalTransactions)
             )
         }
         return String(
-            format: String(localized: "Exporting %lld of %lld transactions"),
+            format: String.apertureLocalized("Exporting %lld of %lld transactions"),
             Int64(visibleCount),
             Int64(totalTransactions)
         )
@@ -1058,7 +1055,7 @@ private struct ActivityPDFExportSheet: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         }
     }
 
@@ -1074,7 +1071,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: currentViewReadout
                 )
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             Button {
                 apply(Self.defaultInputs())
@@ -1085,7 +1082,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: allActivityReadout
                 )
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Scope")
         }
@@ -1093,11 +1090,11 @@ private struct ActivityPDFExportSheet: View {
 
     private var currentViewReadout: String {
         let count = visibleTransactions(initialInputs)
-        return String(format: String(localized: "%lld rows"), Int64(count))
+        return String(format: String.apertureLocalized("%lld rows"), Int64(count))
     }
 
     private var allActivityReadout: String {
-        String(format: String(localized: "%lld rows"), Int64(totalTransactions))
+        String(format: String.apertureLocalized("%lld rows"), Int64(totalTransactions))
     }
 
     @ViewBuilder
@@ -1152,7 +1149,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: readout(selected: selectedNetworks.count, total: availableNetworks.count)
                 )
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink(value: ActivityPDFExportDestination.assets) {
                 multiSelectLink(
@@ -1161,7 +1158,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: readout(selected: selectedSymbols.count, total: availableSymbols.count)
                 )
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Assets")
         }
@@ -1187,7 +1184,7 @@ private struct ActivityPDFExportSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 DatePicker(
                     selection: customEndBinding,
@@ -1199,7 +1196,7 @@ private struct ActivityPDFExportSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
         } header: {
             Text("Date & Time")
@@ -1210,9 +1207,9 @@ private struct ActivityPDFExportSheet: View {
     private var amountSection: some View {
         Section {
             amountField(placeholder: "Minimum", text: $minFiat)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             amountField(placeholder: "Maximum", text: $maxFiat)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("Amount")
         }
@@ -1228,7 +1225,7 @@ private struct ActivityPDFExportSheet: View {
                 verticalPadding: UniSpacing.xs,
                 showsChrome: false
             )
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Search")
         }
@@ -1251,7 +1248,7 @@ private struct ActivityPDFExportSheet: View {
             .labelsHidden()
         }
         .padding(.vertical, UniSpacing.xxs)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     @ViewBuilder
@@ -1305,7 +1302,7 @@ private struct ActivityPDFExportSheet: View {
     }
 
     @ViewBuilder
-    private func amountField(placeholder: LocalizedStringKey, text: Binding<String>) -> some View {
+    private func amountField(placeholder: String, text: Binding<String>) -> some View {
         HStack(spacing: UniSpacing.s) {
             Text(verbatim: currencyCode)
                 .font(UniTypography.subheadline)
@@ -1343,7 +1340,7 @@ private struct ActivityPDFExportSheet: View {
             return String.apertureLocalized("All")
         }
         return String(
-            format: String(localized: "%lld of %lld"),
+            format: String.apertureLocalized("%lld of %lld"),
             Int64(selected),
             Int64(total)
         )
@@ -1430,7 +1427,7 @@ private struct ActivityPDFExportNetworksPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
@@ -1452,15 +1449,13 @@ private struct ActivityPDFExportNetworksPicker: View {
                         }
                         .padding(.vertical, UniSpacing.xxs)
                     }
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             } header: {
                 Text("Chains")
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Chains"))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -1494,7 +1489,7 @@ private struct ActivityPDFExportAssetsPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
@@ -1514,15 +1509,13 @@ private struct ActivityPDFExportAssetsPicker: View {
                         }
                         .padding(.vertical, UniSpacing.xxs)
                     }
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 }
             } header: {
                 Text("Coins & Tokens")
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Coins & Tokens"))
         .navigationBarTitleDisplayMode(.inline)
     }

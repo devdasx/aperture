@@ -29,6 +29,28 @@ struct RecentRecipientsIndex: Sendable, Equatable {
         return chain.family == .evm ? trimmed.lowercased() : trimmed
     }
 
+    /// Expand a `TransactionRecord.counterparty` into individual addresses.
+    ///
+    /// Multi-recipient sends persist counterparties as a comma-joined string
+    /// on the **single** outgoing tx row (`SendExecutor.pendingCounterparty`).
+    /// For recents / send-count / poisoning we always treat each address
+    /// alone — never the joined blob as one identity. Deduped so
+    /// `addr,addr` on one tx counts once, not twice.
+    static func expandedCounterparties(_ raw: String) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for part in raw.split(separator: ",", omittingEmptySubsequences: true) {
+            let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            // Dedupe case-sensitively here; EVM case folding happens in
+            // `normalize` when the address is keyed into the index.
+            if seen.insert(trimmed).inserted {
+                result.append(trimmed)
+            }
+        }
+        return result
+    }
+
     /// Recent recipients for `chain`, most-sent first then most-recent.
     func recents(for chain: SupportedChain) -> [RecentRecipient] {
         (byChain[chain.rawValue]?.values).map { values in
@@ -59,20 +81,22 @@ extension RecentRecipientsIndex {
             for tx in address.transactions where tx.directionRaw == TransactionDirection.outgoing.rawValue {
                 let counterparty = tx.counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !counterparty.isEmpty else { continue }
-                let key = RecentRecipientsIndex.normalize(counterparty, chain: chain)
                 var bucket = byChain[address.chainRaw] ?? [:]
-                if let existing = bucket[key] {
-                    bucket[key] = RecentRecipient(
-                        address: existing.address,
-                        sendCount: existing.sendCount + 1,
-                        lastSentAt: max(existing.lastSentAt, tx.occurredAt)
-                    )
-                } else {
-                    bucket[key] = RecentRecipient(
-                        address: counterparty,
-                        sendCount: 1,
-                        lastSentAt: tx.occurredAt
-                    )
+                for part in Self.expandedCounterparties(counterparty) {
+                    let key = Self.normalize(part, chain: chain)
+                    if let existing = bucket[key] {
+                        bucket[key] = RecentRecipient(
+                            address: existing.address,
+                            sendCount: existing.sendCount + 1,
+                            lastSentAt: max(existing.lastSentAt, tx.occurredAt)
+                        )
+                    } else {
+                        bucket[key] = RecentRecipient(
+                            address: part,
+                            sendCount: 1,
+                            lastSentAt: tx.occurredAt
+                        )
+                    }
                 }
                 byChain[address.chainRaw] = bucket
             }
@@ -96,20 +120,22 @@ extension RecentRecipientsIndex {
                   let chain = chainByAddressId[addressId] else { continue }
             let counterparty = tx.counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !counterparty.isEmpty else { continue }
-            let key = RecentRecipientsIndex.normalize(counterparty, chain: chain)
             var bucket = byChain[chain.rawValue] ?? [:]
-            if let existing = bucket[key] {
-                bucket[key] = RecentRecipient(
-                    address: existing.address,
-                    sendCount: existing.sendCount + 1,
-                    lastSentAt: max(existing.lastSentAt, tx.occurredAt)
-                )
-            } else {
-                bucket[key] = RecentRecipient(
-                    address: counterparty,
-                    sendCount: 1,
-                    lastSentAt: tx.occurredAt
-                )
+            for part in Self.expandedCounterparties(counterparty) {
+                let key = Self.normalize(part, chain: chain)
+                if let existing = bucket[key] {
+                    bucket[key] = RecentRecipient(
+                        address: existing.address,
+                        sendCount: existing.sendCount + 1,
+                        lastSentAt: max(existing.lastSentAt, tx.occurredAt)
+                    )
+                } else {
+                    bucket[key] = RecentRecipient(
+                        address: part,
+                        sendCount: 1,
+                        lastSentAt: tx.occurredAt
+                    )
+                }
             }
             byChain[chain.rawValue] = bucket
         }

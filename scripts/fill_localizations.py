@@ -61,6 +61,19 @@ def unprotect(text: str, parts: list[str]) -> str:
     return out
 
 
+def has_value(unit: dict | None, *, allow_empty: bool = False) -> bool:
+    value = (unit or {}).get("value")
+    if value is None:
+        return False
+    return allow_empty or bool(str(value).strip())
+
+
+def placeholders_match(source: str, translation: str) -> bool:
+    return sorted(PLACEHOLDER_RE.findall(source)) == sorted(
+        PLACEHOLDER_RE.findall(translation)
+    )
+
+
 def load_cache() -> dict:
     if CACHE.exists():
         return json.loads(CACHE.read_text())
@@ -104,13 +117,15 @@ def translate_batch_multiline(items: list[str], lang: str) -> list[str]:
                 results = []
                 for i, (src, (prot, parts)) in enumerate(zip(items, protected)):
                     if i in by_idx and by_idx[i].strip():
-                        results.append(unprotect(by_idx[i], parts))
+                        candidate = unprotect(by_idx[i], parts)
+                        results.append(candidate if placeholders_match(src, candidate) else "")
                     else:
                         try:
-                            results.append(unprotect(translate_gtx(prot, tl), parts))
+                            candidate = unprotect(translate_gtx(prot, tl), parts)
+                            results.append(candidate if placeholders_match(src, candidate) else "")
                             time.sleep(0.04)
                         except Exception:
-                            results.append(src)
+                            results.append("")
                 return results
             last_err = RuntimeError(f"parse {len(by_idx)}/{len(items)}")
         except Exception as e:
@@ -120,10 +135,11 @@ def translate_batch_multiline(items: list[str], lang: str) -> list[str]:
     results = []
     for src, (prot, parts) in zip(items, protected):
         try:
-            results.append(unprotect(translate_gtx(prot, tl), parts))
+            candidate = unprotect(translate_gtx(prot, tl), parts)
+            results.append(candidate if placeholders_match(src, candidate) else "")
             time.sleep(0.06)
         except Exception:
-            results.append(src)
+            results.append("")
     return results
 
 
@@ -163,7 +179,7 @@ def fill_language(lang: str, sources_needed: list[str], cache: dict) -> dict[str
         translated = translate_batch_multiline(ch, lang)
         for s, t in zip(ch, translated):
             if not (t or "").strip():
-                t = s
+                continue
             u2t[s] = t
             cache[f"{lang}::{s}"] = t
         if (ci + 1) % 3 == 0 or ci + 1 == len(chunks):
@@ -185,11 +201,12 @@ def main() -> None:
     for key, entry in strings.items():
         src = english_source(key, entry or {})
         key_source[key] = src
-        if src == "" and key == "":
+        if not key.strip():
             continue
         loc = (entry or {}).get("localizations") or {}
         for lang in TARGET_LANGS:
-            if ((loc.get(lang) or {}).get("stringUnit") or {}).get("value") is None:
+            unit = (loc.get(lang) or {}).get("stringUnit") or {}
+            if not has_value(unit, allow_empty=(src == "")):
                 missing_sources[lang].append(src)
 
     # Unique per language
@@ -224,23 +241,36 @@ def main() -> None:
             strings[key] = entry
         locs = entry.setdefault("localizations", {})
         for lang in TARGET_LANGS:
-            if ((locs.get(lang) or {}).get("stringUnit") or {}).get("value") is None:
-                value = results.get(lang, {}).get(src) or cache.get(f"{lang}::{src}") or src
+            unit = (locs.get(lang) or {}).get("stringUnit") or {}
+            if not has_value(unit, allow_empty=(src == "")):
+                value = results.get(lang, {}).get(src) or cache.get(f"{lang}::{src}")
+                if not value or not placeholders_match(src, value):
+                    continue
                 locs[lang] = {"stringUnit": {"state": "translated", "value": value}}
                 filled += 1
-        if "en" not in locs or not ((locs["en"].get("stringUnit") or {}).get("value")):
-            if key and re.search(r"[A-Za-z]", key):
-                locs["en"] = {"stringUnit": {"state": "translated", "value": key}}
+            else:
+                locs[lang]["stringUnit"]["state"] = "translated"
+        if key:
+            english_value = english_source(key, entry)
+            locs["en"] = {
+                "stringUnit": {"state": "translated", "value": english_value}
+            }
 
     CATALOG.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
     missing_after = 0
     for key, entry in strings.items():
+        if not key.strip():
+            continue
         loc = (entry or {}).get("localizations") or {}
         for lang in TARGET_LANGS:
-            if ((loc.get(lang) or {}).get("stringUnit") or {}).get("value") is None:
+            src = english_source(key, entry or {})
+            unit = (loc.get(lang) or {}).get("stringUnit") or {}
+            if not has_value(unit, allow_empty=(src == "")):
                 missing_after += 1
     print(f"Filled slots: {filled}; remaining missing: {missing_after}", flush=True)
     print("Wrote", CATALOG, flush=True)
+    if missing_after:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

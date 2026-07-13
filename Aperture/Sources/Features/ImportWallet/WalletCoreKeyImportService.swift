@@ -44,7 +44,14 @@ struct WalletCoreKeyImportService: KeyImportService {
         mnemonic: [String],
         passphrase: String
     ) async -> [SupportedChain: String] {
-        let phrase = mnemonic.joined(separator: " ")
+        // Normalize like BIP-39 / WalletCore expect: lowercase words,
+        // single spaces between words.
+        let normalizedWords = mnemonic
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        let phrase = normalizedWords.joined(separator: " ")
+
+        guard !phrase.isEmpty else { return [:] }
 
         // Build the HDWallet ONCE on the calling actor (HDWallet is
         // not Sendable — it carries a C++ pointer). All per-chain
@@ -79,9 +86,13 @@ struct WalletCoreKeyImportService: KeyImportService {
             // in `WalletCommandRepository` matches Phantom — the address
             // must too, or Receive shows Phantom selected while the QR
             // is still the Trust address.
+            // Bitcoin: explicit BIP84 native SegWit (bc1q) as the default
+            // receive address for mnemonic wallets.
             let address: String
             if chain == .solana {
                 address = wallet.getAddressDerivation(coin: .solana, derivation: .solanaSolana)
+            } else if chain == .bitcoin {
+                address = wallet.getAddressDerivation(coin: .bitcoin, derivation: .bitcoinSegwit)
             } else {
                 address = wallet.getAddressForCoin(coin: coin)
             }
@@ -117,7 +128,8 @@ struct WalletCoreKeyImportService: KeyImportService {
         // Solana base58). Throws on anything ambiguous — an address
         // must never be derived from bytes whose encoding we merely
         // guessed at.
-        let keyData = try Self.decodePrivateKeyBytes(raw, on: chain)
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let keyData = try Self.decodePrivateKeyBytes(trimmed, on: chain)
         // Validate the decoded scalar/seed against the coin's actual
         // curve before constructing the key. `PrivateKey(data:)` alone
         // accepts any 32-byte buffer; `isValid(data:curve:)` rejects
@@ -126,12 +138,53 @@ struct WalletCoreKeyImportService: KeyImportService {
               let privateKey = PrivateKey(data: keyData) else {
             throw KeyImportError.invalidFormat
         }
+
+        // Bitcoin-family WIF must honor compression: uncompressed WIF
+        // (mainnet usually starts with "5") only yields legacy P2PKH
+        // with an uncompressed public key — never bc1q/bc1p/3 forms.
+        if chain == .bitcoin || chain == .litecoin || chain == .dogecoin || chain == .bitcoinCash,
+           let wifAddress = Self.bitcoinFamilyAddressFromWIFIfNeeded(
+            trimmed: trimmed,
+            privateKey: privateKey,
+            coin: coin,
+            chain: chain
+           ) {
+            return wifAddress
+        }
+
+        // Compressed Bitcoin private keys (and non-BTC chains): default
+        // WalletCore coin address. For Bitcoin that is native SegWit (BIP84).
         let publicKey = privateKey.getPublicKey(coinType: coin)
         let address = AnyAddress(publicKey: publicKey, coin: coin).description
         guard !address.isEmpty else {
             throw KeyImportError.derivationFailed
         }
         return address
+    }
+
+    /// Uncompressed WIF → legacy P2PKH only. Returns nil when the key is not
+    /// an uncompressed Bitcoin-family WIF (caller uses default coin derive).
+    private static func bitcoinFamilyAddressFromWIFIfNeeded(
+        trimmed: String,
+        privateKey: PrivateKey,
+        coin: CoinType,
+        chain: SupportedChain
+    ) -> String? {
+        guard let payload = WalletCore.Base58.decode(string: trimmed) else { return nil }
+        let isUncompressed = payload.count == 33
+        let isCompressed = payload.count == 34 && payload.last == 0x01
+        guard let expectedVersion = wifVersionByte[chain],
+              payload.first == expectedVersion,
+              isUncompressed || (trimmed.hasPrefix("5") && !isCompressed) else {
+            return nil
+        }
+        // Uncompressed pubkey → P2PKH (starts with 1 on mainnet Bitcoin).
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: false)
+        if let p2pkh = BitcoinAddress(publicKey: publicKey, prefix: coin.p2pkhPrefix)?.description,
+           !p2pkh.isEmpty {
+            return p2pkh
+        }
+        return nil
     }
 
     // MARK: - Private-key byte decoding (format- and chain-aware)

@@ -135,6 +135,15 @@ enum WalletSecretCrypto {
         cache.withLock { $0 = keyData }
     }
 
+    /// Reload the in-memory master key after a wipe that already ensured the blob.
+    /// Read-only — safe when a GRDB write transaction just finished notifying observers.
+    static func reloadCache(database: AppDatabase = .shared) {
+        let keyData = try? database.read { db in
+            try LocalSecureBlobStore.read(LocalSecureBlobStore.walletSecretMasterKey, db: db)
+        }
+        cache.withLock { $0 = keyData }
+    }
+
     static func clearMasterKey(database: AppDatabase = .shared) {
         try? database.write { db in
             try LocalSecureBlobStore.delete(LocalSecureBlobStore.walletSecretMasterKey, db: db)

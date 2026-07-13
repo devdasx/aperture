@@ -115,6 +115,10 @@ struct WalletAvatarGlyphView: View {
     /// Avatar diameter in points. The glyph viewBox is 100×100 and
     /// renders centered inside this size.
     let size: CGFloat
+    /// Stroke/fill colour for the glyph. Callers pass
+    /// `UniColors.WalletAvatar.contentPrimary(for:)` so light discs get
+    /// dark ink and dark discs get cloud white.
+    var color: Color = .white
 
     var body: some View {
         Canvas { context, _ in
@@ -128,9 +132,9 @@ struct WalletAvatarGlyphView: View {
 
             switch glyph {
             case .iris:
-                drawIris(in: context, scale: outerScale)
+                drawIris(in: context, scale: outerScale, color: color)
             default:
-                drawLucide(glyph: glyph, in: context, scale: outerScale)
+                drawLucide(glyph: glyph, in: context, scale: outerScale, color: color)
             }
         }
         .frame(width: size, height: size)
@@ -150,7 +154,8 @@ struct WalletAvatarGlyphView: View {
     private func drawLucide(
         glyph: WalletAvatarGlyph,
         in context: GraphicsContext,
-        scale outerScale: CGFloat
+        scale outerScale: CGFloat,
+        color: Color
     ) {
         // Combined affine: (translate by 28 in 100-space, then scale by
         // 1.833 from 24-space into 100-space), then outerScale into
@@ -181,7 +186,7 @@ struct WalletAvatarGlyphView: View {
             case .stroke:
                 context.stroke(
                     transformed,
-                    with: .color(.white),
+                    with: .color(color),
                     style: StrokeStyle(
                         lineWidth: lineWidth,
                         lineCap: .round,
@@ -189,7 +194,7 @@ struct WalletAvatarGlyphView: View {
                     )
                 )
             case .fill:
-                context.fill(transformed, with: .color(.white))
+                context.fill(transformed, with: .color(color))
             }
         }
     }
@@ -202,7 +207,7 @@ struct WalletAvatarGlyphView: View {
     /// scaled into the avatar. Here we scale into 100 directly: C=50,
     /// R=30. The 60%-of-tile ratio (R = 0.30 × tileSize) matches the
     /// engine's tile-fill ratio.
-    private func drawIris(in context: GraphicsContext, scale: CGFloat) {
+    private func drawIris(in context: GraphicsContext, scale: CGFloat, color: Color) {
         let bladeCount = 6
         let twist: Double = 0.18
         let centerX: Double = 50
@@ -229,7 +234,7 @@ struct WalletAvatarGlyphView: View {
             path.addLine(to: CGPoint(x: p3.x, y: p3.y))
             path.closeSubpath()
             let scaled = path.applying(.init(scaleX: scale, y: scale))
-            context.fill(scaled, with: .color(.white.opacity(opacity)))
+            context.fill(scaled, with: .color(color.opacity(opacity)))
         }
 
         // Centerline strokes — one per blade at 0.32 opacity, width 2.8% of R.
@@ -244,7 +249,7 @@ struct WalletAvatarGlyphView: View {
             let scaled = path.applying(.init(scaleX: scale, y: scale))
             context.stroke(
                 scaled,
-                with: .color(.white.opacity(0.32)),
+                with: .color(color.opacity(0.32)),
                 style: StrokeStyle(
                     lineWidth: centerlineWidth,
                     lineCap: .round

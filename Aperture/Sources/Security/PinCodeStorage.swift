@@ -84,14 +84,10 @@ enum PinCodeStorage {
         await Task.detached(priority: .userInitiated) { _setPinSync(pin) }.value
     }
 
-    /// Synchronous `setPin` wrapper. Prefer the async variant — this
-    /// exists for legacy synchronous call sites (Settings → Change
-    /// passcode commits from a sync closure) and runs the full PBKDF2
-    /// derivation on the calling thread.
-    @discardableResult
-    static func setPin(_ pin: String) -> Bool {
-        _setPinSync(pin)
-    }
+    /// Synchronous `setPin` is intentionally **not** public — PBKDF2 must
+    /// never run on the main thread mid-interaction. Call
+    /// `setPin(_:) async` from UI. The private `_setPinSync` is only used
+    /// inside that detached async wrapper (and tests that call it off-main).
 
     /// Verify a candidate PIN against the stored hash, off the calling
     /// thread (the PBKDF2 derivation is deliberately slow). Returns

@@ -1,14 +1,13 @@
 import SwiftUI
 
-/// Sheet that lists all the user's wallets so they can switch the
-/// active one. Two extra rows at the bottom — "Create new wallet" and
-/// "Import existing wallet" — route to the same covers `OnboardingView`
-/// uses, but presented from the wallet-home parent so the user can
-/// add a wallet without leaving the main surface.
+/// Sheet that lists all wallets so the user can switch the active one.
 ///
-/// **Per Rule #15:** `NavigationStack`-rooted, `navigationTitle("Wallets")`,
-/// `.large` detent because this is a navigation experience (it could
-/// push to a wallet-detail screen later, T-042).
+/// **Layout** matches Settings → Wallets (`WalletsListView`): avatar, name +
+/// status pills, trailing balance, create/import entry rows.
+///
+/// **Tap** a wallet → set active + dismiss.  
+/// **Long-press** a wallet → push `WalletDetailView` (same settings surface
+/// as Settings → Wallets → wallet).
 struct WalletSwitcherSheet: View {
     @StateObject private var walletRecordsObservation = WalletRecordsObservation()
     @StateObject private var portfolioObservation = WalletPortfolioSummariesObservation()
@@ -17,6 +16,9 @@ struct WalletSwitcherSheet: View {
     @Environment(\.balancePrivacyEnabled) private var hideBalances
     @Environment(\.dismiss) private var dismiss
 
+    /// Navigation into wallet settings (long-press).
+    @State private var settingsPath: [UUID] = []
+
     private var wallets: [WalletRecord] {
         walletRecordsObservation.wallets.sorted {
             if $0.sortOrder == $1.sortOrder { return $0.createdAt < $1.createdAt }
@@ -24,34 +26,25 @@ struct WalletSwitcherSheet: View {
         }
     }
 
-    /// A wallet's total balance in the user's currency, summed from its own
-    /// addresses' cached token-fiat values (mirrors `WalletsListView`).
     private func fiatBalance(for wallet: WalletRecord) -> Decimal {
-        let key = WalletPortfolioSummaryRecord.makeLookupKey(walletId: wallet.id, currencyCode: currencyCode)
+        let key = WalletPortfolioSummaryRecord.makeLookupKey(
+            walletId: wallet.id,
+            currencyCode: currencyCode
+        )
         return portfolioObservation.summaries.first(where: { $0.lookupKey == key })?.totalFiat ?? 0
     }
 
-    /// Fired when the user picks an existing wallet (after writing the
-    /// id to `@GRDBStorage`). The wallet-home reads `activeWalletIdRaw`
-    /// reactively so this is mostly for haptic feedback at the call site.
     let onSelect: () -> Void
-
-    /// Fired when the user taps "Create new wallet". The parent
-    /// dismisses this sheet and presents the existing
-    /// `RecoveryPhraseFlow` cover.
     let onCreateNew: () -> Void
-
-    /// Fired when the user taps "Import existing wallet". The parent
-    /// dismisses this sheet and presents the existing
-    /// `ImportWalletFlow` cover.
     let onImport: () -> Void
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $settingsPath) {
             List {
                 Section {
                     ForEach(wallets) { wallet in
                         walletRow(wallet)
+                            .uniListRowSurface()
                     }
                 } header: {
                     if !wallets.isEmpty {
@@ -65,19 +58,22 @@ struct WalletSwitcherSheet: View {
                     Button {
                         onCreateNew()
                     } label: {
-                        addRow(systemImage: "plus", title: "Create new wallet")
+                        entryRow(systemImage: "plus", title: "Create new wallet")
                     }
                     .buttonStyle(.uniListRow)
+                    .uniListRowSurface()
 
                     Button {
                         onImport()
                     } label: {
-                        addRow(systemImage: "square.and.arrow.down", title: "Import existing wallet")
+                        entryRow(systemImage: "square.and.arrow.down", title: "Import existing wallet")
                     }
                     .buttonStyle(.uniListRow)
+                    .uniListRowSurface()
                 }
             }
-            .listStyle(.insetGrouped)
+            .uniListPageChrome()
+            .environment(\.defaultMinListRowHeight, UniListMetrics.minRowHeight)
             .task(id: currencyCode) {
                 portfolioObservation.setCurrencyCode(currencyCode)
             }
@@ -89,75 +85,125 @@ struct WalletSwitcherSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 17, weight: .regular))
                     }
                     .accessibilityLabel(Text("Close"))
                 }
             }
+            .navigationDestination(for: UUID.self) { walletId in
+                WalletDetailView(walletId: walletId)
+            }
         }
     }
+
+    // MARK: - Rows (match `WalletsListView.walletRow`)
 
     private func walletRow(_ wallet: WalletRecord) -> some View {
         Button {
-            ActiveWalletPointer.set(wallet.id)
-            onSelect()
-            dismiss()
+            selectWallet(wallet)
         } label: {
+            // Single row: avatar | name + status pills | balance | chevron
             HStack(spacing: UniSpacing.s) {
-                // 2026-06-09 — gradient-disc avatar per the design
-                // handoff. `wallet.avatarSpec` hydrates the persisted
-                // columns through `WalletAvatarSpec.hydrate(...)`
-                // with `auto(name)` fallback so the disc is never
-                // blank, and includes the type badge derived from
-                // `wallet.kind` (watch-only → eye, single-key → chip,
-                // shared → people, otherwise none).
                 WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
 
-                VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                HStack(spacing: UniSpacing.xs) {
                     Text(wallet.name)
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Text.primary)
-                    // The wallet's balance (the kind/"imported from…" subtitle
-                    // moved to the wallet detail screen's Kind row, 2026-06-19).
-                    Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode, hidden: hideBalances))
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.secondary)
-                        .monospacedDigit()
-                        .environment(\.layoutDirection, .leftToRight)
+                        .lineLimit(1)
+                    if wallet.id.uuidString == activeWalletIdRaw {
+                        walletStatusPill(
+                            title: "Active",
+                            foreground: UniColors.Feedback.Success.foreground,
+                            background: UniColors.Feedback.Success.background
+                        )
+                    }
+                    if wallet.requiresBackup {
+                        walletStatusPill(
+                            title: "Not backed up",
+                            foreground: UniColors.Feedback.Warning.foreground,
+                            background: UniColors.Feedback.Warning.background
+                        )
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: UniSpacing.s)
+                Text(
+                    WalletFormatting.fiat(
+                        fiatBalance(for: wallet),
+                        currencyCode: currencyCode,
+                        hidden: hideBalances
+                    )
+                )
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .environment(\.layoutDirection, .leftToRight)
 
-                if wallet.id.uuidString == activeWalletIdRaw {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(UniColors.Icon.accent)
-                        .accessibilityHidden(true)
-                }
+                Image(systemName: UniDirectionalSymbol.disclosure)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+                    .accessibilityHidden(true)
             }
-            .padding(.vertical, UniSpacing.xxs)
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.45)
+                .onEnded { _ in
+                    UniHapticEngine.shared.play(.selection)
+                    settingsPath.append(wallet.id)
+                }
+        )
+        .contextMenu {
+            Button {
+                settingsPath.append(wallet.id)
+            } label: {
+                Label("Wallet settings", systemImage: "gearshape")
+            }
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(Text("Double tap to switch. Long press for wallet settings."))
     }
 
-    private func addRow(systemImage: String, title: LocalizedStringKey) -> some View {
+    private func walletStatusPill(
+        title: LocalizedStringKey,
+        foreground: Color,
+        background: Color
+    ) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, UniSpacing.xs)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(background))
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityAddTraits(.isStaticText)
+    }
+
+    private func entryRow(systemImage: String, title: LocalizedStringKey) -> some View {
         HStack(spacing: UniSpacing.s) {
-            Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(UniColors.Icon.accent)
-                .frame(width: 28, alignment: .center)
+            SettingsIconTile(
+                systemImage: systemImage,
+                tint: .blue,
+                compactTint: UniColors.Icon.accent
+            )
             Text(title)
                 .font(UniTypography.body)
                 .foregroundStyle(UniColors.Text.primary)
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: UniDirectionalSymbol.disclosure)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
-        .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
+    }
+
+    private func selectWallet(_ wallet: WalletRecord) {
+        ActiveWalletPointer.set(wallet.id)
+        onSelect()
+        UniHapticEngine.shared.play(.selection)
+        dismiss()
     }
 }

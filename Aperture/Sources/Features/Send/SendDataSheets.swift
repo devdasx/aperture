@@ -131,7 +131,7 @@ struct SendMemoSheet: View {
         return "Add an optional note that travels with the transaction."
     }
 
-    private var memoPlaceholder: LocalizedStringKey {
+    private var memoPlaceholder: String {
         guard isStellarMemo else { return "Memo" }
         return "Memo, ID, or hash"
     }
@@ -175,8 +175,8 @@ struct SendMemoSheet: View {
     private func memoTypeBadge(_ type: String) -> some View {
         HStack(spacing: UniSpacing.xs) {
             Image(systemName: "sparkle.magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
-            Text("Detected: \(type)")
+                .font(.system(size: 12, weight: .regular))
+            Text(verbatim: String(format: String.apertureLocalized("Detected: %@"), type))
                 .font(UniTypography.caption1.weight(.semibold))
         }
         .foregroundStyle(UniColors.Text.secondary)

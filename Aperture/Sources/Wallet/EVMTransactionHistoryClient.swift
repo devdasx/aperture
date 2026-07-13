@@ -456,7 +456,7 @@ actor EVMTransactionHistoryClient {
             ].joined(separator: "|")
             guard seen.insert(key).inserted else { continue }
             rows.append(event)
-            if rows.count >= 100 { break }
+            if rows.count >= HistoryScanLimits.perAddress { break }
         }
         return rows
     }

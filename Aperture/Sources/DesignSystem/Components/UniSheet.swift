@@ -226,13 +226,13 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
                 Button {
                     onBack()
                 } label: {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 22, weight: .semibold))
+                    Image(systemName: UniDirectionalSymbol.back)
+                        .font(.system(size: 22, weight: .regular))
                         .foregroundStyle(UniColors.Sheet.backIcon)
                         .frame(width: 32, height: 32)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniTactile)
                 .accessibilityLabel(Text("Back"))
             }
             titleContent
@@ -245,7 +245,7 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
         if let icon {
             VStack(alignment: .leading, spacing: UniSpacing.s) {
                 Image(systemName: icon)
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: 24, weight: .regular))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(iconTint)
                     .accessibilityHidden(true)

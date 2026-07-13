@@ -26,13 +26,25 @@ enum HideBalancesPreference {
 
         /// Label uses the user's currency code at render time so the
         /// row reads "Under €1" for a EUR-preference user.
+        ///
+        /// Uses `"Under %@"` + `String(format:)` — **not** string
+        /// interpolation into `apertureLocalized`. Interpolating
+        /// (`"Under \(value)"`) builds a one-off catalog key like
+        /// `"Under US$1.00"` that is never translated.
         func label(currencyCode: String) -> String {
             switch self {
             case .showAll:
                 return String.apertureLocalized("Show all")
             case .one, .ten, .oneHundred:
-                let value = Decimal(rawValue).formatted(.currency(code: currencyCode))
-                return String.apertureLocalized("Under \(value)")
+                let value = Decimal(rawValue).formatted(
+                    .currency(code: currencyCode)
+                        .locale(ApertureLocalization.currentLocale)
+                )
+                return String(
+                    format: String.apertureLocalized("Under %@"),
+                    locale: ApertureLocalization.currentLocale,
+                    value
+                )
             }
         }
     }

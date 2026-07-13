@@ -74,7 +74,7 @@ struct SendUTXOSheet: View {
                         .uniListRowHitTarget()
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                 } header: {
                     UniCaption(text: "Coin selection", color: UniColors.Text.tertiary)
                 }
@@ -100,9 +100,7 @@ struct SendUTXOSheet: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .onAppear(perform: seed)
         }
     }
@@ -139,7 +137,7 @@ struct SendUTXOSheet: View {
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .listRowBackground(UniColors.List.rowBackground)
+        .uniListRowSurface()
     }
 
     private var empty: some View {

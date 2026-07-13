@@ -106,7 +106,7 @@ struct CustomTokensListView: View {
                     requestAddToken()
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .regular))
                         .accessibilityLabel(Text("Add a token"))
                 }
             }
@@ -154,9 +154,7 @@ struct CustomTokensListView: View {
                 .listRowInsets(EdgeInsets())
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
     }
 
     // MARK: - List
@@ -172,7 +170,7 @@ struct CustomTokensListView: View {
                             balance: heldBalance(for: token),
                             currencyCode: currencyCode
                         )
-                            .listRowBackground(UniColors.List.rowBackground)
+                            .uniListRowSurface()
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     delete(token)
@@ -197,9 +195,7 @@ struct CustomTokensListView: View {
                 .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
     }
 
     // MARK: - Actions
@@ -303,7 +299,6 @@ private struct CustomTokenRow: View {
                     .environment(\.layoutDirection, .leftToRight)
             }
         }
-        .padding(.vertical, UniSpacing.xxs)
     }
 
     private func abbreviated(_ contract: String) -> String {

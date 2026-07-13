@@ -1,9 +1,25 @@
 import Foundation
 
+/// Per-chain portfolio rollup for a wallet (`chain_states` table).
+///
+/// **One row per chain** (`UNIQUE(wallet_id, chain_raw)`). The `address` column
+/// is the **preferred** send/receive address only — never the full set.
+///
+/// Multi-path chains store every path in `wallet_addresses`:
+/// - Bitcoin-family: receive/change gap addresses
+/// - Solana: Phantom + Trust account-0 paths
+///
+/// Use `WalletRepository.addresses(walletId:chain:)` (or preferred helpers)
+/// when you need every address. Do **not** assume `address` is the only
+/// funded or spendable path on the chain.
+///
+/// Balance fields (`nativeBalanceRaw`, `totalFiat`) are aggregates defined by
+/// rebuild: BTC sums all paths; Solana is preferred-path only (product rule).
 final class ChainStateRecord: Identifiable, Hashable {
     var id: UUID
     var walletId: UUID
     var chainRaw: String
+    /// Preferred send/receive address for this chain (see type doc).
     var address: String
     var derivationPath: String
     var nativeBalanceRaw: String
@@ -87,6 +103,9 @@ final class ChainStateRecord: Identifiable, Hashable {
     var chain: SupportedChain? { SupportedChain(rawValue: chainRaw) }
     var syncState: ChainSyncState { ChainSyncState(rawValue: syncStateRaw) ?? .idle }
     var nativeBalance: Decimal { Decimal(string: nativeBalanceRaw) ?? 0 }
+
+    /// Explicit name for `address` — preferred path only, not the full set.
+    var preferredAddress: String { address }
 }
 
 enum ChainSyncState: String, Codable, Sendable {

@@ -109,9 +109,7 @@ struct WalletActivityFilterSheet: View {
                 showSection
                 amountSection
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
+            .uniListPageChrome()
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -192,19 +190,19 @@ struct WalletActivityFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         }
     }
 
     private var previewMessage: String {
         if visibleTransactions == totalTransactions {
             return String(
-                format: String(localized: "Showing all %lld transactions"),
+                format: String.apertureLocalized("Showing all %lld transactions"),
                 Int64(totalTransactions)
             )
         }
         return String(
-            format: String(localized: "Showing %lld of %lld transactions"),
+            format: String.apertureLocalized("Showing %lld of %lld transactions"),
             Int64(visibleTransactions),
             Int64(totalTransactions)
         )
@@ -229,7 +227,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: sortKeyRaw)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Sort")
         }
@@ -254,7 +252,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: directionRaw)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 Text("Kind")
@@ -270,7 +268,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: kindRaw)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 Text("Status")
@@ -286,7 +284,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: statusRaw)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Filter")
         }
@@ -311,7 +309,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: timeRangeRaw)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             if timeRangeBinding.wrappedValue == .custom {
                 DatePicker(
@@ -324,7 +322,7 @@ struct WalletActivityFilterSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
 
                 DatePicker(
                     selection: customEndBinding,
@@ -336,7 +334,7 @@ struct WalletActivityFilterSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
         } header: {
             Text("When")
@@ -362,7 +360,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: assetClassRaw)
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink(value: WalletActivityFilterDestination.networks) {
                 multiSelectLink(
@@ -371,7 +369,7 @@ struct WalletActivityFilterSheet: View {
                     readout: readout(selected: selectedNetworks.count, total: availableNetworks.count)
                 )
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
 
             NavigationLink(value: WalletActivityFilterDestination.assets) {
                 multiSelectLink(
@@ -380,7 +378,7 @@ struct WalletActivityFilterSheet: View {
                     readout: readout(selected: selectedSymbols.count, total: availableSymbols.count)
                 )
             }
-            .listRowBackground(UniColors.List.rowBackground)
+            .uniListRowSurface()
         } header: {
             Text("Show")
         }
@@ -416,7 +414,7 @@ struct WalletActivityFilterSheet: View {
             return String.apertureLocalized("All")
         }
         return String(
-            format: String(localized: "%lld of %lld"),
+            format: String.apertureLocalized("%lld of %lld"),
             Int64(selected),
             Int64(total)
         )
@@ -428,13 +426,13 @@ struct WalletActivityFilterSheet: View {
     private var amountSection: some View {
         Section {
             amountField(placeholder: "Minimum", text: $minFiat)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             amountField(placeholder: "Maximum", text: $maxFiat)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
         } header: {
             Text("Amount")
         } footer: {
-            Text("Filters by each transaction's value in \(currencyCode). Transactions with no known price are hidden while an amount filter is set.")
+            Text(verbatim: String(format: String.apertureLocalized("Filters by each transaction's value in %@. Transactions with no known price are hidden while an amount filter is set."), currencyCode))
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -442,7 +440,7 @@ struct WalletActivityFilterSheet: View {
     }
 
     @ViewBuilder
-    private func amountField(placeholder: LocalizedStringKey, text: Binding<String>) -> some View {
+    private func amountField(placeholder: String, text: Binding<String>) -> some View {
         HStack(spacing: UniSpacing.s) {
             Text(verbatim: currencyCode)
                 .font(UniTypography.subheadline)
@@ -610,21 +608,19 @@ private struct WalletActivityNetworksPicker: View {
                     .uniListRowHitTarget()
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
                 ForEach(availableNetworks, id: \.rawValue) { chain in
                     networkRow(chain)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                 }
             } header: {
                 Text("Networks")
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Networks"))
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedNetworksJSON) { _, newValue in
@@ -653,7 +649,7 @@ private struct WalletActivityNetworksPicker: View {
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .accessibilityLabel(Text("\(chain.displayName) network"))
+        .accessibilityLabel(Text(verbatim: String(format: String.apertureLocalized("%@ network"), chain.displayName)))
     }
 
     private func toggle(_ chain: SupportedChain) {
@@ -709,21 +705,19 @@ private struct WalletActivityAssetsPicker: View {
                     .uniListRowHitTarget()
                 }
                 .buttonStyle(.uniListRow)
-                .listRowBackground(UniColors.List.rowBackground)
+                .uniListRowSurface()
             }
 
             Section {
                 ForEach(availableSymbols, id: \.self) { symbol in
                     symbolRow(symbol)
-                        .listRowBackground(UniColors.List.rowBackground)
+                        .uniListRowSurface()
                 }
             } header: {
                 Text("Assets")
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
+        .uniListPageChrome()
         .navigationTitle(Text("Assets"))
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedSymbolsJSON) { _, newValue in

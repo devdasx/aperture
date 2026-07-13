@@ -98,7 +98,7 @@ struct BackupExistingWalletFlow: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 17, weight: .regular))
                     }
                     .accessibilityLabel(Text("Cancel"))
                 }

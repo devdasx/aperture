@@ -123,7 +123,7 @@ struct ApertureErrorSupportSection: View {
                             .foregroundStyle(UniColors.Text.primary)
                     } icon: {
                         Image(systemName: "envelope")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15, weight: .regular))
                             .foregroundStyle(UniColors.Feedback.Error.foreground)
                     }
                     Text("If this keeps happening, email support. The email includes technical diagnostics so we can investigate the failure.")

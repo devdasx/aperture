@@ -34,7 +34,7 @@ struct HoldingsTokenRow: View {
                 Text(verbatim: balance.tokenSymbol)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
-                Text("on \(chain.displayName)")
+                Text(verbatim: String(format: String.apertureLocalized("on %@"), chain.displayName))
                     .font(UniTypography.caption2)
                     .foregroundStyle(UniColors.Text.tertiary)
             }

@@ -46,9 +46,9 @@ struct ReceiveNetworkPickerView: View {
                         )
                     }
                     .buttonStyle(.uniListRow)
-                    .listRowBackground(UniColors.List.rowBackground)
+                    .uniListRowSurface()
                     .accessibilityLabel(Text(verbatim: chain.displayName))
-                    .accessibilityHint(Text("Receive \(symbol) on this network"))
+                    .accessibilityHint(Text(verbatim: String(format: String.apertureLocalized("Receive %@ on this network"), symbol)))
                 }
             } footer: {
                 UniFootnote(
@@ -59,11 +59,9 @@ struct ReceiveNetworkPickerView: View {
                 .padding(.top, UniSpacing.xs)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
-        .searchable(text: $searchText, prompt: Text("Search"))
-        .navigationTitle(Text("Choose network for \(symbol)"))
+        .uniListPageChrome()
+        .searchable(text: $searchText, prompt: Text(verbatim: String.apertureLocalized("Search")))
+        .navigationTitle(Text(verbatim: String(format: String.apertureLocalized("Choose network for %@"), symbol)))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

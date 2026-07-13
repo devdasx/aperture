@@ -143,17 +143,17 @@ extension WalletBackupCrypto.CryptoError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .emptyPassword:
-            return String(localized: "The backup password is empty.")
+            return String.apertureLocalized("The backup password is empty.")
         case .randomGenerationFailed(let status):
-            return String(format: String(localized: "Couldn't generate a secure salt (status %lld)."), Int64(status))
+            return String(format: String.apertureLocalized("Couldn't generate a secure salt (status %lld)."), Int64(status))
         case .kdfFailed(let status):
-            return String(format: String(localized: "Couldn't derive the encryption key (PBKDF2 status %lld)."), Int64(status))
+            return String(format: String.apertureLocalized("Couldn't derive the encryption key (PBKDF2 status %lld)."), Int64(status))
         case .sealFailed:
-            return String(localized: "Couldn't encrypt the backup.")
+            return String.apertureLocalized("Couldn't encrypt the backup.")
         case .openFailed:
-            return String(localized: "Wrong password, or the backup is corrupted.")
+            return String.apertureLocalized("Wrong password, or the backup is corrupted.")
         case .encodingFailed:
-            return String(localized: "Couldn't encode the backup.")
+            return String.apertureLocalized("Couldn't encode the backup.")
         }
     }
 }

@@ -75,6 +75,11 @@ final class TabReselectSignal {
     private init() {}
     /// Monotonic counter, bumped on each Wallet-tab re-tap.
     var walletReselectToken: Int = 0
+    /// Bumped when the app must drop the Settings stack (create/import
+    /// finish, cold-launch style reset). `SettingsView` observes this and
+    /// clears any auth-gated push (Security) that would otherwise stay
+    /// open in memory while the user is on Wallet.
+    var settingsStackResetToken: Int = 0
 }
 
 struct MainTabView: View {
@@ -303,7 +308,7 @@ struct MainTabView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .navigationTitle(Text("Aperture"))
+            .navigationTitle(Text(verbatim: "Aperture"))
             .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 340)
         } detail: {
             selectedTabContent
@@ -386,7 +391,7 @@ struct MainTabView: View {
         if activeWallet != nil {
             primaryActions.append(
                 UIAction(
-                    title: String(localized: "Customise icon"),
+                    title: String.apertureLocalized("Customise icon"),
                     image: UIImage(systemName: "paintbrush")
                 ) { _ in
                     isShowingPicker = true
@@ -394,7 +399,7 @@ struct MainTabView: View {
             )
             primaryActions.append(
                 UIAction(
-                    title: String(localized: "Wallet settings"),
+                    title: String.apertureLocalized("Wallet settings"),
                     image: UIImage(systemName: "gearshape")
                 ) { _ in
                     // Open the ACTIVE WALLET's settings directly —
@@ -426,7 +431,7 @@ struct MainTabView: View {
                 }
             }
             let switchMenu = UIMenu(
-                title: String(localized: "Switch wallet"),
+                title: String.apertureLocalized("Switch wallet"),
                 image: UIImage(systemName: "rectangle.stack"),
                 children: switchActions
             )
@@ -441,13 +446,13 @@ struct MainTabView: View {
             options: .displayInline,
             children: [
                 UIAction(
-                    title: String(localized: "Create new wallet"),
+                    title: String.apertureLocalized("Create new wallet"),
                     image: UIImage(systemName: "plus")
                 ) { _ in
                     isShowingCreate = true
                 },
                 UIAction(
-                    title: String(localized: "Import existing wallet"),
+                    title: String.apertureLocalized("Import existing wallet"),
                     image: UIImage(systemName: "square.and.arrow.down")
                 ) { _ in
                     isShowingImport = true
@@ -565,22 +570,33 @@ enum WalletFirstRefreshKind: String, Sendable {
     case imported
 }
 
-/// Lightweight handoff after create/import: mark the new wallet for the
-/// home first-refresh skeleton, then route to main. **No success sheet.**
+/// Handoff after create/import: mark first-refresh state and queue a
+/// native success alert on the main shell.
 enum WalletCompletionNoticeCenter {
-    /// Kept for preference wipe defaults / migrations; no longer surfaces UI.
     static let storageKey = "pendingWalletCompletionNotice"
 
     @MainActor
     static func enqueue(_ notice: WalletFirstRefreshKind) {
-        // Clear any stale success-sheet token so old installs never re-show it.
-        AppPreferenceStore.shared.set("", forKey: storageKey)
+        AppPreferenceStore.shared.set(notice.rawValue, forKey: storageKey)
         WalletFirstRefreshPresentationCenter.markNewWallet(
             ActiveWalletPointer.currentId,
             kind: notice
         )
         UniHapticEngine.shared.play(.successQuiet)
     }
+
+    static func clear() {
+        AppPreferenceStore.shared.set("", forKey: storageKey)
+    }
+
+    static func current() -> WalletFirstRefreshKind? {
+        let raw = AppPreferenceStore.shared.string(storageKey, default: "")
+        return WalletFirstRefreshKind(rawValue: raw)
+    }
+}
+
+extension WalletFirstRefreshKind: Identifiable {
+    var id: String { rawValue }
 }
 
 enum WalletFirstRefreshPresentationCenter {
@@ -632,7 +648,7 @@ private struct MainSidebarRow: View {
                 .frame(width: 29, height: 29)
                 .overlay {
                     Image(systemName: tab.systemImage(isSelected: isSelected))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15, weight: .regular))
                         .symbolRenderingMode(.monochrome)
                         .foregroundStyle(.white)
                         .minimumScaleFactor(0.72)

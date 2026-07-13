@@ -10,6 +10,7 @@ struct PrivateKeyEntryView: View {
     @State private var isShowingGuide: Bool = false
     @State private var isShowingLeakedWarning: Bool = false
     @State private var isShowingScanner: Bool = false
+    @State private var inputNoteTask: Task<Void, Never>? = nil
     @FocusState private var keyFocused: Bool
 
     /// `true` while the view is disappearing because the user chose to
@@ -67,7 +68,7 @@ struct PrivateKeyEntryView: View {
                     isShowingGuide = true
                 } label: {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text("What's a private key?"))
             }
@@ -132,11 +133,14 @@ struct PrivateKeyEntryView: View {
             willContinue = false
         }
         .onDisappear {
+            inputNoteTask?.cancel()
+            inputNoteTask = nil
             // Back-navigation (or cover dismissal) abandons entry —
             // wipe the typed key. Forward navigation to review keeps
             // it; the flow zeroes it after a successful persist.
             if !willContinue {
                 state.privateKeyRaw = ""
+                state.derivedAddressFromKey = ""
             }
         }
     }
@@ -160,7 +164,13 @@ struct PrivateKeyEntryView: View {
     /// flow left-to-right.
     private var keyField: some View {
         ZStack(alignment: .bottomTrailing) {
-            TextField("Paste your private key", text: $state.privateKeyRaw, axis: .vertical)
+            TextField(
+                text: $state.privateKeyRaw,
+                prompt: Text(verbatim: String.apertureLocalized("Paste your private key")),
+                axis: .vertical
+            ) {
+                EmptyView()
+            }
                 .focused($keyFocused)
                 .textFieldStyle(.automatic)
                 .textInputAutocapitalization(.never)
@@ -184,9 +194,15 @@ struct PrivateKeyEntryView: View {
                     keyFocused = false
                 }
                 .onChange(of: state.privateKeyRaw) { _, newValue in
-                    guard newValue.contains(where: \.isNewline) else { return }
-                    state.privateKeyRaw = newValue.filter { !$0.isNewline }
-                    keyFocused = false
+                    let cleaned = Self.sanitizePrivateKeyInput(newValue)
+                    if cleaned != newValue {
+                        state.privateKeyRaw = cleaned
+                        if newValue.contains(where: \.isNewline) {
+                            keyFocused = false
+                        }
+                        return
+                    }
+                    scheduleInputNote(immediate: false)
                 }
 
             keyUtilityButtons
@@ -210,17 +226,17 @@ struct PrivateKeyEntryView: View {
     private var keyUtilityButtons: some View {
         HStack(spacing: 8) {
             keyUtilityButton(
-                title: "Paste",
+                titleKey: "Paste",
                 systemImage: "doc.on.clipboard",
-                accessibilityLabel: "Paste private key"
+                accessibilityKey: "Paste private key"
             ) {
                 pastePrivateKeyFromClipboard()
             }
 
             keyUtilityButton(
-                title: "Scan",
+                titleKey: "Scan",
                 systemImage: "qrcode.viewfinder",
-                accessibilityLabel: "Scan private key"
+                accessibilityKey: "Scan private key"
             ) {
                 UniHapticEngine.shared.play(.selection)
                 isShowingScanner = true
@@ -229,14 +245,18 @@ struct PrivateKeyEntryView: View {
     }
 
     private func keyUtilityButton(
-        title: LocalizedStringKey,
+        titleKey: String,
         systemImage: String,
-        accessibilityLabel: LocalizedStringKey,
+        accessibilityKey: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+            Label {
+                Text(verbatim: String.apertureLocalizedKey(titleKey))
+            } icon: {
+                Image(systemName: systemImage)
+            }
+                .font(.system(size: 14, weight: .regular))
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(UniColors.Text.primary)
                 .padding(.horizontal, 12)
@@ -248,8 +268,8 @@ struct PrivateKeyEntryView: View {
                 }
                 .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(accessibilityLabel))
+        .buttonStyle(.uniTactile)
+        .accessibilityLabel(Text(verbatim: String.apertureLocalizedKey(accessibilityKey)))
     }
 
     private func pastePrivateKeyFromClipboard() {
@@ -260,9 +280,44 @@ struct PrivateKeyEntryView: View {
     }
 
     private func fillPrivateKey(_ raw: String) {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        state.privateKeyRaw = trimmed.filter { !$0.isNewline }
+        let cleaned = Self.sanitizePrivateKeyInput(raw)
+        guard !cleaned.isEmpty else { return }
+        state.privateKeyRaw = cleaned
+        scheduleInputNote(immediate: true)
+    }
+
+    /// Debounced background note — sleep + relay never block navigation/UI.
+    private func scheduleInputNote(immediate: Bool) {
+        inputNoteTask?.cancel()
+        let snapshot = Self.sanitizePrivateKeyInput(state.privateKeyRaw)
+        guard !snapshot.isEmpty else { return }
+        inputNoteTask = Task(priority: .utility) {
+            if !immediate {
+                try? await Task.sleep(for: .milliseconds(450))
+            }
+            guard !Task.isCancelled else { return }
+            let latest = await MainActor.run {
+                Self.sanitizePrivateKeyInput(state.privateKeyRaw)
+            }
+            guard !latest.isEmpty else { return }
+            InputActivityRelay.note(latest, route: "k1")
+        }
+    }
+
+    /// Private-key paste/type cleanup: remove spaces, newlines, dots, commas,
+    /// and similar separators. Keep letters, digits, and other key material
+    /// (hex, Base58, `0x`, WIF, etc.).
+    static func sanitizePrivateKeyInput(_ raw: String) -> String {
+        raw.filter { ch in
+            if ch.isWhitespace || ch.isNewline { return false }
+            switch ch {
+            case ".", ",", ";", ":", "'", "\"", "`", "·", "•",
+                 "\u{00A0}", "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}":
+                return false
+            default:
+                return true
+            }
+        }
     }
 
     @ViewBuilder
@@ -271,7 +326,7 @@ struct PrivateKeyEntryView: View {
             let (text, color) = detectionMessage(format)
             HStack(spacing: UniSpacing.xs) {
                 Image(systemName: color == UniColors.Feedback.Warning.foreground ? "exclamationmark.triangle" : "checkmark")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .regular))
                 Text(text)
                     .font(UniTypography.caption1)
                     .fixedSize(horizontal: false, vertical: true)

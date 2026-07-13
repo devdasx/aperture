@@ -23,15 +23,17 @@ import UIKit
 /// (EVM, TRON, XRPL, NEAR) keep one card.
 ///
 /// **Honesty (Rule #16).** A first send to an address is flagged plainly;
-/// a repeat send shows the real count. Validation accepts only what the
-/// chain's format rules accept; a name resolves only if the on-chain
-/// registry returns an address. The address is LTR-locked and rendered
-/// honestly in full inside the field (Rule #11).
+/// a repeat send shows the real count. If the address already belongs to
+/// any wallet on this iPhone, we name that wallet instead of "first time".
+/// Validation accepts only what the chain's format rules accept; a name
+/// resolves only if the on-chain registry returns an address. The address
+/// is LTR-locked and rendered honestly in full inside the field (Rule #11).
 struct SendRecipientView: View {
     let chain: SupportedChain
     let tokenSymbol: String?
     let fromAddress: String
     let recents: RecentRecipientsIndex
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     /// Seeds the first recipient field when this step is entered from a scan
     /// (the app-bar Aperture Scanner hands back the validated address). `nil` in
     /// the manual flow. Applied once on appear via `handleIncoming` so it runs
@@ -58,13 +60,6 @@ struct SendRecipientView: View {
     /// presents the full-screen address-poisoning guard (Flow A3). Nil when
     /// no lookalike is pending.
     @State private var poisonLookalike: SendSafety.Lookalike?
-    /// Tap counter for the ambient affordances' selection haptic — the
-    /// action chips (Paste / Scan / Add) aren't
-    /// `UniButton`s, so they fire `.uniHaptic(_:trigger:)` keyed to this
-    /// on each tap (Rule #10 §B authoring pattern). One counter, one
-    /// polite `.selection` beat for every "address landed / sheet opened"
-    /// gesture on this screen.
-    @State private var selectionTapCount: Int = 0
     /// Guards the one-time `initialRecipient` prefill so it doesn't re-run if
     /// the view re-appears.
     @State private var didConsumeInitial: Bool = false
@@ -75,6 +70,19 @@ struct SendRecipientView: View {
     private var maxRecipients: Int { ChainSendCapability.maxRecipients(for: chain) }
     private var isMulti: Bool { maxRecipients > 1 }
     private var recentList: [RecentRecipient] { recents.recents(for: chain) }
+
+    /// Stable id for the end-of-list scroll anchor (below last Paste/Scan).
+    private static let recipientsScrollEndID = "send-recipients-scroll-end"
+
+    /// Addresses on this chain that already live in any local wallet
+    /// (including the one we're sending from).
+    private var localWalletAddresses: LocalWalletAddressIndex {
+        LocalWalletAddressIndex(
+            wallets: databaseSnapshot.wallets,
+            chain: chain,
+            fromAddress: fromAddress
+        )
+    }
 
     private var showsRecipientMemo: Bool {
         chain == .ripple || chain == .stellar
@@ -169,21 +177,47 @@ struct SendRecipientView: View {
         return false
     }
 
+    /// Space reserved under the scroll content so the last recipient row
+    /// (field + Paste/Scan/Add) can sit fully above the floating Continue bar.
+    private var bottomScrollClearance: CGFloat {
+        // Continue button (~52) + bar padding + home indicator + utility row.
+        120
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                recipientsBlock
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: UniSpacing.l) {
+                    recipientsBlock
+
+                    // Scroll target below Paste/Scan so those controls land
+                    // above the Continue overlay, not under it.
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.recipientsScrollEndID)
+                }
+                .padding(.horizontal, UniSpacing.l)
+                .padding(.top, UniSpacing.m)
+                .padding(.bottom, UniSpacing.m)
             }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.m)
-            // Clear the floating Continue CTA so the last card never hides
-            // under the glass.
-            .padding(.bottom, UniSpacing.xxxl + UniSpacing.xl)
+            // Inset the scrollable viewport so `scrollTo(..., .bottom)` clears
+            // the floating Continue bar (`uniBottomActionBar` is an overlay).
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear
+                    .frame(height: bottomScrollClearance)
+                    .accessibilityHidden(true)
+            }
+            // When focus moves between recipient fields, prune any earlier
+            // field the user emptied and left. Keyed on focus-change (not
+            // mid-keystroke) so it never deletes the field being edited.
+            .onChange(of: focusedEntry) { _, _ in pruneEmptyUnfocused() }
+            .onChange(of: entries.count) { _, newCount in
+                // After "Add recipient", scroll until the new field + Paste/Scan
+                // sit above Continue.
+                guard newCount > 1 else { return }
+                scrollToNewestRecipient(proxy: proxy)
+            }
         }
-        // When focus moves between recipient fields, prune any earlier
-        // field the user emptied and left. Keyed on focus-change (not
-        // mid-keystroke) so it never deletes the field being edited.
-        .onChange(of: focusedEntry) { _, _ in pruneEmptyUnfocused() }
         // Seed the recipient from a scan (app-bar Aperture Scanner) exactly once,
         // through the same path an in-view scan takes (validation + poisoning +
         // resolution).
@@ -198,10 +232,6 @@ struct SendRecipientView: View {
         .scrollDismissesKeyboard(.interactively)
         .background(UniColors.Background.primary)
         .toolbarBackground(.hidden, for: .navigationBar)
-        // One polite `.selection` beat for every ambient affordance on the
-        // screen chips — these aren't `UniButton`s, so the
-        // haptic is wired here, keyed to the shared tap counter.
-        .uniHaptic(.selection, trigger: selectionTapCount)
         .uniBottomActionBar { continueBar }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -254,18 +284,13 @@ struct SendRecipientView: View {
     @ViewBuilder
     private var recipientsBlock: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
-            if isMulti {
-                sectionHeader(
-                    entries.count > 1 ? "Recipients (\(entries.count))" : "Recipients"
-                )
-            }
+            sectionHeader(
+                entries.count > 1 ? "Recipients (\(entries.count))" : "Recipients"
+            )
 
-            if showsRecipientMemo {
-                recipientMemoForm
-                recipientMemoGuidance
-                    .padding(.top, UniSpacing.xxs)
-            } else {
-                VStack(spacing: UniSpacing.s) {
+            // One connected inset group (Settings / Send amount multi-list).
+            UniCard(padding: 0, fill: UniColors.List.rowBackground) {
+                VStack(spacing: 0) {
                     ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
                         RecipientRow(
                             entry: $entry,
@@ -277,63 +302,31 @@ struct SendRecipientView: View {
                             isDuplicate: isDuplicateAddress(entry),
                             focusBinding: $focusedEntry,
                             sendCount: { recents.sendCount(to: $0, chain: chain) },
+                            localWalletMatch: { localWalletAddresses.match(for: $0) },
                             showsUtilityActions: offset == entries.count - 1,
                             showsAddRecipient: isMulti,
                             canAddRecipient: canAddMore,
-                            onPaste: {
-                                selectionTapCount &+= 1
-                                pasteFromClipboard()
-                            },
-                            onScan: {
-                                selectionTapCount &+= 1
-                                isScanning = true
-                            },
-                            onAddRecipient: {
-                                selectionTapCount &+= 1
-                                addEntry()
-                            },
+                            onPaste: { pasteFromClipboard() },
+                            onScan: { isScanning = true },
+                            onAddRecipient: { addEntry() },
                             onRemove: { remove(entry.id) }
                         )
+                        .id(entry.id)
+                        if offset < entries.count - 1 || showsRecipientMemo {
+                            UniDivider().padding(.leading, UniSpacing.m)
+                        }
+                    }
+
+                    if showsRecipientMemo {
+                        recipientMemoInputRow
                     }
                 }
             }
-        }
-    }
 
-    @ViewBuilder
-    private var recipientMemoForm: some View {
-        VStack(spacing: UniSpacing.s) {
-            ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
-                RecipientRow(
-                    entry: $entry,
-                    chain: chain,
-                    index: offset + 1,
-                    showsIndex: isMulti && entries.count > 1,
-                    nameHint: nameHint,
-                    canRemove: entries.count > 1,
-                    isDuplicate: isDuplicateAddress(entry),
-                    focusBinding: $focusedEntry,
-                    sendCount: { recents.sendCount(to: $0, chain: chain) },
-                    showsUtilityActions: offset == entries.count - 1,
-                    showsAddRecipient: isMulti,
-                    canAddRecipient: canAddMore,
-                    onPaste: {
-                        selectionTapCount &+= 1
-                        pasteFromClipboard()
-                    },
-                    onScan: {
-                        selectionTapCount &+= 1
-                        isScanning = true
-                    },
-                    onAddRecipient: {
-                        selectionTapCount &+= 1
-                        addEntry()
-                    },
-                    onRemove: { remove(entry.id) }
-                )
+            if showsRecipientMemo {
+                recipientMemoGuidance
+                    .padding(.top, UniSpacing.xxs)
             }
-
-            recipientMemoInputRow
         }
     }
 
@@ -341,29 +334,31 @@ struct SendRecipientView: View {
     private var recipientMemoInputRow: some View {
         switch chain {
         case .ripple:
-            RecipientFieldBox(minHeight: 72) {
-                NativeRecipientTextField(
-                    text: $destinationTagText,
-                    prompt: "Destination tag (optional)",
-                    label: "Destination tag",
-                    axis: .horizontal,
-                    lineLimit: 1,
-                    keyboardType: .numberPad,
-                    forceLTR: true
-                )
-            }
+            UniTextField(
+                placeholder: "Destination tag (optional)",
+                text: $destinationTagText,
+                directionPolicy: .forceLTR,
+                fill: Color.clear,
+                verticalPadding: UniSpacing.s,
+                showsChrome: false,
+                keyboardType: .numberPad
+            )
+            .padding(.horizontal, UniSpacing.xs)
+            .padding(.vertical, UniSpacing.xs)
         case .stellar:
-            RecipientFieldBox(minHeight: 84) {
-                NativeRecipientTextField(
-                    text: $stellarMemoText,
-                    prompt: "Memo, ID, or hash",
-                    label: "Stellar memo",
-                    axis: .vertical,
-                    lineLimit: stellarMemoInference.isTextLike ? 2 : 1,
-                    keyboardType: .default,
-                    forceLTR: !stellarMemoInference.isTextLike
-                )
-            }
+            UniTextField(
+                placeholder: "Memo, ID, or hash",
+                text: $stellarMemoText,
+                directionPolicy: stellarMemoInference.isTextLike ? .automatic : .forceLTR,
+                axis: .vertical,
+                lineLimit: stellarMemoInference.isTextLike ? 2 : 1,
+                fill: Color.clear,
+                verticalPadding: UniSpacing.s,
+                showsChrome: false,
+                keyboardType: .default
+            )
+            .padding(.horizontal, UniSpacing.xs)
+            .padding(.vertical, UniSpacing.xs)
         default:
             EmptyView()
         }
@@ -380,7 +375,7 @@ struct SendRecipientView: View {
                 .padding(.horizontal, UniSpacing.m)
 
                 if destinationTagIsInvalid {
-                    memoError("Destination tag must be a number from 0 to 4,294,967,295.")
+                    memoError(String.apertureLocalized("Destination tag must be a number from 0 to 4,294,967,295."))
                         .padding(.horizontal, UniSpacing.m)
                 }
             }
@@ -420,8 +415,8 @@ struct SendRecipientView: View {
     private func memoTypeBadge(_ type: String) -> some View {
         HStack(spacing: UniSpacing.xs) {
             Image(systemName: "sparkle.magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
-            Text("Detected: \(type)")
+                .font(.system(size: 12, weight: .regular))
+            Text(verbatim: String(format: String.apertureLocalized("Detected: %@"), type))
                 .font(UniTypography.caption1.weight(.semibold))
         }
         .foregroundStyle(UniColors.Text.secondary)
@@ -491,11 +486,31 @@ struct SendRecipientView: View {
 
     private func addEntry() {
         guard canAddMore else { return }
+        let newEntry = DraftEntry()
         withAnimation(.snappy(duration: 0.25)) {
-            entries.append(DraftEntry())
+            entries.append(newEntry)
         }
-        // Land the user in the freshly-added field.
-        focusedEntry = entries.last?.id
+        // Land the user in the freshly-added field (scroll follows via
+        // ScrollViewReader + `.onChange(of: entries.count)`).
+        focusedEntry = newEntry.id
+    }
+
+    /// Scroll so the newest recipient field and its Paste/Scan row clear the
+    /// floating Continue bar.
+    private func scrollToNewestRecipient(proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            // Wait for the new row (+ utility buttons) to lay out.
+            try? await Task.sleep(for: .milliseconds(80))
+            withAnimation(.snappy(duration: 0.35)) {
+                // Prefer the end anchor under utilities; fall back to last row.
+                proxy.scrollTo(Self.recipientsScrollEndID, anchor: .bottom)
+            }
+            // Second pass after focus/keyboard settles.
+            try? await Task.sleep(for: .milliseconds(120))
+            withAnimation(.snappy(duration: 0.25)) {
+                proxy.scrollTo(Self.recipientsScrollEndID, anchor: .bottom)
+            }
+        }
     }
 
     /// Remove any field the user emptied and then left — but NEVER the
@@ -521,21 +536,16 @@ struct SendRecipientView: View {
         }
     }
 
-    /// Place a pasted / scanned address into the last empty entry,
-    /// else append a new entry (when the chain allows more).
+    /// Place a pasted / scanned address into the **last empty** entry only.
+    /// Never appends a new recipient — only **Add recipient** grows the list.
+    /// A second Paste/Scan while the field already has text is a no-op.
     private func fill(_ value: String) {
         let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
-        if let lastIndex = entries.indices.last,
-           entries[lastIndex].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            entries[lastIndex].text = clean
-        } else if isMulti, entries.count < maxRecipients {
-            withAnimation(.snappy(duration: 0.25)) {
-                entries.append(DraftEntry(text: clean))
-            }
-        } else if let lastIndex = entries.indices.last {
-            entries[lastIndex].text = clean
-        }
+        guard let lastIndex = entries.indices.last else { return }
+        let lastText = entries[lastIndex].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard lastText.isEmpty else { return }
+        entries[lastIndex].text = clean
     }
 
     private func pasteFromClipboard() {
@@ -700,96 +710,11 @@ private struct RecipientRoutingNote: View {
     }
 }
 
-private struct NativeRecipientTextField: View {
-    @Binding var text: String
-    let prompt: String
-    let label: String
-    let axis: Axis
-    let lineLimit: Int
-    let keyboardType: UIKeyboardType
-    let forceLTR: Bool
-    var autocapitalization: TextInputAutocapitalization = .never
-    var focusBinding: FocusState<UUID?>.Binding?
-    var focusValue: UUID?
-
-    var body: some View {
-        Group {
-            if let focusBinding, let focusValue {
-                field
-                    .focused(focusBinding, equals: focusValue)
-            } else {
-                field
-            }
-        }
-        .modifier(NativeRecipientDirectionModifier(forceLTR: forceLTR))
-    }
-
-    private var field: some View {
-        TextField(
-            text: $text,
-            prompt: Text(verbatim: prompt),
-            axis: axis
-        ) {
-            Text(verbatim: label)
-        }
-        .keyboardType(keyboardType)
-        .textInputAutocapitalization(autocapitalization)
-        .autocorrectionDisabled(true)
-        .textFieldStyle(.automatic)
-        .lineLimit(lineLimit)
-    }
-}
-
-private struct NativeRecipientDirectionModifier: ViewModifier {
-    let forceLTR: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if forceLTR {
-            content.environment(\.layoutDirection, .leftToRight)
-        } else {
-            content
-        }
-    }
-}
-
-private struct RecipientFieldBox<Content: View>: View {
-    let minHeight: CGFloat
-    let content: Content
-
-    init(minHeight: CGFloat, @ViewBuilder content: () -> Content) {
-        self.minHeight = minHeight
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .font(UniTypography.body)
-            .foregroundStyle(UniColors.Input.text)
-            .tint(UniColors.Tint.accent)
-            .padding(.horizontal, UniSpacing.mPlus)
-            .padding(.vertical, UniSpacing.m)
-            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-            .background(inputBackground)
-    }
-
-    private var inputBackground: some View {
-        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
-            .fill(UniColors.Input.background)
-    }
-}
-
 // MARK: - One recipient row (owns its resolution)
 
-/// A single recipient row. The address itself is a native SwiftUI `TextField`
-/// in the same field layout used by the import wallet phrase field.
-///
-/// Row anatomy (top to bottom): an optional index label (when more than one
-/// recipient), the full address field (expanding, LTR-locked) with inline
-/// Paste / Scan / Add-recipient utilities, and resolution feedback beneath.
-/// No leading disc — the person is identified by their address, which the
-/// field shows in full (Rule #7). Standard grouped-cell padding gives each
-/// row its own breathing room within the shared container.
+/// List-style address row inside the connected recipients `UniCard`.
+/// Uses chrome-free `UniTextField` so rows share one grouped surface
+/// (same pattern as the multi-recipient amount list).
 private struct RecipientRow: View {
     @Binding var entry: SendRecipientView.DraftEntry
     let chain: SupportedChain
@@ -807,6 +732,8 @@ private struct RecipientRow: View {
     /// earlier field on focus change.
     let focusBinding: FocusState<UUID?>.Binding
     let sendCount: (String) -> Int
+    /// When non-nil, this address is already on a wallet in the app.
+    let localWalletMatch: (String) -> LocalWalletAddressMatch?
     let showsUtilityActions: Bool
     let showsAddRecipient: Bool
     let canAddRecipient: Bool
@@ -818,16 +745,53 @@ private struct RecipientRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: UniSpacing.xs) {
             if showsIndex {
-                Text("Recipient \(index)")
+                Text(verbatim: String(format: String.apertureLocalized("Recipient %lld"), Int64(index)))
                     .font(UniTypography.caption1)
                     .foregroundStyle(UniColors.Text.tertiary)
+                    .padding(.horizontal, UniSpacing.m)
                     .padding(.top, UniSpacing.s)
             }
 
-            addressField
+            HStack(alignment: .top, spacing: UniSpacing.xs) {
+                UniTextField(
+                    placeholder: prompt,
+                    text: $entry.text,
+                    directionPolicy: .forceLTR,
+                    axis: .vertical,
+                    lineLimit: 3,
+                    fill: Color.clear,
+                    verticalPadding: UniSpacing.s,
+                    showsChrome: false,
+                    focusBinding: focusBinding,
+                    focusValue: entry.id
+                )
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                if canRemove {
+                    Button(action: onRemove) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(UniColors.Feedback.Error.foreground)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.uniTactile)
+                    .accessibilityLabel(Text("Remove recipient"))
+                    .padding(.trailing, UniSpacing.xs)
+                    .padding(.top, UniSpacing.xxs)
+                }
+            }
+
+            // Paste/Scan hide once the field has text; Add recipient stays.
+            // After Add recipient, the new empty row shows Paste/Scan again.
+            if showsUtilityActions, fieldIsEmpty || showsAddRecipient {
+                fieldUtilities
+                    .padding(.horizontal, UniSpacing.m)
+                    .padding(.bottom, UniSpacing.s)
+            }
 
             feedback
-                .padding(.trailing, UniSpacing.m)
+                .padding(.horizontal, UniSpacing.m)
                 .padding(.bottom, UniSpacing.s)
         }
         .task(id: entry.text) { await resolve() }
@@ -838,75 +802,27 @@ private struct RecipientRow: View {
         nameHint == nil ? "Recipient address" : "Address or \(nameHint!)"
     }
 
-    private var addressField: some View {
-        ZStack(alignment: .bottomTrailing) {
-            TextField(
-                text: $entry.text,
-                prompt: Text(verbatim: prompt),
-                axis: .vertical
-            ) {
-                Text(verbatim: "Recipient address")
-            }
-            .focused(focusBinding, equals: entry.id)
-            .textFieldStyle(.automatic)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled(true)
-            .keyboardType(.default)
-            .submitLabel(.done)
-            .font(UniTypography.body)
-            .foregroundStyle(UniColors.Input.text)
-            .tint(UniColors.Tint.accent)
-            .lineLimit(4...8)
-            .padding(.leading, UniSpacing.mPlus)
-            .padding(.trailing, canRemove ? 56 : UniSpacing.mPlus)
-            .padding(.top, UniSpacing.m)
-            .padding(.bottom, showsUtilityActions ? 62 : UniSpacing.m)
-            .frame(maxWidth: .infinity, minHeight: 166, alignment: .topLeading)
-            .background(inputBackground)
-            .environment(\.layoutDirection, .leftToRight)
-
-            if canRemove {
-                Button(action: onRemove) {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(UniColors.Feedback.Error.foreground)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("Remove recipient"))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, 6)
-                .padding(.trailing, UniSpacing.xs)
-            }
-
-            if showsUtilityActions {
-                fieldUtilities
-                    .padding(.trailing, UniSpacing.s)
-                    .padding(.bottom, UniSpacing.s)
-            }
-        }
-    }
-
-    private var inputBackground: some View {
-        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
-            .fill(UniColors.Input.background)
+    /// Paste/Scan only while this field is empty; Add recipient stays when multi-send.
+    private var fieldIsEmpty: Bool {
+        entry.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var fieldUtilities: some View {
         HStack(spacing: 8) {
-            fieldUtilityButton(
-                title: "Paste",
-                systemImage: "doc.on.clipboard",
-                accessibilityLabel: "Paste recipient address",
-                action: onPaste
-            )
-            fieldUtilityButton(
-                title: "Scan",
-                systemImage: "qrcode.viewfinder",
-                accessibilityLabel: "Scan recipient address",
-                action: onScan
-            )
+            if fieldIsEmpty {
+                fieldUtilityButton(
+                    title: "Paste",
+                    systemImage: "doc.on.clipboard",
+                    accessibilityLabel: "Paste recipient address",
+                    action: onPaste
+                )
+                fieldUtilityButton(
+                    title: "Scan",
+                    systemImage: "qrcode.viewfinder",
+                    accessibilityLabel: "Scan recipient address",
+                    action: onScan
+                )
+            }
             if showsAddRecipient {
                 fieldUtilityButton(
                     title: "Add recipient",
@@ -928,18 +844,13 @@ private struct RecipientRow: View {
     ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .regular))
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(isEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
                 .padding(.horizontal, 12)
-                .frame(height: 38)
-                .background(.regularMaterial, in: Capsule(style: .continuous))
-                .overlay {
-                    Capsule(style: .continuous)
-                        .stroke(UniColors.Input.border.opacity(0.7), lineWidth: 1)
-                }
+                .frame(height: 34)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .disabled(!isEnabled)
         .accessibilityLabel(Text(accessibilityLabel))
     }
@@ -985,13 +896,13 @@ private struct RecipientRow: View {
                             .foregroundStyle(UniColors.Text.tertiary)
                     }
                 } else {
-                    firstSendNote(address)
+                    recipientOwnershipOrSendNote(address)
                 }
             }
             .transition(.opacity)
         case let .nameNotFound(name):
             Label {
-                Text("Couldn't find \(name). Check the spelling, or paste the address.")
+                Text(verbatim: String(format: String.apertureLocalized("Couldn't find %@. Check the spelling, or paste the address."), name))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Feedback.Warning.foreground)
             } icon: {
@@ -1014,7 +925,7 @@ private struct RecipientRow: View {
     private var invalidFeedback: some View {
         if let other = SendSafety.wrongNetwork(for: entry.text, intendedChain: chain) {
             Label {
-                Text("That looks like a \(other.displayName) address — but you're sending on \(chain.displayName). Funds sent to the wrong network can't be recovered.")
+                Text(verbatim: String(format: String.apertureLocalized("That looks like a %@ address — but you're sending on %@. Funds sent to the wrong network can't be recovered."), other.displayName, chain.displayName))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Feedback.Error.foreground)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1026,7 +937,7 @@ private struct RecipientRow: View {
             .transition(.opacity)
         } else {
             Label {
-                Text("That's not a valid \(chain.displayName) address.")
+                Text(verbatim: String(format: String.apertureLocalized("That's not a valid %@ address."), chain.displayName))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Feedback.Error.foreground)
             } icon: {
@@ -1038,9 +949,25 @@ private struct RecipientRow: View {
         }
     }
 
-    /// The honesty beat (Rule #16). First send → a plain, weighted warning
-    /// that transactions can't be reversed. Repeat send → a calm, verified
-    /// note with the real count.
+    /// Local wallet ownership first; otherwise first-send warning or prior-send count.
+    @ViewBuilder
+    private func recipientOwnershipOrSendNote(_ address: String) -> some View {
+        if let match = localWalletMatch(address) {
+            HStack(alignment: .top, spacing: UniSpacing.xs) {
+                Image(systemName: match.isSendingWallet ? "wallet.bifold.fill" : "wallet.bifold")
+                    .font(.system(size: 13))
+                    .foregroundStyle(UniColors.Feedback.Success.foreground)
+                Text(verbatim: match.displayMessage)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            firstSendNote(address)
+        }
+    }
+
+    /// First send → short double-check note. Repeat send → real prior-send count.
     @ViewBuilder
     private func firstSendNote(_ address: String) -> some View {
         let count = sendCount(address)
@@ -1049,7 +976,7 @@ private struct RecipientRow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(UniColors.Feedback.Warning.foreground)
-                Text("First time sending here — double-check it. Transactions can't be reversed.")
+                Text("First time sending here — double-check it.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1080,5 +1007,81 @@ private struct RecipientRow: View {
         let result = await RecipientResolver.resolve(trimmed, chain: chain)
         if Task.isCancelled { return }
         withAnimation(.easeOut(duration: 0.2)) { entry.resolution = result }
+    }
+}
+
+// MARK: - Local wallet address ownership
+
+/// Recipient address already stored on a wallet in this app.
+struct LocalWalletAddressMatch: Sendable, Equatable {
+    let walletName: String
+    /// `true` when the address is on the wallet we're sending *from*
+    /// (including other paths/addresses of that wallet).
+    let isSendingWallet: Bool
+
+    var displayMessage: String {
+        if isSendingWallet {
+            return String(
+                format: String.apertureLocalized("Your address · %@"),
+                walletName
+            )
+        }
+        return String(
+            format: String.apertureLocalized("Belongs to %@"),
+            walletName
+        )
+    }
+}
+
+/// Lookup of every on-device wallet address for one chain.
+struct LocalWalletAddressIndex: Sendable {
+    private struct Owner: Sendable {
+        let walletId: UUID
+        let name: String
+    }
+
+    private let byNormalizedAddress: [String: Owner]
+    private let sendingWalletId: UUID?
+    private let chain: SupportedChain
+
+    init(wallets: [WalletRecord], chain: SupportedChain, fromAddress: String) {
+        self.chain = chain
+        var map: [String: Owner] = [:]
+        let fromKey = Self.normalize(fromAddress, chain: chain)
+        var sendingId: UUID?
+
+        for wallet in wallets {
+            for address in wallet.addresses where address.chainRaw == chain.rawValue {
+                let key = Self.normalize(address.address, chain: chain)
+                guard !key.isEmpty else { continue }
+                map[key] = Owner(walletId: wallet.id, name: wallet.name)
+                if key == fromKey {
+                    sendingId = wallet.id
+                }
+            }
+        }
+
+        // Ensure the live from-address is indexed even if observation is briefly stale.
+        if sendingId == nil, !fromKey.isEmpty, let existing = map[fromKey] {
+            sendingId = existing.walletId
+        }
+
+        self.byNormalizedAddress = map
+        self.sendingWalletId = sendingId
+    }
+
+    func match(for address: String) -> LocalWalletAddressMatch? {
+        let key = Self.normalize(address, chain: chain)
+        guard let owner = byNormalizedAddress[key] else { return nil }
+        let isFromWallet = sendingWalletId.map { $0 == owner.walletId } ?? false
+        return LocalWalletAddressMatch(
+            walletName: owner.name,
+            isSendingWallet: isFromWallet
+        )
+    }
+
+    private static func normalize(_ address: String, chain: SupportedChain) -> String {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        return chain.family == .evm ? trimmed.lowercased() : trimmed
     }
 }

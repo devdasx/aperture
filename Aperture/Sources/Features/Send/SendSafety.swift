@@ -63,16 +63,24 @@ enum SendSafety {
         let candidateSuffix = candidate.suffix(window)
 
         for rawKnown in known {
-            let knownNorm = normalized(rawKnown, chain: chain)
-            guard knownNorm != candidate, knownNorm.count >= window * 2 else { continue }
-            if knownNorm.prefix(window) == candidatePrefix,
-               knownNorm.suffix(window) == candidateSuffix {
-                return Lookalike(
-                    knownAddress: rawKnown,
-                    pastedAddress: pasted,
-                    sharedPrefix: sharedLeading(candidate, knownNorm),
-                    sharedSuffix: sharedTrailing(candidate, knownNorm)
-                )
+            // Multi-recipient history may still hold a joined blob; never
+            // treat that as one address (false lookalike + broken UI).
+            let parts = RecentRecipientsIndex.expandedCounterparties(rawKnown)
+            let singles = parts.isEmpty ? [rawKnown] : parts
+            for single in singles {
+                let knownNorm = normalized(single, chain: chain)
+                guard knownNorm != candidate, knownNorm.count >= window * 2 else { continue }
+                // Exact-shape single address only (no residual commas).
+                guard !knownNorm.contains(",") else { continue }
+                if knownNorm.prefix(window) == candidatePrefix,
+                   knownNorm.suffix(window) == candidateSuffix {
+                    return Lookalike(
+                        knownAddress: single.trimmingCharacters(in: .whitespacesAndNewlines),
+                        pastedAddress: pasted,
+                        sharedPrefix: sharedLeading(candidate, knownNorm),
+                        sharedSuffix: sharedTrailing(candidate, knownNorm)
+                    )
+                }
             }
         }
         return nil

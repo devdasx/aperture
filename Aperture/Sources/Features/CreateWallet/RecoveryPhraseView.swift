@@ -20,9 +20,10 @@ import UIKit
 ///   with a 2-digit position badge in
 ///   `UniColors.Text.tertiary` and the word in body-emphasized weight.
 ///   Non-interactive: no tap, no copy menu.
-/// - A centered plain text `Copy` action directly below the grid. Tap copies
-///   the phrase to `UIPasteboard.general` with a short `.expirationDate` so
-///   the system auto-clears it.
+/// - A compact, content-sized Liquid Glass capsule `Copy` under the grid
+///   (not `UniButton` — smaller width/height). Tap copies the phrase
+///   (auto-expiring pasteboard); the capsule fills solid success green
+///   with a white "Copied" label.
 /// - One bottom CTA: Continue.
 ///
 /// **Toolbar.** Leading: a bare inline `xmark` glyph (no glass pill —
@@ -51,12 +52,6 @@ struct RecoveryPhraseView: View {
     /// need to survive a `.id`-driven rebuild because it is incidental
     /// to the flow.
     @State private var isShowingPassphraseSheet: Bool = false
-
-    /// Toggle for the "Roll your own" entropy sheet (user-supplied
-    /// dice / coin / hex entropy). Local state — the sheet is
-    /// self-contained and commits its result to `state.words` on
-    /// success.
-    @State private var isShowingRollYourOwn: Bool = false
 
     /// Visible iff the user just tapped Copy. Auto-clears after a short
     /// delay so the confirmation does not linger.
@@ -101,21 +96,6 @@ struct RecoveryPhraseView: View {
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
-        .sheet(isPresented: $isShowingRollYourOwn) {
-            // Per the jony-ive 2026-06-05 audit: this is a navigation
-            // experience (NavigationStack-rooted, three screens) — same
-            // family member as the Settings sheet, so the same
-            // presentation modifiers apply. NOT intrinsicHeightSheet —
-            // that's for content-card sheets (warning sheets, etc.).
-            RollYourOwnSheet(
-                state: state,
-                onDismiss: { isShowingRollYourOwn = false }
-            )
-            .apertureEnvironment()
-            .uniSheetDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
-        }
         .uniHapticSignature(.phraseRevealed, trigger: state.words.joined())
     }
 
@@ -130,7 +110,7 @@ struct RecoveryPhraseView: View {
             onClose()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17, weight: .regular))
         }
         .accessibilityLabel(Text("Close"))
     }
@@ -163,17 +143,9 @@ struct RecoveryPhraseView: View {
                     }
                 }
             }
-
-            Section {
-                Button {
-                    isShowingRollYourOwn = true
-                } label: {
-                    Label("Roll your own…", systemImage: "dice")
-                }
-            }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 17, weight: .regular))
         }
         .accessibilityLabel(Text("Options"))
     }
@@ -223,26 +195,51 @@ struct RecoveryPhraseView: View {
         }
     }
 
-    /// Copy as plain text under the phrase grid. It deliberately avoids the
-    /// unified glass button treatment so the only heavy CTA on this screen is
-    /// Continue.
+    /// Compact copy control under the phrase grid — intrinsic width,
+    /// short height, not the full-width `UniButton` CTA. Idle: Liquid
+    /// Glass capsule. After copy: solid success green + white "Copied".
     private var copyTextButton: some View {
         Button {
             copyPhrase()
         } label: {
             Text(isShowingCopiedConfirmation ? "Copied" : "Copy")
-                .font(UniTypography.bodyEmphasized)
+                .font(UniTypography.subheadline.weight(.semibold))
                 .foregroundStyle(
                     isShowingCopiedConfirmation
-                        ? UniColors.Feedback.Success.foreground
-                        : UniColors.Button.text
+                        ? Color.white
+                        : UniColors.Text.primary
                 )
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
-                .contentShape(Rectangle())
+                .padding(.horizontal, UniSpacing.m)
+                .padding(.vertical, 7)
+                .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniTactile)
+        .background {
+            if isShowingCopiedConfirmation {
+                Capsule(style: .continuous)
+                    .fill(UniColors.Feedback.Success.foreground)
+            }
+        }
+        .modifier(RecoveryPhraseCopyChrome(isCopied: isShowingCopiedConfirmation))
+        .frame(maxWidth: .infinity)
+        .padding(.top, UniSpacing.m)
         .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         .accessibilityLabel(Text("Copy recovery phrase"))
+        .accessibilityValue(Text(isShowingCopiedConfirmation ? "Copied" : "Copy"))
+    }
+}
+
+/// Idle: Liquid Glass capsule. Copied: no glass so the solid green fill
+/// stays fully opaque (matches receive-sheet “fully green + white” copy).
+private struct RecoveryPhraseCopyChrome: ViewModifier {
+    let isCopied: Bool
+
+    func body(content: Content) -> some View {
+        if isCopied {
+            content
+        } else {
+            content.glassEffect(.regular, in: Capsule(style: .continuous))
+        }
     }
 }
 

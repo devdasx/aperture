@@ -62,6 +62,12 @@ struct UniEmptyState: View {
     let title: LocalizedStringKey
     let detail: LocalizedStringKey
     var mark: Mark = .iris
+    /// When `true` (default), paints the opaque card fill + elliptical
+    /// lift — the standalone empty surface. Set `false` when embedding
+    /// inside a parent that already provides the card fill (e.g. wallet
+    /// home holdings card chrome above the empty body) so mark + copy
+    /// still match every other empty state without a double card.
+    var paintsSurface: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isBreathing: Bool = false
@@ -78,28 +84,26 @@ struct UniEmptyState: View {
 
     var body: some View {
         ZStack {
-            // Card surface — opaque content layer (Rule #2 §B.3).
-            // `UniCard`'s own background paints this; we just declare
-            // the radius here for the lift and watermark to inherit.
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.EmptyState.background)
+            if paintsSurface {
+                // Card surface — opaque content layer (Rule #2 §B.3).
+                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                    .fill(UniColors.EmptyState.background)
 
-            // Soft elliptical lift — re-uses the splash family so the
-            // empty surface visually threads to the launch screen. The
-            // gradient's center sits above the card center to mirror
-            // the splash's "lift at 50% × 38%" geometry.
-            EllipticalGradient(
-                colors: [UniColors.EmptyState.liftStart, UniColors.EmptyState.liftEnd],
-                center: UnitPoint(x: 0.5, y: 0.32),
-                startRadiusFraction: 0.0,
-                endRadiusFraction: 0.95
-            )
-            .opacity(0.35) // Restrained — the lift is a hint, not a hero.
-            .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+                // Soft elliptical lift — re-uses the splash family so the
+                // empty surface visually threads to the launch screen.
+                EllipticalGradient(
+                    colors: [UniColors.EmptyState.liftStart, UniColors.EmptyState.liftEnd],
+                    center: UnitPoint(x: 0.5, y: 0.32),
+                    startRadiusFraction: 0.0,
+                    endRadiusFraction: 0.95
+                )
+                .opacity(0.35) // Restrained — the lift is a hint, not a hero.
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
 
-            // Content stack — mark + copy.
+            // Content stack — mark + copy (same for every empty surface).
             VStack(spacing: UniSpacing.m) {
                 watermark
                     .accessibilityHidden(true)

@@ -77,10 +77,18 @@ struct AssetRow: View {
             Spacer(minLength: UniSpacing.s)
 
             VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                Text(WalletFormatting.native(nativeAmount, decimals: nativeDecimals, hidden: hideBalances))
-                    .font(UniTypography.monoBody)
-                    .foregroundStyle(UniColors.Text.primary)
-                fiatLabel
+                PrivacySensitiveAmount(
+                    text: WalletFormatting.native(nativeAmount, decimals: nativeDecimals),
+                    font: UniTypography.monoBody,
+                    color: UniColors.Text.primary,
+                    isHidden: hideBalances
+                )
+                PrivacySensitiveAmount(
+                    text: WalletFormatting.fiat(fiatValue ?? 0, currencyCode: fiatCurrencyCode),
+                    font: UniTypography.footnote,
+                    color: UniColors.Text.tertiary,
+                    isHidden: hideBalances
+                )
             }
         }
         .padding(.vertical, UniSpacing.xs)
@@ -94,35 +102,8 @@ struct AssetRow: View {
             .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             .accessibilityHidden(true)
     }
-
-    private var fiatLabel: some View {
-        // Zero or unpriced → "US$0.00" (0 units is worth exactly $0.00 —
-        // no price needed; never the "Price unavailable" eyesore, user
-        // direction 2026-06-18). `fiatCurrencyCode` is always the active
-        // currency, even on an unheld row, so the format is correct.
-        Text(WalletFormatting.fiat(fiatValue ?? 0, currencyCode: fiatCurrencyCode, hidden: hideBalances))
-            .font(UniTypography.footnote)
-            .foregroundStyle(UniColors.Text.tertiary)
-            .monospacedDigit()
-    }
 }
 
-// MARK: - Equatable (2026-06-18, Part 3.5)
-
-/// `AssetRow` is value-typed, so wallet-home renders it via `.equatable()` to
-/// skip re-evaluating the row's body (logo + labels) when its inputs are
-/// unchanged — i.e. on the many GRDB merges a holdings row doesn't depend
-/// on. `nonisolated` because `Equatable.==` is a nonisolated requirement while
-/// a SwiftUI `View` is main-actor-isolated under Swift 6; it reads only the
-/// row's Sendable value inputs.
-extension AssetRow: Equatable {
-    nonisolated static func == (lhs: AssetRow, rhs: AssetRow) -> Bool {
-        lhs.chain == rhs.chain
-            && lhs.tokenSymbol == rhs.tokenSymbol
-            && lhs.nativeAmount == rhs.nativeAmount
-            && lhs.nativeDecimals == rhs.nativeDecimals
-            && lhs.fiatValue == rhs.fiatValue
-            && lhs.fiatCurrencyCode == rhs.fiatCurrencyCode
-            && lhs.detailCaption == rhs.detailCaption
-    }
-}
+// Equatable intentionally omitted: `balancePrivacyEnabled` is environment-
+// driven. `.equatable()` would skip body when only privacy flips, so hide
+// animation on coins would never run.

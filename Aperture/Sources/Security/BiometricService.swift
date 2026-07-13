@@ -42,26 +42,34 @@ final class BiometricService: Sendable {
         case systemError(Error)
     }
 
-    /// The biometry type the device currently exposes. Resolved once at
-    /// init via a fresh `LAContext`. Feature code may inspect this to
-    /// pick the right SF Symbol (`faceid` / `touchid` / `opticid`).
-    let biometryType: BiometryType
+    /// The biometry type the device currently exposes. Updated by
+    /// `refresh()` / `authenticate` so a temporary lockout is not stuck
+    /// for the life of a long-lived view.
+    private(set) var biometryType: BiometryType
 
-    /// `true` iff `LAContext.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, _)`
-    /// returned `true` at init time. Read this before presenting any
-    /// biometric affordance; if `false`, hide the biometric
-    /// option entirely rather than offering a button that will fail.
-    let isAvailable: Bool
+    /// `true` iff biometrics can be evaluated as of the last `refresh()`.
+    /// Call `refresh()` before showing a Face ID affordance after a long
+    /// gap (sheet appear, settings onAppear).
+    private(set) var isAvailable: Bool
 
     init() {
+        biometryType = .none
+        isAvailable = false
+        refresh()
+    }
+
+    /// Re-query `LAContext` for current availability and biometry type.
+    @discardableResult
+    func refresh() -> Bool {
         let context = LAContext()
         var error: NSError?
         let canEvaluate = context.canEvaluatePolicy(
             .deviceOwnerAuthenticationWithBiometrics,
             error: &error
         )
-        self.isAvailable = canEvaluate
-        self.biometryType = Self.mapBiometryType(context.biometryType)
+        isAvailable = canEvaluate
+        biometryType = Self.mapBiometryType(context.biometryType)
+        return canEvaluate
     }
 
     /// Presents the system biometric prompt with the localized `reason`
@@ -74,13 +82,16 @@ final class BiometricService: Sendable {
     func authenticate(reason: LocalizedStringResource) async -> Result<Void, AuthError> {
         // Fresh context per call — Apple's recommendation. Reusing a
         // context retains the prior evaluation result, which we explicitly
-        // don't want.
+        // don't want. Also refresh cached availability for UI observers.
         let context = LAContext()
         var policyError: NSError?
-        guard context.canEvaluatePolicy(
+        let canEvaluate = context.canEvaluatePolicy(
             .deviceOwnerAuthenticationWithBiometrics,
             error: &policyError
-        ) else {
+        )
+        isAvailable = canEvaluate
+        biometryType = Self.mapBiometryType(context.biometryType)
+        guard canEvaluate else {
             return .failure(.unavailable)
         }
 
@@ -136,10 +147,10 @@ final class BiometricService: Sendable {
 extension BiometricService.BiometryType {
     var displayName: String {
         switch self {
-        case .faceID:  return "Face ID"
-        case .touchID: return "Touch ID"
-        case .opticID: return "Optic ID"
-        case .none:    return "Biometrics"
+        case .faceID:  return String.apertureLocalized("Face ID")
+        case .touchID: return String.apertureLocalized("Touch ID")
+        case .opticID: return String.apertureLocalized("Optic ID")
+        case .none:    return String.apertureLocalized("Biometrics")
         }
     }
 
@@ -188,6 +199,26 @@ extension BiometricService.BiometryType {
         }
     }
 
+    /// Reason when authorizing "Turn Passcode Off" with biometrics.
+    var turnOffPasscodeReason: LocalizedStringResource {
+        switch self {
+        case .faceID:  return "Confirm turning off your Aperture passcode with Face ID."
+        case .touchID: return "Confirm turning off your Aperture passcode with Touch ID."
+        case .opticID: return "Confirm turning off your Aperture passcode with Optic ID."
+        case .none:    return "Confirm turning off your Aperture passcode."
+        }
+    }
+
+    /// Reason when authorizing "Change Passcode" with biometrics.
+    var changePasscodeReason: LocalizedStringResource {
+        switch self {
+        case .faceID:  return "Confirm changing your Aperture passcode with Face ID."
+        case .touchID: return "Confirm changing your Aperture passcode with Touch ID."
+        case .opticID: return "Confirm changing your Aperture passcode with Optic ID."
+        case .none:    return "Confirm changing your Aperture passcode."
+        }
+    }
+
     var reenrollmentReason: LocalizedStringResource {
         switch self {
         case .faceID:  return "Confirm your new Face ID enrollment."
@@ -198,23 +229,23 @@ extension BiometricService.BiometryType {
     }
 
     var enableTitle: String {
-        "Enable \(displayName)"
+        String(format: String.apertureLocalized("Enable %@"), displayName)
     }
 
     var unlockActionTitle: String {
-        "Use \(displayName)"
+        String(format: String.apertureLocalized("Use %@"), displayName)
     }
 
     var promptDescription: String {
         switch self {
         case .faceID:
-            return "Unlock Aperture and confirm transactions with a glance — without typing your PIN every time."
+            return String.apertureLocalized("Unlock Aperture and confirm transactions with a glance — without typing your PIN every time.")
         case .touchID:
-            return "Unlock Aperture and confirm transactions with your fingerprint — without typing your PIN every time."
+            return String.apertureLocalized("Unlock Aperture and confirm transactions with your fingerprint — without typing your PIN every time.")
         case .opticID:
-            return "Unlock Aperture and confirm transactions with Optic ID — without typing your PIN every time."
+            return String.apertureLocalized("Unlock Aperture and confirm transactions with Optic ID — without typing your PIN every time.")
         case .none:
-            return "Unlock Aperture and confirm transactions with device biometrics — without typing your PIN every time."
+            return String.apertureLocalized("Unlock Aperture and confirm transactions with device biometrics — without typing your PIN every time.")
         }
     }
 }

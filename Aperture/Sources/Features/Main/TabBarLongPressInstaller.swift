@@ -59,7 +59,7 @@ struct TabBarLongPressInstaller: UIViewControllerRepresentable {
     let menuProvider: () -> UIMenu
 
     func makeUIViewController(context: Context) -> InstallerController {
-        installerLog.info("makeUIViewController for tabIndex=\(tabIndex)")
+        installerLog.debug("makeUIViewController for tabIndex=\(tabIndex)")
         return InstallerController(tabIndex: tabIndex, menuProvider: menuProvider)
     }
 
@@ -87,7 +87,13 @@ struct TabBarLongPressInstaller: UIViewControllerRepresentable {
             super.init(nibName: nil, bundle: nil)
         }
 
-        required init?(coder: NSCoder) { fatalError("not used") }
+        @available(*, unavailable, message: "Programmatic UIViewController only")
+        required init?(coder: NSCoder) {
+            // Unreachable in production (SwiftUI host, no storyboard). Marked
+            // unavailable so Interface Builder cannot wire it; fatalError is
+            // last-line defense if something still invokes coder init.
+            fatalError("TabBarLongPressInstaller.InstallerController is not storyboard-instantiable")
+        }
 
         override func loadView() {
             let v = UIView(frame: .zero)
@@ -107,7 +113,7 @@ struct TabBarLongPressInstaller: UIViewControllerRepresentable {
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
-            installerLog.info("viewDidAppear: tabIndex=\(self.tabIndex)")
+            installerLog.debug("viewDidAppear: tabIndex=\(self.tabIndex)")
             installIfNeeded(reason: "viewDidAppear")
             // Deferred retries — only queued when the immediate attempt
             // failed (the tab bar may not be in the hierarchy yet on
@@ -132,7 +138,7 @@ struct TabBarLongPressInstaller: UIViewControllerRepresentable {
 
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
-            installerLog.info(
+            installerLog.debug(
                 "didMove(toParent:) parent=\(parent.map { String(describing: type(of: $0)) } ?? "nil")"
             )
             installIfNeeded(reason: "didMove(toParent:)")
@@ -214,7 +220,7 @@ struct TabBarLongPressInstaller: UIViewControllerRepresentable {
             tabBar.addInteraction(interaction)
             ownInteraction = interaction
             installedOn = tabBar
-            installerLog.info("attach: installed UIContextMenuInteraction on UITabBar")
+            installerLog.debug("attach: installed UIContextMenuInteraction on UITabBar")
         }
 
         /// Tear down everything this installer added to the bar — the
