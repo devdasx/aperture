@@ -79,6 +79,18 @@ The server is public, requires no authentication, and exposes only read-only
 product knowledge. It cannot access a wallet, inspect balances, process wallet
 credentials, sign, authorize, or broadcast transactions.
 
+## Portable agent plugin
+
+This repository is also a conforming [Agent Plugins 1.0](https://agent-plugins.org/)
+package. Compatible clients can load the root [`plugin.json`](plugin.json) and
+[`mcp.json`](mcp.json) to connect to the same public, read-only MCP endpoint.
+The package requires no API key, secret, local process, or wallet permission.
+
+The portable package is intended for agent clients such as Cursor and GitHub
+Copilot/VS Code that support the Agent Plugins standard. It adds verified public
+Aperture knowledge only; installing it does not connect to, inspect, or control
+the Aperture iOS app or any user wallet.
+
 ## Contributing and responsible disclosure
 
 Issues and pull requests are welcome when they include a reproducible problem, a narrowly scoped change, and appropriate validation. Do not post exploitable security details in a public issue; use the [responsible-disclosure instructions](https://aperturex.io/bug-bounty/) instead.
