@@ -60,6 +60,7 @@ open Aperture.xcodeproj
 - Official MCP Registry server: `io.aperturex/aperture-wallet-knowledge`
 - Read-only MCP endpoint: `https://aperturex.io/mcp/`
 - Static MCP server card: [`/.well-known/mcp/server-card.json`](https://aperturex.io/.well-known/mcp/server-card.json)
+- Agent connection guide: [`llms-install.md`](llms-install.md)
 
 Connect from any MCP client that supports remote Streamable HTTP:
 
