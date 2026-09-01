@@ -61,6 +61,23 @@ open Aperture.xcodeproj
 - Read-only MCP endpoint: `https://aperturex.io/mcp/`
 - Static MCP server card: [`/.well-known/mcp/server-card.json`](https://aperturex.io/.well-known/mcp/server-card.json)
 
+Connect from any MCP client that supports remote Streamable HTTP:
+
+```json
+{
+  "mcpServers": {
+    "aperture-wallet-knowledge": {
+      "type": "http",
+      "url": "https://aperturex.io/mcp/"
+    }
+  }
+}
+```
+
+The server is public, requires no authentication, and exposes only read-only
+product knowledge. It cannot access a wallet, inspect balances, process wallet
+credentials, sign, authorize, or broadcast transactions.
+
 ## Contributing and responsible disclosure
 
 Issues and pull requests are welcome when they include a reproducible problem, a narrowly scoped change, and appropriate validation. Do not post exploitable security details in a public issue; use the [responsible-disclosure instructions](https://aperturex.io/bug-bounty/) instead.

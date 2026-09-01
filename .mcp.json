@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "aperture-wallet-knowledge": {
+      "type": "http",
+      "url": "https://aperturex.io/mcp/"
+    }
+  }
+}
