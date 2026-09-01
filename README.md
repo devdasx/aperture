@@ -59,6 +59,7 @@ open Aperture.xcodeproj
 - OpenAPI description: [`openapi.json`](https://aperturex.io/openapi.json)
 - Official MCP Registry server: `io.aperturex/aperture-wallet-knowledge`
 - Read-only MCP endpoint: `https://aperturex.io/mcp/`
+- Static MCP server card: [`/.well-known/mcp/server-card.json`](https://aperturex.io/.well-known/mcp/server-card.json)
 
 ## Contributing and responsible disclosure
 
