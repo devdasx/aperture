@@ -91,6 +91,15 @@ Copilot/VS Code that support the Agent Plugins standard. It adds verified public
 Aperture knowledge only; installing it does not connect to, inspect, or control
 the Aperture iOS app or any user wallet.
 
+## Claude plugin
+
+Claude Code and Cowork can use the repository as an Aperture knowledge plugin.
+The Claude manifest is at [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json),
+the source guidance is in [`skills/aperture-wallet-guide/SKILL.md`](skills/aperture-wallet-guide/SKILL.md),
+and [`.mcp.json`](.mcp.json) connects to the same public read-only server. The
+plugin requires no account, API key, secret, local executable, or access to a
+user wallet.
+
 ## Contributing and responsible disclosure
 
 Issues and pull requests are welcome when they include a reproducible problem, a narrowly scoped change, and appropriate validation. Do not post exploitable security details in a public issue; use the [responsible-disclosure instructions](https://aperturex.io/bug-bounty/) instead.
