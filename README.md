@@ -59,7 +59,10 @@ open Aperture.xcodeproj
 - OpenAPI description: [`openapi.json`](https://aperturex.io/openapi.json)
 - Official MCP Registry server: `io.aperturex/aperture-wallet-knowledge`
 - Read-only MCP endpoint: `https://aperturex.io/mcp/`
+- MCP server implementation: [`mcp-server/`](mcp-server/)
 - Static MCP server card: [`/.well-known/mcp/server-card.json`](https://aperturex.io/.well-known/mcp/server-card.json)
+
+The public `mcp-server/` directory contains the production PHP request handler, all 12 tool definitions, the citation/search layer, the read-only Journal adapter, the public data snapshot, local run commands, and an explicit permission and network-access boundary. The server requires no authentication and cannot access wallet credentials, balances, signing, broadcasting, or other user wallet state.
 - Agent connection guide: [`llms-install.md`](llms-install.md)
 
 Connect from any MCP client that supports remote Streamable HTTP:
