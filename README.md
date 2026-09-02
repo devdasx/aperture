@@ -63,6 +63,7 @@ open Aperture.xcodeproj
 - Static MCP server card: [`/.well-known/mcp/server-card.json`](https://aperturex.io/.well-known/mcp/server-card.json)
 
 The public `mcp-server/` directory contains the production PHP request handler, all 12 tool definitions, the citation/search layer, the read-only Journal adapter, the public data snapshot, local run commands, and an explicit permission and network-access boundary. The server requires no authentication and cannot access wallet credentials, balances, signing, broadcasting, or other user wallet state.
+
 - Agent connection guide: [`llms-install.md`](llms-install.md)
 
 Connect from any MCP client that supports remote Streamable HTTP:
@@ -94,6 +95,35 @@ Copilot/VS Code that support the Agent Plugins standard. It adds verified public
 Aperture knowledge only; installing it does not connect to, inspect, or control
 the Aperture iOS app or any user wallet.
 
+The Agent Plugins project's current compatibility catalog includes VS Code,
+Cursor, GitHub Copilot, ChatGPT and Codex, Kiro, Hermes Agent, OpenClaw, Grok
+Bot, and NanoClaw. Each client still controls its own installation, permissions,
+and enabled components.
+
+Hermes Agent can install this repository directly, then enable the portable
+plugin explicitly:
+
+```sh
+hermes plugins install devdasx/aperture --no-enable
+hermes plugins enable aperture-wallet-knowledge
+```
+
+## Agent Skill
+
+Install the source-guidance skill from Aperture's first-party discovery endpoint:
+
+```sh
+npx skills add https://aperturex.io --skill aperture-wallet-guide
+```
+
+Or install the same skill directly from this public repository:
+
+```sh
+npx skills add devdasx/aperture --skill aperture-wallet-guide
+```
+
+The discovery index is published at [`/.well-known/agent-skills/index.json`](https://aperturex.io/.well-known/agent-skills/index.json), and the skill is also inspectable on [skills.sh](https://skills.sh/devdasx/aperture/aperture-wallet-guide). It contains instructions only: no executable, account, API key, secret, or wallet connection.
+
 ## Claude plugin
 
 Claude Code and Cowork can use the repository as an Aperture knowledge plugin.
@@ -102,6 +132,22 @@ the source guidance is in [`skills/aperture-wallet-guide/SKILL.md`](skills/apert
 and [`.mcp.json`](.mcp.json) connects to the same public read-only server. The
 plugin requires no account, API key, secret, local executable, or access to a
 user wallet.
+
+## Gemini CLI extension
+
+Install the public read-only knowledge extension directly from this repository:
+
+```sh
+gemini extensions install https://github.com/devdasx/aperture
+```
+
+The extension adds the same public MCP endpoint plus concise product and safety context. It requires no API key and cannot access a wallet, private keys, recovery phrases, balances, or signing.
+
+## Privacy and support
+
+- Privacy policy: [aperturex.io/privacy](https://aperturex.io/privacy/)
+- Product support: [aperturex.io/support](https://aperturex.io/support/)
+- Security reports: [responsible disclosure](https://aperturex.io/bug-bounty/)
 
 ## Contributing and responsible disclosure
 
